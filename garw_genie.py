@@ -49,7 +49,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "4.8.2"
+APP_VERSION = "4.8.3"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -505,9 +505,40 @@ def apply_wifi(ssid: Optional[str], password: Optional[str]) -> None:
         WIFI_PASSWORD = password
 
 
-def join_wifi(ssid: str, password: str) -> Tuple[bool, str]:
-    """Ask the OS to join a Wi-Fi network. Best effort; returns (ok, message)."""
+def _wifi_joined(ssid: str, wait_s: float = 20.0) -> bool:
+    """Poll until the machine reports `ssid` or the unit answers (macOS may hide the SSID)."""
+    end = time.monotonic() + wait_s
+    while time.monotonic() < end:
+        cur = current_ssid() or ""
+        if cur == ssid or unit_reachable(timeout=1.0):
+            return True
+        time.sleep(1.0)
+    return False
+
+
+def open_wifi_settings() -> bool:
+    """Open the OS Wi-Fi picker so the user can choose the network by hand. Best effort."""
     system = platform.system()
+    try:
+        if system == "Darwin":
+            for target in ("x-apple.systempreferences:com.apple.wifi-settings-extension",
+                           "/System/Library/PreferencePanes/Network.prefPane"):
+                if subprocess.run(["open", target], capture_output=True, timeout=8).returncode == 0:
+                    return True
+        elif system == "Windows":
+            return subprocess.run(["cmd", "/c", "start", "ms-availablenetworks:"], capture_output=True, timeout=8).returncode == 0
+        else:
+            return subprocess.run(["nm-connection-editor"], capture_output=True, timeout=8).returncode == 0
+    except Exception:
+        pass
+    return False
+
+
+def join_wifi(ssid: str, password: str, log=None) -> Tuple[bool, str]:
+    """Ask the OS to join a Wi-Fi network, then verify it actually happened. Returns (ok, message).
+    `log` (optional) receives every raw OS reply so 'nothing happened' is always explained."""
+    system = platform.system()
+    say = log or (lambda *_: None)
     try:
         if system == "Darwin":
             ports = subprocess.run(["networksetup", "-listallhardwareports"], capture_output=True, text=True, timeout=8).stdout
@@ -515,11 +546,21 @@ def join_wifi(ssid: str, password: str) -> Tuple[bool, str]:
             m = re.search(r"Hardware Port: (?:Wi-Fi|AirPort)\s*\nDevice: (\w+)", ports)
             if m:
                 dev = m.group(1)
-            r = subprocess.run(["networksetup", "-setairportnetwork", dev, ssid, password],
-                               capture_output=True, text=True, timeout=45)
+            # Make sure the radio is on, then ask for the network.
+            subprocess.run(["networksetup", "-setairportpower", dev, "on"], capture_output=True, text=True, timeout=8)
+            cmd = ["networksetup", "-setairportnetwork", dev, ssid, password]
+            say(f"$ networksetup -setairportnetwork {dev} {ssid} ********")
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=45)
             out = (r.stdout + r.stderr).strip()
-            ok = r.returncode == 0 and "Could not" not in out and "Failed" not in out
-            return ok, out or (f"Joining '{ssid}' on {dev} …" if ok else "networksetup failed")
+            say(f"  networksetup exit {r.returncode}: {out or '(no output)'}")
+            bad = r.returncode != 0 or "Could not" in out or "Failed" in out or "Error" in out
+            if not bad:
+                say(f"  Waiting for '{ssid}' to come up …")
+                if _wifi_joined(ssid):
+                    return True, f"Joined '{ssid}' on {dev}."
+                out = out or (f"macOS accepted the request but never joined '{ssid}'. Recent macOS versions "
+                              "often ignore this command unless the app has Location Services permission.")
+            return False, out or "networksetup failed"
         if system == "Windows":
             import tempfile
             import xml.sax.saxutils as su
@@ -539,17 +580,23 @@ def join_wifi(ssid: str, password: str) -> Tuple[bool, str]:
             try:
                 r1 = subprocess.run(["netsh", "wlan", "add", "profile", f"filename={path}", "user=current"],
                                     capture_output=True, text=True, timeout=20)
+                say(f"  netsh add profile exit {r1.returncode}: {(r1.stdout + r1.stderr).strip()}")
                 r2 = subprocess.run(["netsh", "wlan", "connect", f"name={ssid}"], capture_output=True, text=True, timeout=20)
+                say(f"  netsh connect exit {r2.returncode}: {(r2.stdout + r2.stderr).strip()}")
             finally:
                 try:
                     os.unlink(path)
                 except OSError:
                     pass
             out = (r1.stdout + r2.stdout + r1.stderr + r2.stderr).strip()
-            return r2.returncode == 0, out
+            if r2.returncode == 0 and _wifi_joined(ssid):
+                return True, f"Joined '{ssid}'."
+            return False, out or f"Windows did not join '{ssid}'."
         r = subprocess.run(["nmcli", "dev", "wifi", "connect", ssid, "password", password],
                            capture_output=True, text=True, timeout=45)
-        return r.returncode == 0, (r.stdout + r.stderr).strip()
+        out = (r.stdout + r.stderr).strip()
+        say(f"  nmcli exit {r.returncode}: {out}")
+        return r.returncode == 0, out
     except FileNotFoundError as e:
         return False, f"Wi-Fi tool not found: {e}"
     except subprocess.TimeoutExpired:
@@ -2439,14 +2486,30 @@ def run_gui(initial_zip: Optional[str] = None):
 
         def worker():
             log(f"Asking the OS to join Wi-Fi '{ssid}' …")
-            ok, msg = join_wifi(ssid, pw)
-            log(("Joined: " if ok else "Could not join: ") + (msg or ssid))
-            if not ok:
-                ui(lambda m=msg: messagebox.showwarning(
-                    APP_NAME, f"Couldn't join '{ssid}' automatically.\n\n{m}\n\nJoin it from the system Wi-Fi menu instead.",
-                    parent=root))
-            else:
-                ui(set_status, f"● Joining '{ssid}' … waiting for the GARW device", "warn")
+            ui(set_status, f"● Joining '{ssid}' …", "warn")
+            ok, msg = join_wifi(ssid, pw, log=log)
+            log(("Joined: " if ok else "Could not join automatically: ") + (msg or ssid))
+            if ok:
+                ui(set_status, f"● Joined '{ssid}' … waiting for the GARW device", "warn")
+                return
+            # Fall back: open the OS Wi-Fi picker with the password on the clipboard.
+            def fallback(m=msg):
+                try:
+                    root.clipboard_clear()
+                    root.clipboard_append(pw)
+                    clip = f"The password ({pw}) is on your clipboard — paste it if asked."
+                except tk.TclError:
+                    clip = f"Password: {pw}"
+                opened = open_wifi_settings()
+                set_status(f"● Pick '{ssid}' in the Wi-Fi menu — the GARW device is detected automatically", "warn")
+                messagebox.showinfo(
+                    APP_NAME,
+                    f"Your computer didn't join '{ssid}' by itself.\n\n"
+                    + (f"Wi-Fi settings have been opened — choose '{ssid}' there.\n" if opened
+                       else f"Choose '{ssid}' from the Wi-Fi menu.\n")
+                    + f"{clip}\n\nThe app notices the GARW device on its own once you're connected.\n\n(Details: {m})",
+                    parent=root)
+            ui(fallback)
         start(worker)
     join_btn.configure(command=do_join_wifi)
     AFTER_CHOICES = ("Restart GARW Binary", "Reboot unit", "Do nothing")
