@@ -49,7 +49,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "4.8.3"
+APP_VERSION = "4.8.4"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -2331,6 +2331,9 @@ def run_gui(initial_zip: Optional[str] = None):
         save_config(cfg)
     repos: List[RepoEntry] = [e for e in (RepoEntry.from_dict(d) for d in cfg["repos"]) if e]
     installed: Dict[str, dict] = {}        # name -> source marker (last device refresh)
+    _inv = cfg.get("device_inventory") or {}
+    installed.update(_inv.get("dashes") or {})   # last inventory seen on the device, so status shows offline
+    installed_seen = {"when": _inv.get("when")}  # ISO time of that inventory; None once live
     device_rows: List[dict] = []
     config_rows: List[dict] = []
 
@@ -2680,6 +2683,9 @@ def run_gui(initial_zip: Optional[str] = None):
         first = mon["unit"] is None
         if first or bool(unit) != bool(mon["unit"]):
             set_device_tabs(bool(unit))
+            if not unit and mon["unit"]:   # just dropped off: what we hold is now "last seen"
+                installed_seen["when"] = (cfg.get("device_inventory") or {}).get("when")
+                ui(fill_repo_tree)
         unit_up = unit and not mon["unit"]
         net_up = net and not mon["net"]
         mon.update(ssid=ssid, unit=unit, net=net)
@@ -2856,6 +2862,13 @@ def run_gui(initial_zip: Optional[str] = None):
         device_rows[:] = rows
         installed.clear()
         installed.update({r["name"]: r["source"] for r in rows})
+        installed_seen["when"] = None
+        cfg["device_inventory"] = {"when": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                                   "dashes": dict(installed)}
+        try:
+            save_config(cfg)
+        except OSError:
+            pass
         ui(fill_device_tree)
         ui(fill_repo_tree)
         return rows
@@ -3002,13 +3015,15 @@ def run_gui(initial_zip: Optional[str] = None):
         for r in repos:
             latest = f"{r.latest_sha[:7]}  {_fmt_date(r.latest_date)}  {r.latest_message or ''}" if r.latest_sha else "—"
             status = repo_status(r, installed)
+            if not mon.get("unit") and installed and installed_seen["when"] and not status.startswith(("Error", "Not a v5", "Not checked")):
+                status += f"  (device as of {_fmt_date(installed_seen['when'])})"
             csha = r.cached_sha()
             cached = ("✓ " + csha[:7]) if csha and csha == r.latest_sha else (csha[:7] + " (old)" if csha else "—")
             iid = repo_tree.insert("", "end", values=(r.label, r.branch or "(default)", r.dash or "—", latest, cached, status))
             if r.label in sel:
                 repo_tree.selection_add(iid)
             tag = ("update" if status.startswith("Update") else
-                   "ok" if status == "Up to date" else "err" if status.startswith(("Error", "Not a v5")) else "")
+                   "ok" if status.startswith("Up to date") else "err" if status.startswith(("Error", "Not a v5")) else "")
             if tag:
                 repo_tree.item(iid, tags=(tag,))
         repo_tree.tag_configure("update", foreground=P["warn"])
