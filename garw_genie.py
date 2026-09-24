@@ -49,7 +49,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "4.8.6"
+APP_VERSION = "4.8.7"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -2775,12 +2775,19 @@ def run_gui(initial_zip: Optional[str] = None):
             except RuntimeError as e:
                 # e.g. a v4 unit: still show what we can (system info works on any layout)
                 log(f"GARW device reachable but: {e}")
+                layout = None
                 try:
                     with IC7Device(log, confirm) as dev:
+                        layout = dev.detect_layout()
                         ui(fill_sys_tree, dev.system_info())
                 except Exception:
                     pass
-                ui(set_status, f"● GARW live  ·  {HOST}  ·  needs attention", "warn")
+                if layout == "v4":
+                    ui(set_status, f"● GARW live  ·  {HOST}  ·  v4 firmware — dashes need v5, update it on the Firmware tab", "warn")
+                    log("Dash and settings features are unavailable on v4. The Firmware / System Info tab still works — "
+                        "use 'Install firmware…' there with the v4→v5 package.")
+                else:
+                    ui(set_status, f"● GARW live  ·  {HOST}  ·  needs attention (see log)", "warn")
         start(worker)
 
     # ---------- helpers ----------
