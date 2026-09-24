@@ -1,0 +1,20 @@
+# GARW Genie — default dash repositories
+#
+# One GitHub repo URL per line. Each repo holds one dash: <Name>.qml and
+# <Name>.qml.png at the repo root (the dash is named after the .qml).
+# Lines starting with # are comments. Optional: append /tree/<branch> to pin a branch.
+#
+# These are added to the GitHub repos tab automatically on launch. A repo you
+# remove in the app stays removed (recorded in config.json "removed_defaults").
+# Keep this file next to the app (or the .exe / .app) and edit it any time.
+
+https://github.com/dustinsterk/GTDash
+https://github.com/dustinsterk/LFA-Gauge-for-GARW-IC7
+https://github.com/tbeaulieu/Outrun
+https://github.com/tbeaulieu/Soldat-Meltfire/
+https://github.com/tbeaulieu/taikyu
+https://github.com/tbeaulieu/Kamata
+https://github.com/tbeaulieu/Danver
+https://github.com/tbeaulieu/Type98TDash
+https://github.com/tbeaulieu/LeMansGTDash
+https://github.com/tbeaulieu/AgeSoloDash

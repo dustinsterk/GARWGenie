@@ -1,0 +1,8 @@
+Press Start 2P (file: PressStart2P.ttf, family name "Press Start K")
+Copyright (c) 2011-2012 Cody "CodeMan38" Boisclair (cody@zone38.net)
+
+Licensed under the SIL Open Font License, Version 1.1.
+Full license text: https://openfontlicense.org/open-font-license-official-text/
+The OFL permits bundling this font with GARW Genie, including in the built .exe / .app,
+provided this notice and the OFL text accompany it. Put the OFL.txt from the font's original
+download alongside this file when redistributing.
