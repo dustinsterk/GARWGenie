@@ -49,7 +49,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "4.8.4"
+APP_VERSION = "4.8.6"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -59,6 +59,7 @@ USERNAME = "root"
 PASSWORD = "root"
 LIBRARY_DIR = "/opt/IC7/library"
 BINARY_PATH = "/opt/IC7/bin/IC7"
+VERSION_FILE = "/opt/IC7/version.txt"        # firmware 5.5+: the version as a plain string, e.g. "5.5"
 # v4 firmware lived here. Its presence (with no /opt/IC7) means the unit is too old.
 LEGACY_DIR = "/opt/Garw_IC7"
 LEGACY_BINARY_PATH = f"{LEGACY_DIR}/bin/Garw_IC7"
@@ -1144,6 +1145,7 @@ class IC7Device:
     def __init__(self, log, confirm=None, progress=None,
                  host=None, port=None, username=None, password=None):
         self.log = log                                      # log(str)
+        self._version_source: Optional[str] = None
         self.confirm = confirm or (lambda t, m: True)       # confirm(title, message) -> bool
         self.progress = progress or (lambda done, total: None)
         self.host, self.port = host or HOST, port or PORT
@@ -1199,8 +1201,18 @@ class IC7Device:
         return rc == 0
 
     # -- firmware gate -------------------------------------------------------
-    def _read_version_number(self) -> Optional[float]:
+    def _read_version(self) -> Tuple[Optional[str], Optional[float]]:
+        """(display, number). Firmware 5.5+ writes the version to /opt/IC7/version.txt; older v5
+        units only have the float literal inside the binary, which is read as a fallback."""
         lo, hi = VERSION_SANE_RANGE
+        rc, out, _ = self._run(f"cat {VERSION_FILE} 2>/dev/null")
+        text = out.strip().splitlines()[0].strip() if rc == 0 and out.strip() else ""
+        if text:
+            text = text.lstrip("vV").strip()
+            m = re.match(r"(\d+(?:\.\d+)?)", text)
+            number = float(m.group(1)) if m else None
+            self._version_source = VERSION_FILE
+            return text, number
         for offset in VERSION_OFFSETS:
             rc, out, _ = self._run(version_cmd(offset))
             raw = out.strip()
@@ -1211,8 +1223,13 @@ class IC7Device:
             except ValueError:
                 continue
             if value == value and lo <= value <= hi:
-                return value
-        return None
+                self._version_source = f"{BINARY_PATH} @{offset}"
+                return f"{value:g}", value
+        self._version_source = None
+        return None, None
+
+    def _read_version_number(self) -> Optional[float]:
+        return self._read_version()[1]
 
     def detect_layout(self) -> str:
         """'v5' | 'v4' | 'both' | 'none' from the install directories."""
@@ -1240,15 +1257,15 @@ class IC7Device:
             raise RuntimeError(
                 f"Both {BINARY_PATH} and {LEGACY_DIR} exist on this unit — that should never "
                 "happen after an upgrade. Aborting; check the unit's firmware install.")
-        version = self._read_version_number()
+        display, version = self._read_version()
         if version is None:
-            self.log(f"Firmware: v{MIN_VERSION:g}+ layout detected (version number not readable "
-                     f"at offsets {', '.join(map(str, VERSION_OFFSETS))}).")
+            self.log(f"Firmware: v{MIN_VERSION:g}+ layout detected (no {VERSION_FILE}, and the version number "
+                     f"is not readable from the binary at offsets {', '.join(map(str, VERSION_OFFSETS))}).")
         else:
-            self.log(f"Firmware: v{version:g} ({BINARY_PATH})")
+            self.log(f"Firmware: v{display} ({self._version_source})")
             if version < MIN_VERSION:
                 raise RuntimeError(
-                    f"GARW binary reports v{version:g}; v{MIN_VERSION:g} or newer is required. Aborting.")
+                    f"GARW device reports v{display}; v{MIN_VERSION:g} or newer is required. Aborting.")
         return version
 
     # -- inventory -----------------------------------------------------------
@@ -1572,7 +1589,7 @@ echo "@@ic7_bin=$(ls -l /opt/IC7/bin/IC7 2>/dev/null | awk '{print $5}')"
             if line.startswith("@@") and "=" in line:
                 k, _, v = line[2:].partition("=")
                 raw[k] = v.strip()
-        version = self._read_version_number() if raw.get("layout_v5") == "1" else None
+        vdisplay, version = self._read_version() if raw.get("layout_v5") == "1" else (None, None)
 
         def kb(v):
             try:
@@ -1626,8 +1643,8 @@ echo "@@ic7_bin=$(ls -l /opt/IC7/bin/IC7 2>/dev/null | awk '{print $5}')"
         if raw.get("cpu_hw") and raw.get("cpu_hw") != cpu:
             cpu += f"  ({raw['cpu_hw']})"
         info = [
-            ("Firmware", (f"v{version:g}" if version else "v5+ (number unreadable)") if raw.get("layout_v5") == "1"
-                         else layout),
+            ("Firmware", (f"v{vdisplay}  ({self._version_source})" if vdisplay else "v5+ (number unreadable)")
+                         if raw.get("layout_v5") == "1" else layout),
             ("Install layout", layout),
             ("Bootloader", raw.get("bootloader") or "—"),
             ("GARW binary process", "running" if raw.get("ic7_running", "0") not in ("", "0") else "not running"),
@@ -1781,17 +1798,19 @@ echo "@@ic7_bin=$(ls -l /opt/IC7/bin/IC7 2>/dev/null | awk '{print $5}')"
                 raise RuntimeError(f"The firmware's run script exited with status {run_rc}. "
                                    "Check the log above; the unit may be partially updated — do not power off, "
                                    "retry the install.")
-            self._run(f"rm -f {FIRMWARE_SCRATCH}/run {FIRMWARE_SCRATCH}/*.tar {FIRMWARE_SCRATCH}/*.tar.cpt; sync")
+            self.log(f"Cleaning up {FIRMWARE_SCRATCH} ...")
+            self._run(f"rm -rf {FIRMWARE_SCRATCH}/run {FIRMWARE_SCRATCH}/*.tar {FIRMWARE_SCRATCH}/*.tar.cpt "
+                      f"{FIRMWARE_SCRATCH}/opt {FIRMWARE_SCRATCH}/build {FIRMWARE_SCRATCH}/etc {FIRMWARE_SCRATCH}/usr; sync")
 
             # -- verify ------------------------------------------------------------
             on_step("verify")
             after = self.detect_layout()
-            version = self._read_version_number() if after in ("v5", "both") else None
+            display, version = self._read_version() if after in ("v5", "both") else (None, None)
             if after not in ("v5", "both"):
                 raise RuntimeError(f"After running the installer {BINARY_PATH} is still missing (layout: {after}).")
-            self.log(f"Firmware installed. Layout: {before} → {after}; GARW binary reports "
-                     + (f"v{version:g}" if version else "v5+ (number unreadable)"))
-            return {"before": before, "after": after, "version": version}
+            self.log(f"Firmware installed. Layout: {before} → {after}; GARW device reports "
+                     + (f"v{display} ({self._version_source})" if display else "v5+ (number unreadable)"))
+            return {"before": before, "after": after, "version": version, "display": display}
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -2715,8 +2734,12 @@ def run_gui(initial_zip: Optional[str] = None):
                 auto_refresh_all()
             elif mon["pending_net"]:
                 mon["pending_net"] = False
-                log("Internet detected — checking GitHub for dash updates …")
-                check_repos()
+                every = float(cfg.get("auto_check_minutes", 30) or 0)
+                # Re-evaluate now: if the user pressed 'Check & download' while this was queued,
+                # everything is fresh and the automatic check is redundant.
+                if every > 0 and any(not r.checked_within(every) for r in repos):
+                    log("Internet detected — checking GitHub for dash updates …")
+                    check_repos(auto=True)
 
     def monitor_tick():
         mon["tick"] += 1
@@ -3128,11 +3151,13 @@ def run_gui(initial_zip: Optional[str] = None):
             persist()
             fill_repo_tree()
 
-    def check_repos(targets: Optional[List[RepoEntry]] = None):
+    def check_repos(targets: Optional[List[RepoEntry]] = None, auto: bool = False):
         targets = targets or list(repos)
         if not targets:
             log("No repos to check — use 'Add repo…' first.")
             return
+        if not auto:
+            mon["pending_net"] = False   # a manual check supersedes any queued automatic one
 
         def worker():
             log("Checking internet connection …")
@@ -3746,8 +3771,13 @@ def run_gui(initial_zip: Optional[str] = None):
                     ui(fill_sys_tree, info)
                     dev.reboot()
                 ui(fw_step.configure, {"text": ""})
-                v = f"v{result['version']:g}" if result["version"] else "v5+"
-                ui(lambda: messagebox.showinfo(APP_NAME, f"Firmware updated to {v}.\nThe unit is rebooting.", parent=root))
+                v = f"v{result['display']}" if result.get("display") else "v5+"
+
+                def done():
+                    fw_var.set("")            # clear the package path so it can't be run twice by accident
+                    inspect_firmware("")
+                    messagebox.showinfo(APP_NAME, f"Firmware updated to {v}.\nThe unit is rebooting.", parent=root)
+                ui(done)
             except Exception:
                 ui(lambda: fw_step.configure(text="✗ Update failed — see log. Do not power off; retry."))
                 raise
