@@ -66,8 +66,7 @@ v4 device gets to v5. When it finishes, the device's scratch area is tidied up a
 path is cleared so it can't be run twice by accident.
 
 **Controller** — the old phone app's D-pad. Click the arrows or use your keyboard: arrow keys move,
-**S** opens the dash's settings screen, **L** and **R** hold left or right to reach the device's own
-menu, **Esc** lets go of everything. It only listens while this tab is showing.
+**S** opens the GARW's OS settings screen (you can also hold **L** or **R** for 3 seconds), **U** in a dash screen shows the dash menu (specific for each dash screen), **Esc** lets go of everything. The GARW only listens to control inputs while this tab is showing.
 
 ## The header
 
