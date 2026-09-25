@@ -49,7 +49,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "4.8.8"
+APP_VERSION = "4.9.0"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -83,7 +83,10 @@ ASSETS_DIR_NAME = "assets"
 DEFAULT_REPOS_FILE = "default_repos.txt"               # bundled list of dash repos, one URL per line
 CACHE_DIR = CONFIG_DIR / "cache"            # downloaded dash zipballs, installable offline
 LOG_DIR = CONFIG_DIR / "logs"               # one file per day, every action + every SSH command
-FIRMWARE_PASSWORD = "12345"                 # ccrypt passphrase for GARW firmware archives
+# The ccrypt passphrase for firmware packages is NOT stored here. The GARW binary itself launches the
+# stock USB updater as "/etc/init.d/K99updater start <passphrase> <ver>", so the tool reads that string
+# off the binary on the unit at install time — whatever the firmware author ships is what gets used.
+UPDATER_MARKER = "K99updater start "
 FIRMWARE_SCRATCH = "/mnt"                   # where the stock updater unpacks (the tar's run script cd's here)
 INTERNET_PROBE = ("api.github.com", 443)
 CONNECT_TIMEOUT = 8  # seconds
@@ -1186,7 +1189,8 @@ class IC7Device:
             self.client = None
 
     def _run(self, cmd: str, timeout: float = 15) -> Tuple[int, str, str]:
-        shown = cmd.replace(FIRMWARE_PASSWORD, "*****") if FIRMWARE_PASSWORD in cmd else cmd
+        secret = getattr(self, "_fw_pass", None)
+        shown = cmd.replace(secret, "*****") if secret and secret in cmd else cmd
         FILE_LOG.debug("SSH$ %s", shown if len(shown) < 600 else shown[:600] + " …")
         _, stdout, stderr = self.client.exec_command(cmd, timeout=timeout)
         out = stdout.read().decode(errors="replace")
@@ -1671,6 +1675,23 @@ echo "@@ic7_bin=$(ls -l /opt/IC7/bin/IC7 2>/dev/null | awk '{print $5}')"
         return info
 
     # -- firmware ------------------------------------------------------------
+    def read_firmware_passphrase(self, layout: str) -> str:
+        """The passphrase the unit's own updater uses, read from the GARW binary on the device
+        (`… K99updater start <passphrase> <ver>`). BusyBox has no `strings`, so `grep -a -o`."""
+        binaries = [BINARY_PATH, LEGACY_BINARY_PATH] if layout in ("v5", "both") else [LEGACY_BINARY_PATH, BINARY_PATH]
+        for b in binaries:
+            if not self._remote_exists(b):
+                continue
+            rc, out, _ = self._run(f"grep -a -o {_sq(UPDATER_MARKER + '[^ ]*')} {_sq(b)} | head -1", timeout=60)
+            m = re.search(re.escape(UPDATER_MARKER) + r"(\S+)", out)
+            if rc == 0 and m:
+                self._fw_pass = m.group(1)
+                self.log(f"Update passphrase read from {b} (masked in logs).")
+                return self._fw_pass
+        raise RuntimeError("Could not find the updater passphrase in the GARW binary on the unit "
+                           f"(looked for '{UPDATER_MARKER.strip()}' in {', '.join(binaries)}). "
+                           "This firmware may use a different update mechanism — aborting before touching anything.")
+
     @staticmethod
     def _local_ccrypt() -> Optional[str]:
         import shutil
@@ -1680,7 +1701,7 @@ echo "@@ic7_bin=$(ls -l /opt/IC7/bin/IC7 2>/dev/null | awk '{print $5}')"
         """
         Apply a GARW firmware package (a .zip holding <name>.tar.cpt, or the .tar.cpt itself):
           1. upload to /mnt on the unit
-          2. ccrypt -d -K 12345   (on the unit; falls back to a local ccrypt if the unit has none)
+          2. ccrypt -d -K <passphrase read from the GARW binary>   (on the unit; local ccrypt fallback)
           3. tar xf into /mnt, run /mnt/run (the package's own installer), sync
           4. verify /opt/IC7/bin/IC7 and report the new version
         Caller reboots. Returns {'before': layout, 'after': layout, 'version': float|None}.
@@ -1710,6 +1731,7 @@ echo "@@ic7_bin=$(ls -l /opt/IC7/bin/IC7 2>/dev/null | awk '{print $5}')"
             if before == "none":
                 raise RuntimeError(f"Neither {BINARY_PATH} nor {LEGACY_DIR} found — refusing to flash an unknown device.")
             self.log(f"Unit layout before update: {before}")
+            passphrase = self.read_firmware_passphrase(before)
 
             # -- where to decrypt --------------------------------------------
             rc, which, _ = self._run("which ccrypt 2>/dev/null")
@@ -1724,7 +1746,7 @@ echo "@@ic7_bin=$(ls -l /opt/IC7/bin/IC7 2>/dev/null | awk '{print $5}')"
                 self.log(f"Unit has no ccrypt — decrypting locally with {local_ccrypt} ...")
                 dec = os.path.join(tmpdir, base[:-4])  # strip .cpt -> .tar
                 with open(dec, "wb") as fh:
-                    r = subprocess.run([local_ccrypt, "-d", "-K", FIRMWARE_PASSWORD, "-c", src],
+                    r = subprocess.run([local_ccrypt, "-d", "-K", passphrase, "-c", src],
                                        stdout=fh, stderr=subprocess.PIPE, timeout=600)
                 if r.returncode != 0:
                     raise RuntimeError("Local ccrypt failed: " + r.stderr.decode(errors="replace").strip())
@@ -1768,7 +1790,7 @@ echo "@@ic7_bin=$(ls -l /opt/IC7/bin/IC7 2>/dev/null | awk '{print $5}')"
             on_step("unpack")
             if unit_ccrypt:
                 self.log(f"Decrypting on the unit: ccrypt -d -K ***** {remote_name}")
-                rc, out, err = self._run(f"cd {FIRMWARE_SCRATCH} && ccrypt -d -K {FIRMWARE_PASSWORD} {_sq(remote_name)}", timeout=900)
+                rc, out, err = self._run(f"cd {FIRMWARE_SCRATCH} && ccrypt -d -K {_sq(passphrase)} {_sq(remote_name)}", timeout=900)
                 if rc != 0:
                     raise RuntimeError(f"ccrypt failed on the unit: {(err or out).strip()}")
                 tar_name = remote_name[:-4]

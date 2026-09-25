@@ -27,13 +27,18 @@ pyinstaller --noconfirm --clean \
   --onedir \
   --osx-bundle-identifier com.turnautomotive.garwgenie \
   --add-data "assets:assets" \
+  --add-data "default_repos.txt:." \
   ${ICON_ICNS:+--icon "$ICON_ICNS"} \
   garw_genie.py
 
 cp default_repos.txt dist/ 2>/dev/null || true   # editable list of default dash repos, shipped beside the app
+rm -rf "dist/GARW Genie"                         # PyInstaller's raw onedir output; the .app already contains it
 
-# Zip the .app so it survives download without losing its bundle structure.
-( cd dist && zip -qr "GARW-Genie-macOS.zip" "GARW Genie.app" default_repos.txt )
+# Zip the .app for sharing. ditto keeps symlinks and bundle metadata intact (plain `zip -r`
+# follows the Python.framework symlinks and roughly doubles the size).
+( cd dist && rm -f GARW-Genie-macOS.zip \
+  && ditto -c -k --sequesterRsrc --keepParent "GARW Genie.app" GARW-Genie-macOS.zip \
+  && zip -q GARW-Genie-macOS.zip default_repos.txt )
 
 echo
 echo "Built: dist/GARW Genie.app   (zipped: dist/GARW-Genie-macOS.zip)"

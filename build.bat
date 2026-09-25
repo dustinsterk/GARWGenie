@@ -20,6 +20,7 @@ pyinstaller --noconfirm --clean ^
   --windowed ^
   --onefile ^
   --add-data "assets;assets" ^
+  --add-data "default_repos.txt;." ^
   %ICON_ARG% ^
   garw_genie.py || goto :fail
 
