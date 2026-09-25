@@ -35,6 +35,7 @@ import subprocess
 import sys
 import threading
 import time
+import ssl
 import urllib.error
 import urllib.request
 import zipfile
@@ -49,7 +50,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "4.9.0"
+APP_VERSION = "4.9.1"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -665,6 +666,43 @@ def _note_rate(headers) -> None:
         pass
 
 
+_SSL_CTX: Optional[ssl.SSLContext] = None
+
+
+def ssl_context() -> ssl.SSLContext:
+    """An SSL context that can actually verify github.com. A PyInstaller-frozen app (and python.org
+    Python on macOS) ships without a CA bundle, so the default context fails with
+    CERTIFICATE_VERIFY_FAILED. Order: certifi (bundled with the app) → the OS bundle → default."""
+    global _SSL_CTX
+    if _SSL_CTX is not None:
+        return _SSL_CTX
+    cafile = os.environ.get("SSL_CERT_FILE") or None    # standard override, e.g. behind a corporate proxy
+    if cafile and not os.path.isfile(cafile):
+        cafile = None
+    try:
+        if not cafile:
+            import certifi
+            cafile = certifi.where()
+    except Exception:
+        for cand in ("/etc/ssl/cert.pem", "/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt"):
+            if os.path.isfile(cand):
+                cafile = cand
+                break
+    ctx = ssl.create_default_context(cafile=cafile)
+    if platform.system() == "Darwin" and not cafile:
+        # last resort: export the system keychain roots (works even without certifi)
+        try:
+            pem = subprocess.run(["security", "find-certificate", "-a", "-p",
+                                  "/System/Library/Keychains/SystemRootCertificates.keychain"],
+                                 capture_output=True, text=True, timeout=10).stdout
+            if "BEGIN CERTIFICATE" in pem:
+                ctx.load_verify_locations(cadata=pem)
+        except Exception:
+            pass
+    _SSL_CTX = ctx
+    return ctx
+
+
 def _http_request(url: str, token: str = "", accept: str = "application/vnd.github+json",
                   etag: Optional[str] = None):
     """-> (status, headers, body). With `etag`, a 304 Not Modified comes back as
@@ -679,7 +717,7 @@ def _http_request(url: str, token: str = "", accept: str = "application/vnd.gith
     if etag:
         req.add_header("If-None-Match", etag)
     try:
-        with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
+        with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT, context=ssl_context()) as resp:
             _note_rate(resp.headers)
             return resp.status, resp.headers, resp.read()
     except urllib.error.HTTPError as e:
@@ -697,6 +735,9 @@ def _http_request(url: str, token: str = "", accept: str = "application/vnd.gith
                               "Add a token to config.json 'github_token' to raise the limit.")
         raise GitHubError(f"GitHub returned HTTP {e.code} for {url}")
     except urllib.error.URLError as e:
+        if "CERTIFICATE_VERIFY_FAILED" in str(e.reason):
+            raise GitHubError("Cannot verify GitHub's certificate — this computer's Python has no CA bundle. "
+                              "Run:  pip install certifi   (the standalone app bundles it).")
         raise GitHubError(f"Cannot reach GitHub: {e.reason}")
 
 

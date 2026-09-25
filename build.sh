@@ -28,6 +28,7 @@ pyinstaller --noconfirm --clean \
   --osx-bundle-identifier com.turnautomotive.garwgenie \
   --add-data "assets:assets" \
   --add-data "default_repos.txt:." \
+  --hidden-import certifi \
   ${ICON_ICNS:+--icon "$ICON_ICNS"} \
   garw_genie.py
 

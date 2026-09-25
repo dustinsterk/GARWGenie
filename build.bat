@@ -21,6 +21,7 @@ pyinstaller --noconfirm --clean ^
   --onefile ^
   --add-data "assets;assets" ^
   --add-data "default_repos.txt;." ^
+  --hidden-import certifi ^
   %ICON_ARG% ^
   garw_genie.py || goto :fail
 
