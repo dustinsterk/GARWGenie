@@ -49,7 +49,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "4.8.7"
+APP_VERSION = "4.8.8"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -2637,6 +2637,9 @@ def run_gui(initial_zip: Optional[str] = None):
         if str(nb.tab(tab_id, "state")) != "disabled":
             return
         name = nb.tab(tab_id, "text")
+        if paramiko is None:
+            show_tip(e.x_root, e.y_root + 18, PARAMIKO_HINT)
+            return
         where = mon.get("ssid")
         on_wifi = f" (you're on '{where}')" if where and where != TARGET_SSID else ""
         show_tip(e.x_root, e.y_root + 18,
@@ -2686,7 +2689,12 @@ def run_gui(initial_zip: Optional[str] = None):
             root.after(ms, step, i + 1)
         step()
 
+    PARAMIKO_HINT = ("The SSH library 'paramiko' is not installed, so nothing can talk to the GARW device. "
+                     "Install it with:   pip install paramiko   — then restart GARW Genie.")
+
     def set_device_tabs(enabled: bool):
+        if paramiko is None:
+            enabled = False   # hard lock: without SSH no device feature can work, whatever the monitor says
         for t in DEVICE_TABS:
             nb.tab(t, state="normal" if enabled else "disabled")
         # Once the unit answers, the SSH login / GARW Wi-Fi / Join controls are greyed out —
@@ -2695,7 +2703,7 @@ def run_gui(initial_zip: Optional[str] = None):
             w.configure(state="disabled" if enabled else "normal")
         if not enabled and nb.select() != str(tab_repo):
             nb.select(tab_repo)
-        lock_hint.configure(text="" if enabled else
+        lock_hint.configure(text="" if enabled else PARAMIKO_HINT if paramiko is None else
                             f"The other tabs unlock automatically once the GARW device answers at {HOST} — join Wi-Fi '{TARGET_SSID}'.")
 
     def monitor_apply(ssid, unit, net):
@@ -2709,6 +2717,9 @@ def run_gui(initial_zip: Optional[str] = None):
         net_up = net and not mon["net"]
         mon.update(ssid=ssid, unit=unit, net=net)
         set_net(net, ssid)
+        if paramiko is None:
+            set_status("● paramiko missing — run: pip install paramiko, then restart", "err")
+            return
         if unit:
             if first or unit_up:
                 set_status(f"● GARW live  ·  {HOST}", "ok")
@@ -3989,7 +4000,11 @@ def run_gui(initial_zip: Optional[str] = None):
 
     after_box.bind("<<ComboboxSelected>>", lambda e: persist(), add="+")
     if paramiko is None:
-        log("paramiko is not installed. Install it with:  pip install paramiko")
+        log("ERROR: paramiko is not installed — every device tab stays locked. Install it with:  pip install paramiko")
+        root.after(600, lambda: messagebox.showerror(
+            APP_NAME, "GARW Genie needs the Python package 'paramiko' to talk to the GARW device over SSH, "
+                      "and it isn't installed.\n\nOpen a terminal and run:\n\n    pip install paramiko\n\n"
+                      "then start GARW Genie again. Until then only the GitHub repos tab works.", parent=root))
     log(f"Settings: {CONFIG_PATH}")
     log(f"Log file: {log_path}  (every action and every SSH command; 30 days kept — 'Logs…' button opens the folder)"
         if log_path else "Log file could not be created.")
