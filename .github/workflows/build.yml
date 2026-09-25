@@ -1,0 +1,64 @@
+name: Build GARW Genie
+
+# Builds a Windows .exe and a macOS .app on every push to main and on tags.
+# Tagging (e.g. `git tag v1.3.1 && git push --tags`) also creates a GitHub
+# Release with both files attached.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt pyinstaller
+      - run: >
+          pyinstaller --noconfirm --clean --name "GARW Genie" --windowed --onefile --add-data "assets;assets" --add-data "default_repos.txt;." --icon assets/garw_genie.ico garw_genie.py
+      - run: copy default_repos.txt dist\
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GARW-Genie-Windows
+          path: |
+            dist/GARW Genie.exe
+            dist/default_repos.txt
+
+  macos:
+    # macos-latest is Apple Silicon. The .app runs on Intel Macs too via Rosetta
+    # if you instead build on macos-13 (Intel); add a second job if you need
+    # native Intel.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt pyinstaller
+      - run: chmod +x build.sh && ./build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GARW-Genie-macOS
+          path: dist/GARW-Genie-macOS.zip
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/GARW-Genie-Windows/GARW Genie.exe
+            artifacts/GARW-Genie-Windows/default_repos.txt
+            artifacts/GARW-Genie-macOS/GARW-Genie-macOS.zip
