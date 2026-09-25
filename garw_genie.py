@@ -50,7 +50,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "4.9.2"
+APP_VERSION = "4.9.3"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -942,6 +942,22 @@ class RepoEntry:
         c = self.cached()
         return c[0] if c else None
 
+    def preview_png(self) -> Optional[bytes]:
+        """The dash's <Name>.qml.png from the cached snapshot (None if nothing cached / no png)."""
+        c = self.cached()
+        if not c:
+            return None
+        try:
+            with zipfile.ZipFile(c[1]) as zf:
+                names = [n for n in zf.namelist() if n.lower().endswith(".qml.png")
+                         and "__MACOSX" not in n and not os.path.basename(n).startswith(".")]
+                if not names:
+                    return None
+                names.sort(key=lambda n: (n.count("/"), n))   # the top-most one is the dash
+                return zf.read(names[0])
+        except (OSError, zipfile.BadZipFile):
+            return None
+
     def is_downloaded(self) -> bool:
         """True when the latest known commit is sitting in the cache."""
         return bool(self.latest_sha) and self.cached_sha() == self.latest_sha
@@ -1497,6 +1513,21 @@ class IC7Device:
         try:
             with sftp.file(f"{LIBRARY_DIR}/{dash}/{dash}.qml", "rb") as fh:
                 return fh.read(2 * 1024 * 1024).decode("utf-8", errors="replace")
+        finally:
+            sftp.close()
+
+    def read_dash_png(self, dash: str) -> Optional[bytes]:
+        """The installed <dash>/<dash>.qml.png preview image (None if missing)."""
+        if not NAME_RE.match(dash):
+            raise RuntimeError(f"Bad dash name: {dash}")
+        sftp = self.client.open_sftp()
+        try:
+            with sftp.file(f"{LIBRARY_DIR}/{dash}/{dash}.qml.png", "rb") as fh:
+                data = fh.read(8 * 1024 * 1024)
+            FILE_LOG.debug("SFTP get %s/%s/%s.qml.png (%d bytes)", LIBRARY_DIR, dash, dash, len(data))
+            return data
+        except IOError:
+            return None
         finally:
             sftp.close()
 
@@ -2966,6 +2997,7 @@ def run_gui(initial_zip: Optional[str] = None):
         device_rows[:] = rows
         installed.clear()
         installed.update({r["name"]: r["source"] for r in rows})
+        dev_png_cache.clear()
         installed_seen["when"] = None
         cfg["device_inventory"] = {"when": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                                    "dashes": dict(installed)}
@@ -3085,6 +3117,73 @@ def run_gui(initial_zip: Optional[str] = None):
     repo_hsb.grid(row=1, column=0, columnspan=6, sticky="ew")
     repo_tree.configure(yscrollcommand=repo_sb.set, xscrollcommand=repo_hsb.set)
 
+    PREVIEW_W, PREVIEW_H = 400, 240   # 800×480 dash at 1:2
+
+    def make_preview(png: Optional[bytes]):
+        """A PhotoImage scaled to fit PREVIEW_W×PREVIEW_H, or None. Tk 8.6 reads PNG natively;
+        Pillow (if present) gives smoother scaling than Tk's integer subsample."""
+        if not png:
+            return None
+        try:
+            try:
+                from PIL import Image, ImageTk
+                import io
+                im = Image.open(io.BytesIO(png)).convert("RGBA")
+                k = min(PREVIEW_W / im.width, PREVIEW_H / im.height)   # fit, scaling up small thumbnails too
+                im = im.resize((max(1, int(im.width * k)), max(1, int(im.height * k))), Image.LANCZOS)
+                return ImageTk.PhotoImage(im)
+            except ImportError:
+                img = tk.PhotoImage(data=png)
+                f = max(1, -(-img.width() // PREVIEW_W), -(-img.height() // PREVIEW_H))
+                if f > 1:
+                    return img.subsample(f, f)
+                z = min(PREVIEW_W // img.width(), PREVIEW_H // img.height())   # integer upscale
+                return img.zoom(z, z) if z > 1 else img
+        except Exception as e:
+            log(f"Preview image could not be decoded: {e}")
+            return None
+
+    def preview_panel(parent, blank_text: str):
+        """A framed image box with a caption. Returns (frame, set_image(png_bytes|None, caption))."""
+        box = ttk.Frame(parent, padding=6)
+        holder = tk.Frame(box, bg=P["field"], width=PREVIEW_W, height=PREVIEW_H, highlightthickness=1,
+                          highlightbackground=P["line"])
+        holder.pack()
+        holder.pack_propagate(False)   # fixed box whether it holds text or an image
+        img_lbl = tk.Label(holder, bg=P["field"], text=blank_text, fg=P["muted"], font=fonts["ui"],
+                           wraplength=PREVIEW_W - 30, justify="center")
+        img_lbl.pack(fill="both", expand=True)
+        cap = ttk.Label(box, style="Muted.TLabel", text="", anchor="center", wraplength=PREVIEW_W)
+        cap.pack(fill="x", pady=(4, 0))
+        keep = {}
+
+        def set_image(png: Optional[bytes], caption: str, blank: Optional[str] = None):
+            photo = make_preview(png)
+            keep["img"] = photo   # hold a reference or Tk drops it
+            if photo:
+                img_lbl.configure(image=photo, text="")
+            else:
+                img_lbl.configure(image="", text=blank or blank_text)
+            cap.configure(text=caption)
+        return box, set_image
+
+    repo_preview, set_repo_preview = preview_panel(tab_repo, "Select a repo to see its dash preview")
+    repo_preview.grid(row=0, column=7, rowspan=2, sticky="n", padx=(10, 0))
+
+    def on_repo_select(_e=None):
+        sel = selected_repos()
+        if len(sel) != 1:
+            set_repo_preview(None, "", None if not sel else f"{len(sel)} repos selected")
+            return
+        r = sel[0]
+        png = r.preview_png()
+        if png:
+            set_repo_preview(png, f"{r.dash or r.label}  ·  {r.cached_sha()[:7] if r.cached_sha() else ''}")
+        else:
+            set_repo_preview(None, r.label, "No preview yet — press 'Check & download updates' to fetch this dash." if not r.cached_sha()
+                             else "This dash has no .qml.png preview.")
+    repo_tree.bind("<<TreeviewSelect>>", on_repo_select, add="+")
+
     rrow = ttk.Frame(tab_repo)
     rrow.grid(row=2, column=0, columnspan=7, sticky="ew", pady=(8, 0))
     add_btn = ttk.Button(rrow, text="Add repo…")
@@ -3130,6 +3229,10 @@ def run_gui(initial_zip: Optional[str] = None):
                    "ok" if status.startswith("Up to date") else "err" if status.startswith(("Error", "Not a v5")) else "")
             if tag:
                 repo_tree.item(iid, tags=(tag,))
+        try:
+            on_repo_select()
+        except NameError:
+            pass
         repo_tree.tag_configure("update", foreground=P["warn"])
         repo_tree.tag_configure("ok", foreground=P["ok"])
         repo_tree.tag_configure("err", foreground=P["err"])
@@ -3416,6 +3519,34 @@ def run_gui(initial_zip: Optional[str] = None):
     dev_status.grid(row=3, column=0, columnspan=7, sticky="w", pady=(6, 0))
     tab_dev.rowconfigure(0, weight=1)
     tab_dev.columnconfigure(5, weight=1)
+    dev_preview, set_dev_preview = preview_panel(tab_dev, "Select a dash to see its preview")
+    dev_preview.grid(row=0, column=7, rowspan=2, sticky="n", padx=(10, 0))
+    dev_png_cache: Dict[str, Optional[bytes]] = {}   # name -> png, cleared on every device refresh
+
+    def on_dev_select(_e=None):
+        names = [dev_tree.item(i, "values")[0] for i in dev_tree.selection()]
+        if len(names) != 1:
+            set_dev_preview(None, "", None if not names else f"{len(names)} dashes selected")
+            return
+        name = names[0]
+        if name in dev_png_cache:
+            set_dev_preview(dev_png_cache[name], name, "This dash has no .qml.png preview.")
+            return
+        set_dev_preview(None, name, "Loading preview from the device …")
+
+        def worker():
+            try:
+                with IC7Device(log, confirm) as dev:
+                    png = dev.read_dash_png(name)
+            except Exception as e:
+                log(f"Preview for {name}: {e}")
+                png = None
+            dev_png_cache[name] = png
+            sel = [dev_tree.item(i, "values")[0] for i in dev_tree.selection()]
+            if sel == [name]:
+                ui(set_dev_preview, png, name, "This dash has no .qml.png preview.")
+        threading.Thread(target=worker, daemon=True).start()
+    dev_tree.bind("<<TreeviewSelect>>", on_dev_select, add="+")
 
     def fill_device_tree():
         dev_tree.delete(*dev_tree.get_children())

@@ -29,6 +29,7 @@ pyinstaller --noconfirm --clean \
   --add-data "assets:assets" \
   --add-data "default_repos.txt:." \
   --hidden-import certifi \
+  --hidden-import PIL._tkinter_finder \
   ${ICON_ICNS:+--icon "$ICON_ICNS"} \
   garw_genie.py
 
