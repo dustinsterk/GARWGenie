@@ -50,7 +50,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "4.9.1"
+APP_VERSION = "4.9.2"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -3339,6 +3339,54 @@ def run_gui(initial_zip: Optional[str] = None):
     install_sel_btn.configure(command=install_selected)
     install_all_btn.configure(command=install_all_updates)
     repo_tree.bind("<Double-1>", lambda e: install_selected())
+
+    # right-click menu on a repo row
+    repo_menu = tk.Menu(root, tearoff=0, bg=P["field"], fg=P["text"], activebackground=P["accent"],
+                        activeforeground="#111318", relief="flat", bd=0)
+
+    def copy_text(text: str, what: str):
+        root.clipboard_clear()
+        root.clipboard_append(text)
+        log(f"Copied {what}: {text}")
+
+    def open_in_browser(url: str):
+        import webbrowser
+        webbrowser.open(url)
+
+    def repo_context(e):
+        iid = repo_tree.identify_row(e.y)
+        if not iid:
+            return
+        if iid not in repo_tree.selection():
+            repo_tree.selection_set(iid)
+        repo_tree.focus(iid)
+        sel = selected_repos()
+        if not sel:
+            return
+        r = sel[0]
+        repo_menu.delete(0, "end")
+        one = len(sel) == 1
+        repo_menu.add_command(label=f"Copy repo URL{'s' if not one else ''}",
+                              command=lambda: copy_text("\n".join(x.url for x in sel), "repo URL" if one else f"{len(sel)} repo URLs"))
+        if one:
+            repo_menu.add_command(label="Copy commit SHA" if r.latest_sha else "Copy commit SHA (not checked yet)",
+                                  state="normal" if r.latest_sha else "disabled",
+                                  command=lambda: copy_text(r.latest_sha, "commit SHA"))
+            repo_menu.add_command(label="Open on GitHub", command=lambda: open_in_browser(r.url))
+        repo_menu.add_separator()
+        repo_menu.add_command(label="Install / update selected", command=install_selected,
+                              state="normal" if mon.get("unit") else "disabled")
+        repo_menu.add_command(label="Check & download this repo" if one else "Check & download selected",
+                              command=lambda: check_repos(sel))
+        repo_menu.add_separator()
+        repo_menu.add_command(label="Remove from list…", command=remove_repos)
+        try:
+            repo_menu.tk_popup(e.x_root, e.y_root)
+        finally:
+            repo_menu.grab_release()
+    repo_tree.bind("<Button-3>", repo_context)          # Windows / Linux
+    repo_tree.bind("<Button-2>", repo_context)          # macOS Tk reports right-click as button 2
+    repo_tree.bind("<Control-Button-1>", repo_context)  # macOS ctrl-click
 
     # ---------- Tab 3: Device ----------
     dcols = ("name", "valid", "files", "source", "commit", "installed")
