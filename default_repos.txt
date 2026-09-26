@@ -10,6 +10,7 @@
 
 https://github.com/dustinsterk/GTDash
 https://github.com/dustinsterk/LFA-Gauge-for-GARW-IC7
+https://github.com/dustinsterk/DDUDash
 https://github.com/tbeaulieu/Outrun
 https://github.com/tbeaulieu/Soldat-Meltfire/
 https://github.com/tbeaulieu/taikyu
@@ -18,4 +19,3 @@ https://github.com/tbeaulieu/Danver
 https://github.com/tbeaulieu/Type98TDash
 https://github.com/tbeaulieu/LeMansGTDash
 https://github.com/tbeaulieu/AgeSoloDash
-https://github.com/toejam34/DDUDash
