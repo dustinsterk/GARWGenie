@@ -44,13 +44,39 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+# On Windows, a --windowed (no-console) app that runs a console program such as netsh, ipconfig or
+# ccrypt gets a black command window flashing up for every call — and the Wi-Fi monitor calls netsh
+# every few seconds. Route every subprocess through CREATE_NO_WINDOW so nothing ever pops up.
+if platform.system() == "Windows":
+    _CREATE_NO_WINDOW = 0x08000000
+
+    def _hide_console(kwargs: dict) -> dict:
+        kwargs["creationflags"] = kwargs.get("creationflags", 0) | _CREATE_NO_WINDOW
+        if "startupinfo" not in kwargs:
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = 0  # SW_HIDE
+            kwargs["startupinfo"] = si
+        return kwargs
+
+    _sp_run, _sp_popen = subprocess.run, subprocess.Popen
+
+    def _run_hidden(*a, **k):
+        return _sp_run(*a, **_hide_console(k))
+
+    class _PopenHidden(_sp_popen):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **_hide_console(k))
+
+    subprocess.run, subprocess.Popen = _run_hidden, _PopenHidden
+
 try:
     import paramiko
 except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "4.9.3"
+APP_VERSION = "4.9.4"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
