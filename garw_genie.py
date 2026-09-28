@@ -76,7 +76,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "4.9.4"
+APP_VERSION = "4.9.5"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -2963,9 +2963,8 @@ def run_gui(initial_zip: Optional[str] = None):
                     state["busy"] = False
                     if state.get("marquee"):
                         progress.stop()
-                        progress.configure(mode="determinate")
-                        progress["value"] = 0
                         state["marquee"] = False
+                    progress.configure(mode="determinate", maximum=100, value=0)
                     root.configure(cursor="")
                     set_buttons()
         except queue.Empty:
@@ -2990,8 +2989,12 @@ def run_gui(initial_zip: Optional[str] = None):
         if reset_progress:
             # Marquee until the job reports real progress, so a press is visibly "working"
             # even while it waits on DNS / SSH / GitHub.
-            progress.configure(mode="indeterminate")
-            progress.start(12)
+            # A previous determinate job leaves `maximum` at its file count (e.g. 3); in
+            # indeterminate mode Tk bounces the slider over 0..maximum, so reset it or the
+            # marquee flickers across the whole bar every few milliseconds.
+            progress.stop()
+            progress.configure(mode="indeterminate", maximum=100, value=0)
+            progress.start(40)
             state["marquee"] = True
         root.configure(cursor="watch")
         set_buttons()
