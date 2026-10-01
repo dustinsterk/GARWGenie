@@ -131,10 +131,7 @@ Everything is one Python file, `garw_genie.py`; the dependencies are `paramiko` 
 corporate proxy) `pillow` (image conversion for the Boot & Logo Screens tab and smooth preview scaling;
 without it images must already be exact-size PNGs) and `imageio-ffmpeg` (a bundled ffmpeg for the welcome
 video; an ffmpeg on PATH is used first). The firmware version
-comes from `/opt/IC7/version.txt` (firmware 5.5+); older v5 units fall back to the float literal in the binary.
-The firmware package passphrase is never stored: the GARW binary launches the stock updater as
-`K99updater start <passphrase> <ver>`, and the tool greps that string off the binary on the unit at install
-time (and masks it in logs). A binary without that marker aborts the install before anything is uploaded. Settings, the
+comes from `/opt/IC7/version.txt` (firmware 5.5+); older v5 units fall back to the float literal in the binary.  Settings, the
 dash cache and logs live in `~/.garw_genie/`. Dashes installed from GitHub carry a hidden
 `.garw_source.json` on the device so any laptop sees the same install state. Uploads go to a staging
 folder and are renamed into place, so a dropped connection never leaves a half-written dash.
