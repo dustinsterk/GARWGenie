@@ -23,6 +23,7 @@ pyinstaller --noconfirm --clean ^
   --add-data "default_repos.txt;." ^
   --hidden-import certifi ^
   --hidden-import PIL._tkinter_finder ^
+  --collect-all imageio_ffmpeg ^
   %ICON_ARG% ^
   garw_genie.py || goto :fail
 

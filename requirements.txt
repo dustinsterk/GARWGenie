@@ -1,3 +1,4 @@
 paramiko>=3.0
 certifi
 pillow
+imageio-ffmpeg

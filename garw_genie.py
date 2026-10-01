@@ -76,7 +76,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "4.9.5"
+APP_VERSION = "5.1.1"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -100,6 +100,250 @@ VERSION_SANE_RANGE = (1.0, 99.0)
 MIN_VERSION = 5.0
 
 SCREEN_CONFIGS_DIR = "/opt/IC7/screen_configs"   # per-dash settings files, named inside each .qml
+ASSETS_DIR = "/opt/IC7"                          # branding assets live beside the binary (v5+)
+LEGACY_ASSETS_DIR = "/opt/Garw_IC7"              # … and beside the v4 binary on v4 units
+DEVICE_ASSETS = (
+    # key, title, fixed file name on the unit, kind, limit, what it does, device menu item
+    ("bootlogo", "Boot logo", "bootlogo.png", "png", (800, 480),
+     "ignition-on welcome image (alternative to the video)", "Startup → Ignition on welcome"),
+    ("welcome", "Welcome video", "welcome.mp4", "mp4", 2 * 1024 * 1024,
+     "ignition-on welcome video (alternative to the logo)",
+     "Startup → Ignition on welcome"),
+    ("logo", "Ignition-off screen", "logo.png", "png", (800, 480),
+     "shown when the ignition is switched off", "Startup → Ignition off screen"),
+)
+VIDEO_SIZE = (800, 480)   # the welcome video is scaled to the panel, H.264 only
+ASSET_ENABLE_HINT = ("Uploading a file doesn't switch it on. On the device, open Main OS settings (hold L or R about "
+                     "2 s — the Controller tab's L/R buttons do this) → Startup, then pick it under 'Ignition on welcome' "
+                     "(boot logo OR welcome video — the device shows one or the other) or 'Ignition off screen'.")
+
+
+def png_size(data: bytes) -> Optional[Tuple[int, int]]:
+    """(width, height) from a PNG header, or None if it isn't a PNG."""
+    if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n" or data[12:16] != b"IHDR":
+        return None
+    return int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
+
+
+def is_mp4(data: bytes) -> bool:
+    """MP4/QuickTime container check: an 'ftyp' box within the first bytes."""
+    return len(data) >= 12 and data[4:8] == b"ftyp"
+
+
+MP4_CODEC_NAMES = {"avc1": "H.264", "avc3": "H.264", "hvc1": "H.265/HEVC", "hev1": "H.265/HEVC",
+                   "vp09": "VP9", "vp08": "VP8", "av01": "AV1", "mp4v": "MPEG-4 Part 2", "mjpa": "Motion JPEG"}
+VIDEO_CODEC_OK = ("avc1", "avc3")   # what the device's GStreamer can decode (H.264); VP9 etc. give "No decoder available"
+
+
+def mp4_info(data: bytes) -> dict:
+    """Parse an MP4 just enough to know what the device will face: video codec fourcc, width,
+    height, duration (s). Pure Python box walk (moov/trak/mdia/minf/stbl/stsd + mvhd)."""
+    info: dict = {"codec": None, "width": None, "height": None, "duration": None, "audio": False}
+
+    def boxes(start: int, end: int):
+        pos = start
+        while pos + 8 <= end:
+            size = int.from_bytes(data[pos:pos + 4], "big")
+            typ = data[pos + 4:pos + 8]
+            hdr = 8
+            if size == 1:
+                size = int.from_bytes(data[pos + 8:pos + 16], "big")
+                hdr = 16
+            elif size == 0:
+                size = end - pos
+            if size < hdr:
+                return
+            yield typ, pos + hdr, min(pos + size, end)
+            pos += size
+
+    def walk(start: int, end: int):
+        for typ, a, b in boxes(start, end):
+            if typ in (b"moov", b"trak", b"mdia", b"minf", b"stbl"):
+                walk(a, b)
+            elif typ == b"mvhd" and info["duration"] is None:
+                ver = data[a]
+                if ver == 1:
+                    ts, dur = int.from_bytes(data[a + 20:a + 24], "big"), int.from_bytes(data[a + 24:a + 32], "big")
+                else:
+                    ts, dur = int.from_bytes(data[a + 12:a + 16], "big"), int.from_bytes(data[a + 16:a + 20], "big")
+                if ts:
+                    info["duration"] = dur / ts
+            elif typ == b"stsd":
+                n = int.from_bytes(data[a + 4:a + 8], "big")
+                pos = a + 8
+                for _ in range(n):
+                    esize = int.from_bytes(data[pos:pos + 4], "big")
+                    fourcc = data[pos + 4:pos + 8].decode("latin-1")
+                    if fourcc in MP4_CODEC_NAMES or fourcc.startswith(("avc", "hvc", "hev", "vp0", "av0", "mp4v")):
+                        if info["codec"] is None:
+                            info["codec"] = fourcc
+                            info["width"] = int.from_bytes(data[pos + 32:pos + 34], "big")
+                            info["height"] = int.from_bytes(data[pos + 34:pos + 36], "big")
+                    elif fourcc in ("mp4a", "ac-3", "ec-3", "Opus", "alac", "fLaC"):
+                        info["audio"] = True
+                    pos += max(esize, 8)
+    try:
+        walk(0, len(data))
+    except Exception:
+        pass
+    return info
+
+
+def find_ffmpeg() -> Optional[str]:
+    """ffmpeg on PATH, else the one bundled with imageio-ffmpeg (shipped in the standalone app)."""
+    import shutil
+    exe = shutil.which("ffmpeg")
+    if exe:
+        return exe
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return None
+
+
+def prepare_video(path: str, target: Tuple[int, int], max_bytes: int, out_path: str, fit: str = "letterbox",
+                  log=lambda m: None) -> Tuple[str, str]:
+    """Re-encode any video ffmpeg can read into what the device plays: H.264 (baseline, yuv420p)
+    in an MP4, exactly target size, no audio, under max_bytes. Returns (out_path, description)."""
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg:
+        raise RuntimeError("ffmpeg is not available to convert the video (pip install imageio-ffmpeg, or install ffmpeg).")
+    w, h = target
+    if fit == "stretch":
+        vf = f"scale={w}:{h}"
+    elif fit == "crop":
+        vf = f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}"
+    else:
+        vf = f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black"
+    vf += ",fps=30,format=yuv420p"
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    base = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-i", path, "-vf", vf, "-an",
+            "-c:v", "libx264", "-profile:v", "baseline", "-level", "3.1", "-preset", "medium",
+            "-movflags", "+faststart", "-f", "mp4"]
+    duration = None
+    try:
+        with open(path, "rb") as fh:
+            duration = mp4_info(fh.read()).get("duration")
+    except OSError:
+        pass
+    attempts = [["-crf", "24"]]
+    if duration:
+        kbps = int(max_bytes * 8 / duration / 1000 * 0.85)   # 15 % headroom for container overhead
+        attempts += [["-b:v", f"{kbps}k", "-maxrate", f"{kbps}k", "-bufsize", f"{kbps * 2}k"],
+                     ["-b:v", f"{kbps // 2}k", "-maxrate", f"{kbps // 2}k", "-bufsize", f"{kbps}k"]]
+    else:
+        attempts += [["-crf", "30"], ["-crf", "36"]]
+    last = ""
+    for extra in attempts:
+        log(f"  ffmpeg → H.264 {w}×{h} ({' '.join(extra)}) …")
+        r = subprocess.run(base + extra + [out_path], capture_output=True, text=True, timeout=600)
+        if r.returncode != 0:
+            raise RuntimeError("ffmpeg failed: " + (r.stderr.strip().splitlines() or ["unknown error"])[-1])
+        size = os.path.getsize(out_path)
+        last = f"{size / 1024 / 1024:.2f} MB"
+        if size <= max_bytes:
+            return out_path, f"re-encoded to H.264 {w}×{h} ({fit}), no audio, {last}"
+    raise RuntimeError(f"Could not get the video under {max_bytes / 1024 / 1024:.0f} MB (best attempt {last}) — trim it shorter.")
+
+
+IMAGE_FIT_MODES = ("Letterbox (keep ratio)", "Fill & crop", "Stretch")
+
+
+def prepare_image(path: str, target: Tuple[int, int], out_path: str, fit: str = "letterbox") -> Tuple[str, str]:
+    """Turn any image Pillow can read into a PNG of exactly `target` size at out_path.
+    Returns (out_path, description of what was done). `fit` is how a wrong-shaped image is
+    handled: 'letterbox' scales to fit and pads with black (nothing lost, bars possible);
+    'crop' scales to fill and trims the overflow (no bars, edges lost); 'stretch' resizes
+    to the exact size ignoring the ratio. Transparency is flattened onto black."""
+    from PIL import Image
+    im = Image.open(path)
+    fmt = (im.format or "image").upper()
+    src_w, src_h = im.size
+    im = im.convert("RGBA")
+    steps = []
+    if fmt != "PNG":
+        steps.append(f"{fmt} → PNG")
+    if (src_w, src_h) != tuple(target):
+        same_ratio = abs(src_w / src_h - target[0] / target[1]) < 0.005
+        if fit == "stretch" or same_ratio:
+            im = im.resize(target, Image.LANCZOS)
+            how = "" if same_ratio else " (stretched)"
+        elif fit == "crop":
+            k = max(target[0] / src_w, target[1] / src_h)
+            new = (max(1, round(src_w * k)), max(1, round(src_h * k)))
+            im = im.resize(new, Image.LANCZOS)
+            left, top = (new[0] - target[0]) // 2, (new[1] - target[1]) // 2
+            im = im.crop((left, top, left + target[0], top + target[1]))
+            how = " (filled, edges cropped)"
+        else:
+            k = min(target[0] / src_w, target[1] / src_h)
+            new = (max(1, round(src_w * k)), max(1, round(src_h * k)))
+            im = im.resize(new, Image.LANCZOS)
+            canvas = Image.new("RGBA", target, (0, 0, 0, 255))
+            canvas.paste(im, ((target[0] - new[0]) // 2, (target[1] - new[1]) // 2), im)
+            im = canvas
+            how = " (letterboxed on black)"
+        steps.append(f"{src_w}×{src_h} → {target[0]}×{target[1]}{how}")
+    bg = Image.new("RGB", im.size, (0, 0, 0))
+    bg.paste(im, mask=im.split()[3])
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    bg.save(out_path, "PNG", optimize=True)
+    return out_path, ", ".join(steps) if steps else "already a {0}×{1} PNG".format(*target)
+
+
+def check_asset_file(path: str, kind: str, limit, fname: str = "", fit: str = "letterbox") -> Tuple[bool, str, Optional[str]]:
+    """Validate (and, for images, auto-convert) a local file for one of DEVICE_ASSETS.
+    -> (ok, message, path to upload). For PNG assets any image Pillow can open is accepted:
+    it is converted to PNG and fitted to the required size; the path returned is the
+    converted file. Without Pillow the file must already be a PNG of the exact size."""
+    if not path or not os.path.isfile(path):
+        return False, "Select a file.", None
+    size = os.path.getsize(path)
+    with open(path, "rb") as fh:
+        head = fh.read(64)
+    name = os.path.basename(path)
+    if kind == "png":
+        dims = png_size(head)
+        if dims == tuple(limit):
+            return True, f"✓ {name}: PNG {dims[0]}×{dims[1]}, {size / 1024:.0f} KB — ready as is", path
+        try:
+            import PIL  # noqa: F401
+        except ImportError:
+            if not dims:
+                return False, f"✗ {name}: not a PNG (install Pillow — pip install pillow — and the app converts JPEG/other images for you).", None
+            return False, f"✗ {name}: {dims[0]}×{dims[1]} px — must be exactly {limit[0]}×{limit[1]} (install Pillow and the app resizes it for you).", None
+        try:
+            out = str(CONFIG_DIR / "converted" / (fname or "image.png"))
+            out, what = prepare_image(path, tuple(limit), out, fit)
+        except Exception as e:
+            return False, f"✗ {name}: not an image I can read ({e}).", None
+        return True, f"✓ {name}: converted — {what} ({os.path.getsize(out) / 1024:.0f} KB). Preview shows the result.", out
+    if kind == "mp4":
+        info = {}
+        if is_mp4(head):
+            with open(path, "rb") as fh:
+                info = mp4_info(fh.read())
+        codec = info.get("codec")
+        dims = (info.get("width"), info.get("height"))
+        good = (is_mp4(head) and codec in VIDEO_CODEC_OK and dims == tuple(VIDEO_SIZE) and size <= limit)
+        desc = (f"{MP4_CODEC_NAMES.get(codec, codec or 'unknown codec')} {dims[0]}×{dims[1]}" if codec else "not an MP4")
+        dur = f", {info['duration']:.1f} s" if info.get("duration") else ""
+        if good:
+            return True, f"✓ {name}: {desc}{dur}, {size / 1024 / 1024:.2f} MB — ready as is", path
+        if not find_ffmpeg():
+            why = ("not an MP4" if not is_mp4(head) else
+                   f"codec is {MP4_CODEC_NAMES.get(codec, codec)} — the device only plays H.264" if codec not in VIDEO_CODEC_OK else
+                   f"{dims[0]}×{dims[1]} — must be {VIDEO_SIZE[0]}×{VIDEO_SIZE[1]}" if dims != tuple(VIDEO_SIZE) else
+                   f"{size / 1024 / 1024:.2f} MB — must be under {limit / 1024 / 1024:.0f} MB")
+            return False, f"✗ {name}: {why}. ffmpeg isn't available to convert it (pip install imageio-ffmpeg).", None
+        try:
+            out = str(CONFIG_DIR / "converted" / (fname or "video.mp4"))
+            out, what = prepare_video(path, tuple(VIDEO_SIZE), limit, out, fit)
+        except Exception as e:
+            return False, f"✗ {name}: {e}", None
+        return True, f"✓ {name}: was {desc}{dur}, {size / 1024 / 1024:.2f} MB → {what}", out
+    return False, "Unknown asset kind.", None
 CONFIG_REF_RE = re.compile(r"screen_configs/([A-Za-z0-9_.\-]+)")
 CONFIG_PREVIEW_MAX = 64 * 1024
 SOURCE_MARKER = ".garw_source.json"   # written inside each dash folder installed from GitHub
@@ -385,6 +629,7 @@ def validate_zip(zip_path: str) -> List[DashPackage]:
 #  Config (repo list, settings)
 # --------------------------------------------------------------------------- #
 DEFAULT_CONFIG = {"repos": [], "github_token": "", "after_changes": "restart", "removed_defaults": [],
+                  "image_fit": "letterbox",   # Boot & Logo Screens: letterbox | crop | stretch
                   "ssh_user": USERNAME, "ssh_password": PASSWORD,   # login for the unit (editable in the header)
                   "wifi_ssid": TARGET_SSID, "wifi_password": WIFI_PASSWORD,
                   "auto_check_minutes": 30,   # auto "Check & download" on internet only if last check is older; 0 = never
@@ -1612,6 +1857,88 @@ class IC7Device:
         self.log(f"Downloaded {len(saved)} settings file(s) to {local_dir}")
         return saved
 
+    def assets_dir(self) -> str:
+        """Where the branding files live on this unit: /opt/IC7 (v5+) or /opt/Garw_IC7 (v4)."""
+        cached = getattr(self, "_assets_dir", None)
+        if cached:
+            return cached
+        layout = self.detect_layout()
+        if layout == "none":
+            raise RuntimeError(f"Neither {BINARY_PATH} nor {LEGACY_BINARY_PATH} found — is this a GARW device?")
+        self._assets_dir = LEGACY_ASSETS_DIR if layout == "v4" else ASSETS_DIR
+        return self._assets_dir
+
+    def asset_status(self) -> Dict[str, Optional[dict]]:
+        """{file name: {'size': int, 'dims': (w,h)|None} | None} for every DEVICE_ASSETS file."""
+        out: Dict[str, Optional[dict]] = {}
+        base = self.assets_dir()
+        sftp = self.client.open_sftp()
+        try:
+            for _, _, fname, kind, _, _, _ in DEVICE_ASSETS:
+                remote = f"{base}/{fname}"
+                try:
+                    st = sftp.stat(remote)
+                except IOError:
+                    out[fname] = None
+                    continue
+                dims, codec = None, None
+                try:
+                    with sftp.file(remote, "rb") as fh:
+                        if kind == "png":
+                            dims = png_size(fh.read(32))
+                        else:
+                            vi = mp4_info(fh.read(8 * 1024 * 1024))
+                            codec = MP4_CODEC_NAMES.get(vi.get("codec"), vi.get("codec"))
+                            if vi.get("width"):
+                                dims = (vi["width"], vi["height"])
+                except IOError:
+                    pass
+                out[fname] = {"size": st.st_size, "dims": dims, "codec": codec}
+        finally:
+            sftp.close()
+        return out
+
+    def read_asset(self, fname: str, max_bytes: int = 8 * 1024 * 1024) -> Optional[bytes]:
+        if fname not in {a[2] for a in DEVICE_ASSETS}:
+            raise RuntimeError(f"Not a device asset: {fname}")
+        sftp = self.client.open_sftp()
+        try:
+            with sftp.file(f"{self.assets_dir()}/{fname}", "rb") as fh:
+                return fh.read(max_bytes)
+        except IOError:
+            return None
+        finally:
+            sftp.close()
+
+    def upload_asset(self, local_path: str, fname: str) -> str:
+        """Copy a validated local file to <assets dir>/<fname> (staged, then renamed into place).
+        Works on v4 and v5 units alike — the directory follows the firmware layout."""
+        if fname not in {a[2] for a in DEVICE_ASSETS}:
+            raise RuntimeError(f"Not a device asset: {fname}")
+        base = self.assets_dir()
+        remote = f"{base}/{fname}"
+        tmp = f"{base}/.{fname}.uploading"
+        if self._remote_exists(remote) and not self.confirm(
+                "Replace file on the device?",
+                f"{remote} already exists on the device.\n\nReplace it with\n{local_path}?"):
+            raise UploadAborted(f"Upload cancelled — {remote} unchanged.")
+        size = os.path.getsize(local_path)
+        self.log(f"Uploading {local_path} → {remote}  ({size:,} bytes)")
+        FILE_LOG.debug("SFTP put %s -> %s", local_path, remote)
+        sftp = self.client.open_sftp()
+        try:
+            sftp.put(local_path, tmp, callback=lambda done, total: self.progress(done, total))
+        finally:
+            sftp.close()
+        rc, out, err = self._run(f"mv {_sq(tmp)} {_sq(remote)} && chmod a+r {_sq(remote)} && sync && wc -c < {_sq(remote)}")
+        if rc != 0:
+            self._run(f"rm -f {_sq(tmp)}")
+            raise RuntimeError(f"Failed to write {remote}: {err.strip()}")
+        if out.strip() != str(size):
+            raise RuntimeError(f"Size mismatch after upload ({out.strip()} vs {size} bytes) — try again.")
+        self.log(f"Uploaded {fname} ({size:,} bytes, verified).")
+        return remote
+
     def upload_configs(self, local_paths: List[str]) -> List[str]:
         """Copy local files into SCREEN_CONFIGS_DIR (asks once before overwriting)."""
         local_paths = [p for p in local_paths if os.path.isfile(p)]
@@ -2313,6 +2640,10 @@ def apply_theme(root, tk, ttk, retro: bool = True) -> dict:
     s.configure("Warn.TLabel", background=P["panel"], foreground=P["warn"])
     s.configure("Err.TLabel", background=P["panel"], foreground=P["err"])
     s.configure("Pill.TLabel", background=P["field"], foreground=P["muted"], padding=(10, 3))
+    s.configure("TLabelframe", background=P["panel"], bordercolor=P["line"], lightcolor=P["line"],
+                darkcolor=P["line"], relief="solid", borderwidth=1)
+    s.configure("TLabelframe.Label", background=P["panel"], foreground=P["accent"],
+                font=(ui_font[0], ui_font[1]) + (() if retro_on else ("bold",)))
 
     # Buttons: flat, dark; "Accent.TButton" for the primary action of each tab.
     s.configure("TButton", background=P["field"], foreground=P["text"], borderwidth=0,
@@ -2697,11 +3028,13 @@ def run_gui(initial_zip: Optional[str] = None):
     tab_cfg = ttk.Frame(nb, padding=14)
     tab_zip = ttk.Frame(nb, padding=14)
     tab_fw = ttk.Frame(nb, padding=14)
+    tab_assets = ttk.Frame(nb, padding=(14, 8, 14, 8))
     tab_ctl = ttk.Frame(nb, padding=14)
     nb.add(tab_repo, text="GitHub repos")
     nb.add(tab_dev, text="Device Dashes")
     nb.add(tab_cfg, text="Dash Settings")
     nb.add(tab_zip, text="Upload .zip")
+    nb.add(tab_assets, text="Boot & Logo Screens")
     nb.add(tab_fw, text="Firmware / System Info")
     nb.add(tab_ctl, text="Controller")
 
@@ -2746,7 +3079,7 @@ def run_gui(initial_zip: Optional[str] = None):
     mon = {"unit": None, "net": None, "ssid": None, "tick": 0, "pending_unit": False, "pending_net": False}
     MONITOR_MS = 4000
 
-    DEVICE_TABS = (tab_dev, tab_cfg, tab_zip, tab_fw, tab_ctl)
+    DEVICE_TABS = (tab_dev, tab_cfg, tab_zip, tab_assets, tab_fw, tab_ctl)
 
     def on_tab_click(e):
         try:
@@ -2893,6 +3226,7 @@ def run_gui(initial_zip: Optional[str] = None):
                     version = dev.check_version()
                     refresh_installed(dev)
                     refresh_configs(dev)
+                    asset_refresh_status(dev)
                     info = dev.system_info()
                 ui(fill_sys_tree, info)
                 ui(set_status, f"● GARW live  ·  {HOST}  ·  firmware " + (f"v{version:g}" if version else "v5+"), "ok")
@@ -2911,12 +3245,14 @@ def run_gui(initial_zip: Optional[str] = None):
                     with IC7Device(log, confirm) as dev:
                         layout = dev.detect_layout()
                         ui(fill_sys_tree, dev.system_info())
+                        if layout == "v4":
+                            asset_refresh_status(dev)   # boot/welcome/ignition-off files work on v4 too
                 except Exception:
                     pass
                 if layout == "v4":
                     ui(set_status, f"● GARW live  ·  {HOST}  ·  v4 firmware — dashes need v5, update it on the Firmware tab", "warn")
-                    log("Dash and settings features are unavailable on v4. The Firmware / System Info tab still works — "
-                        "use 'Install firmware…' there with the v4→v5 package.")
+                    log("Dash and settings features are unavailable on v4. The Firmware / System Info tab and "
+                        "Boot & Logo Screens still work — use 'Install firmware…' there with the v4→v5 package.")
                 else:
                     ui(set_status, f"● GARW live  ·  {HOST}  ·  needs attention (see log)", "warn")
         start(worker)
@@ -3938,6 +4274,250 @@ def run_gui(initial_zip: Optional[str] = None):
     cfg_save_btn.configure(command=do_cfg_save)
     cfg_revert_btn.configure(command=do_cfg_revert)
 
+    # ---------- Tab: Boot & Logo Screens (branding assets) ----------
+    # The tab scrolls vertically so nothing is cut off on small screens / big system fonts.
+    assets_canvas = tk.Canvas(tab_assets, bg=P["panel"], highlightthickness=0, bd=0)
+    assets_vsb = ttk.Scrollbar(tab_assets, orient="vertical", command=assets_canvas.yview)
+    assets_canvas.configure(yscrollcommand=assets_vsb.set)
+    assets_canvas.pack(side="left", fill="both", expand=True)
+    assets_body = ttk.Frame(assets_canvas)
+    _assets_win = assets_canvas.create_window((0, 0), window=assets_body, anchor="nw")
+
+    def _assets_resize(_e=None):
+        assets_canvas.configure(scrollregion=assets_canvas.bbox("all"))
+        assets_canvas.itemconfigure(_assets_win, width=assets_canvas.winfo_width())
+        if assets_body.winfo_reqheight() > assets_canvas.winfo_height():
+            assets_vsb.pack(side="right", fill="y")
+        else:
+            assets_vsb.pack_forget()
+            assets_canvas.yview_moveto(0)
+    assets_body.bind("<Configure>", _assets_resize)
+    assets_canvas.bind("<Configure>", _assets_resize)
+
+    def _assets_wheel(e):
+        if assets_body.winfo_reqheight() > assets_canvas.winfo_height():
+            assets_canvas.yview_scroll(-1 if (e.delta > 0 or e.num == 4) else 1, "units")
+    for ev in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+        assets_canvas.bind(ev, _assets_wheel)
+        assets_body.bind(ev, _assets_wheel)
+    tab_assets_outer, tab_assets = tab_assets, assets_body
+    ttk.Label(tab_assets, style="Muted.TLabel", wraplength=900, justify="left",
+              text=f"Optional files in {ASSETS_DIR} ({LEGACY_ASSETS_DIR} on v4). The ignition-on welcome is EITHER the boot logo "
+                   "OR the welcome video; pick which on the device under Main OS settings → Startup (hold L or R ≈2 s)."
+              ).grid(row=0, column=0, sticky="w", pady=(0, 4))
+    asset_rows: Dict[str, dict] = {}
+    asset_preview, set_asset_preview = preview_panel(tab_assets, "Pick an image to preview it here")
+    asset_preview.grid(row=0, column=1, rowspan=len(DEVICE_ASSETS) + 1, sticky="n", padx=(16, 0))
+    asset_state: Dict[str, Optional[dict]] = {}
+    fit_var = tk.StringVar(value={"letterbox": IMAGE_FIT_MODES[0], "crop": IMAGE_FIT_MODES[1], "stretch": IMAGE_FIT_MODES[2]}
+                           .get(cfg.get("image_fit", "letterbox"), IMAGE_FIT_MODES[0]))
+    fit_boxes: List[ttk.Combobox] = []
+
+    def asset_device_text(fname: str) -> str:
+        st = asset_state.get(fname, "?")
+        if st == "?":
+            return "On device: (not read yet)"
+        if st is None:
+            return "On device: — not present"
+        dims = f", {st['dims'][0]}×{st['dims'][1]}" if st.get("dims") else ""
+        codec = f" {st['codec']}" if st.get("codec") else ""
+        return f"On device: ✓ {st['size'] / 1024:.0f} KB{codec}{dims}"
+
+    for i, (key, title, fname, kind, limit, blurb, menu) in enumerate(DEVICE_ASSETS, start=1):
+        # Two compact rows per asset:  [entry][Browse][Upload][fit ▾]   /   status …  On device … [View][Save]
+        box = ttk.LabelFrame(tab_assets, text=f"  {title} — {blurb}  ", padding=(8, 0, 8, 6))
+        box.grid(row=i, column=0, sticky="ew", pady=(0, 4))
+        box.columnconfigure(0, weight=1)
+        req = (f"{fname} · 800×480 PNG (any image is converted)" if kind == "png"
+               else f"{fname} · H.264 MP4, 800×480, under {limit / 1024 / 1024:.0f} MB (other videos are converted)")
+        var = tk.StringVar()
+        ent = ttk.Entry(box, textvariable=var, width=40)
+        ent.grid(row=0, column=0, sticky="ew", pady=(4, 0))
+        browse = ttk.Button(box, text="Browse…", width=9)
+        browse.grid(row=0, column=1, padx=(6, 0), pady=(4, 0))
+        up = ttk.Button(box, text=f"Upload {fname}", style="Accent.TButton", state="disabled", width=20)
+        up.grid(row=0, column=2, padx=(6, 0), pady=(4, 0))
+        fit_box = ttk.Combobox(box, textvariable=fit_var, values=IMAGE_FIT_MODES, state="readonly", width=19)
+        fit_box.grid(row=0, column=3, padx=(6, 0), pady=(4, 0))
+        fit_boxes.append(fit_box)
+        info = ttk.Label(box, text=f"Select a file — {req}", style="Muted.TLabel", wraplength=560, justify="left")
+        info.grid(row=1, column=0, columnspan=2, sticky="w", pady=(3, 0))
+        ondev = ttk.Label(box, text=asset_device_text(fname), style="Muted.TLabel")
+        ondev.grid(row=1, column=2, sticky="e", pady=(3, 0), padx=(6, 0))
+        btns = ttk.Frame(box)
+        btns.grid(row=1, column=3, sticky="e", padx=(6, 0), pady=(3, 0))
+        show = ttk.Button(btns, text="View", width=5, state="disabled")
+        show.pack(side="left")
+        save = ttk.Button(btns, text="Save…", width=6, state="disabled")
+        save.pack(side="left", padx=(4, 0))
+        asset_rows[key] = {"key": key, "var": var, "entry": ent, "browse": browse, "upload": up, "info": info,
+                           "ondev": ondev, "show": show, "save": save, "fname": fname, "kind": kind,
+                           "limit": limit, "title": title, "ok": False, "menu": menu, "req": req, "fit": fit_box}
+    ttk.Label(tab_assets, style="Muted.TLabel",
+              text="Image fit (the dropdown): letterbox = black bars, nothing lost · fill & crop = edges trimmed · stretch = distorted to fit"
+              ).grid(row=len(DEVICE_ASSETS) + 1, column=0, sticky="w")
+
+    def asset_fit(key: str = "") -> str:
+        mode = {IMAGE_FIT_MODES[0]: "letterbox", IMAGE_FIT_MODES[1]: "crop", IMAGE_FIT_MODES[2]: "stretch"}.get(fit_var.get(), "letterbox")
+        if cfg.get("image_fit") != mode:
+            cfg["image_fit"] = mode
+            try:
+                save_config(cfg)
+            except OSError:
+                pass
+        return mode
+
+    def fit_changed(_e=None):
+        for k, r in asset_rows.items():   # re-convert whatever is selected so the previews update
+            if r["var"].get().strip():
+                asset_inspect(k)
+    for _fb in fit_boxes:
+        _fb.bind("<<ComboboxSelected>>", fit_changed)
+
+    def asset_inspect(key: str):
+        r = asset_rows[key]
+        path = r["var"].get().strip().strip('"')
+        if r["kind"] == "mp4" and path and os.path.isfile(path):
+            r["info"].configure(text="Checking / converting the video … (this can take a little while)", style="Muted.TLabel")
+            root.configure(cursor="watch")
+            root.update_idletasks()
+        try:
+            ok, msg, upload_path = check_asset_file(path, r["kind"], r["limit"], r["fname"], asset_fit(key))
+        finally:
+            root.configure(cursor="")
+        r["ok"] = ok
+        r["upload_path"] = upload_path
+        r["info"].configure(text=msg if path else f"Select a file — {r['req']}",
+                            style="Ok.TLabel" if ok else ("Err.TLabel" if path else "Muted.TLabel"))
+        r["upload"].configure(state="normal" if ok and not state["busy"] and mon.get("unit") else "disabled")
+        if ok and r["kind"] == "png":
+            with open(upload_path, "rb") as fh:
+                set_asset_preview(fh.read(), f"{r['title']} — {os.path.basename(path)}"
+                                  + (" (converted, as it will appear)" if upload_path != path else " (local file)"))
+        elif ok:
+            set_asset_preview(None, "", f"{os.path.basename(path)}\nMP4 selected — no preview for video.")
+
+    def asset_browse(key: str):
+        r = asset_rows[key]
+        ft = ([("Images", "*.png *.jpg *.jpeg *.bmp *.gif *.webp *.tif *.tiff")] if r["kind"] == "png"
+              else [("Videos", "*.mp4 *.m4v *.mov *.webm *.mkv *.avi *.gif")])
+        path = filedialog.askopenfilename(title=f"Select {r['title']} ({r['fname']})", filetypes=ft + [("All files", "*.*")])
+        if path:
+            r["var"].set(path)
+            asset_inspect(key)
+
+    def asset_refresh_status(dev: Optional[IC7Device] = None):
+        """Read which assets exist on the unit (called from worker threads)."""
+        def apply(st):
+            asset_state.clear()
+            asset_state.update(st)
+            for r in asset_rows.values():
+                r["ondev"].configure(text=asset_device_text(r["fname"]))
+                r["show"].configure(state="normal" if st.get(r["fname"]) and r["kind"] == "png" else "disabled")
+                r["save"].configure(state="normal" if st.get(r["fname"]) else "disabled")
+        if dev is not None:
+            ui(apply, dev.asset_status())
+        else:
+            with IC7Device(log, confirm) as d:
+                ui(apply, d.asset_status())
+
+    def asset_show_current(key: str):
+        r = asset_rows[key]
+
+        def worker():
+            with IC7Device(log, confirm) as dev:
+                data = dev.read_asset(r["fname"])
+            if data:
+                ui(set_asset_preview, data, f"{r['title']} — {r['fname']} (currently on the device)")
+            else:
+                ui(set_asset_preview, None, "", f"{r['fname']} is not on the device.")
+        start(worker)
+
+    def asset_save_current(key: str):
+        r = asset_rows[key]
+        ext = ".png" if r["kind"] == "png" else ".mp4"
+        dest = filedialog.asksaveasfilename(title=f"Save {r['fname']} from the device", initialfile=r["fname"],
+                                            defaultextension=ext, filetypes=[(r["kind"].upper(), "*" + ext), ("All files", "*.*")])
+        if not dest:
+            return
+
+        def worker():
+            with IC7Device(log, confirm) as dev:
+                data = dev.read_asset(r["fname"])
+            if not data:
+                raise RuntimeError(f"{r['fname']} is not on the device.")
+            with open(dest, "wb") as fh:
+                fh.write(data)
+            log(f"Saved {r['fname']} from the device → {dest}  ({len(data):,} bytes)")
+            if r["kind"] == "png":
+                ui(set_asset_preview, data, f"{r['title']} — saved to {os.path.basename(dest)}")
+        start(worker)
+
+    def asset_upload(key: str):
+        r = asset_rows[key]
+        chosen = r["var"].get().strip().strip('"')
+        ok, msg, path = check_asset_file(chosen, r["kind"], r["limit"], r["fname"], asset_fit(key))
+        if not ok:
+            messagebox.showerror(APP_NAME, msg, parent=root)
+            return
+        if path != chosen:
+            log(f"{os.path.basename(chosen)} was converted for the device: {msg}")
+
+        def worker():
+            if not gui_preflight():
+                raise RuntimeError(f"GARW device not reachable at {HOST}.")
+            log("=" * 60)
+            log(f"{r['title'].upper()}: {os.path.basename(path)} → {r['fname']}")
+            with IC7Device(log, confirm) as dev:
+                # no v5 gate here: the boot/welcome/ignition-off files exist on v4 units too
+                remote = dev.upload_asset(path, r["fname"])
+                asset_refresh_status(dev)
+                log("Restarting the GARW binary so it picks the file up …")
+                try:
+                    dev.restart_dash_app()
+                    restarted = "and the GARW binary restarted"
+                except Exception as e:   # the upload itself succeeded — don't present this as a failure
+                    log(f"WARNING: could not restart the GARW binary ({e}). Use 'Reboot device' if the file isn't picked up.")
+                    restarted = "(the GARW binary could not be restarted — reboot the device if the file isn't picked up)"
+            log(f"Done. {r['title']} is now on the device at {remote}.")
+            log("REMINDER: " + ASSET_ENABLE_HINT)
+
+            def finished(name=os.path.basename(chosen)):
+                # clear the field so the same file can't be sent twice by accident, and show it's done
+                r["var"].set("")
+                r["ok"] = False
+                r["upload_path"] = None
+                r["info"].configure(text=f"✓ Uploaded {name} as {r['fname']}  —  {asset_device_text(r['fname'])[len('On device: '):]}",
+                                    style="Ok.TLabel")
+                r["upload"].configure(text="✓ Uploaded", state="disabled")
+                set_asset_preview(None, "", f"{r['title']} uploaded.\nPick another file or use View to see it on the device.")
+
+                def reset_button():
+                    r["upload"].configure(text=f"Upload {r['fname']}")
+                root.after(8000, reset_button)
+            ui(finished)
+            either = ("\nThe device shows either the boot logo or the welcome video, not both — this setting picks which."
+                      if r["key"] != "logo" else "")
+            ui(lambda: messagebox.showinfo(
+                APP_NAME,
+                f"{r['title']} uploaded to {remote} {restarted}.\n\n"
+                "Now switch it on, on the device:\n"
+                "  1. Open Main OS settings — hold L or R for about 2 s (the Controller tab's L/R buttons do this).\n"
+                f"  2. Go to {r['menu']}.\n"
+                f"  3. Select the {r['title'].lower()}.{either}",
+                parent=root))
+        start(worker)
+
+    for key, r in asset_rows.items():
+        r["browse"].configure(command=lambda k=key: asset_browse(k))
+        r["upload"].configure(command=lambda k=key: asset_upload(k))
+        r["show"].configure(command=lambda k=key: asset_show_current(k))
+        r["save"].configure(command=lambda k=key: asset_save_current(k))
+        r["entry"].bind("<Return>", lambda e, k=key: asset_inspect(k))
+        r["entry"].bind("<FocusOut>", lambda e, k=key: asset_inspect(k))
+    tab_assets.columnconfigure(0, weight=1)
+    tab_assets = tab_assets_outer   # DEVICE_TABS / nb.tab() refer to the notebook page itself
+
     # ---------- Tab 5: Firmware + system info ----------
     ttk.Label(tab_fw, text="System information", style="Muted.TLabel").grid(row=0, column=0, sticky="w")
     sys_tree = ttk.Treeview(tab_fw, columns=("k", "v"), show="", selectmode="none", height=12)
@@ -4267,6 +4847,11 @@ def run_gui(initial_zip: Optional[str] = None):
             join_btn.configure(state="disabled")   # greyed while the GARW device is connected
         upload_btn.configure(state="normal" if (state["pkgs"] and not busy) else "disabled")
         fw_install_btn.configure(state="normal" if (state.get("fw") and not busy) else "disabled")
+        for r in asset_rows.values():
+            r["browse"].configure(state="disabled" if busy else "normal")
+            r["upload"].configure(state="normal" if (r["ok"] and not busy and mon.get("unit")) else "disabled")
+            r["show"].configure(state="normal" if (not busy and asset_state.get(r["fname"]) and r["kind"] == "png") else "disabled")
+            r["save"].configure(state="normal" if (not busy and asset_state.get(r["fname"])) else "disabled")
         update_edit_buttons()
 
     after_box.bind("<<ComboboxSelected>>", lambda e: persist(), add="+")
