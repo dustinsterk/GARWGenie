@@ -19,6 +19,9 @@ pip install -r requirements.txt
 python garw_genie.py
 ```
 
+Don't skip the first line: without the `paramiko` package the app can't talk to the device at all, so
+it opens with every device tab locked and tells you to install it.
+
 ## Your first session
 
 When the window opens, most of it is greyed out. That's expected — the device isn't connected yet.
@@ -42,9 +45,13 @@ while things are working.
 
 ## The tabs
 
-**GitHub repos** — the dashes you're tracking, with their status against what's on the device:
+**GitHub repos** — the dashes you're tracking, with their status against what's on the device.
+Select one and its preview image appears on the right (once it's been downloaded), so you can see
+what a dash looks like before putting it on the device. The Device Dashes tab shows the same preview
+for whatever is installed. Statuses are:
 *Not installed*, *Up to date*, or *Update ready*. Select one and press **Install / update selected**
-(or just double-click it). **Install all updates** does the lot.
+(or just double-click it). **Install all updates** does the lot. Right-click a row to copy its URL or
+commit, open it on GitHub, or check, install or remove just that repo.
 
 **Device Dashes** — what's on the device right now, where each came from, and when. Select and
 **Delete selected…** to remove dashes. **Restart GARW Binary** and **Reboot device** are here too.
@@ -59,14 +66,34 @@ backup or upload ones you edited elsewhere.
 upload. A dash is a folder holding `Name.qml` and `Name.qml.png` (the folder must be called `Name`
 too); anything else in the folder comes along for the ride.
 
+**Boot & Logo Screens** — three optional files that personalise the device. The **ignition-on
+welcome** is either a **boot logo** (`bootlogo.png`) or a **welcome video** (`welcome.mp4`) — the device shows one or the
+other, and the **ignition-off
+screen** (`logo.png`) is shown when the ignition goes off. For the two images you can pick any picture —
+JPEG, PNG, BMP, WebP, whatever size — and the app converts it to a PNG and fits it to the device's
+800×480 screen — letterboxed on black by default, or switch the dropdown to *Fill & crop* or *Stretch*
+if you'd rather fill the screen — showing you the result before you upload. The welcome video is handled the
+same way: the device only plays H.264 at 800×480 (a VP9 or HEVC file just logs "No decoder available"),
+so any video you pick is checked — codec, size, length — and re-encoded to exactly that, silent, and squeezed
+under the 2 MB limit; a file that's already right is sent untouched. Everything is uploaded under the name the device expects and the GARW binary is restarted
+so it picks the file up. It also shows what's on the device already: **View current** shows an image in
+the preview, and **Save current…** copies any of the three files back to your computer. One thing to
+remember: uploading a file doesn't switch it on. On the device, open Main OS settings (hold L or R
+about 2 seconds — the Controller tab's L/R buttons do it), go to **Startup**, and pick it under
+*Ignition on welcome* or *Ignition off screen*; the app reminds you after every upload. This tab works
+on v4 devices too — the files go to `/opt/Garw_IC7` there instead of `/opt/IC7`.
+
 **Firmware / System Info** — **Read system info** shows firmware version, OS, CPU, memory, storage,
 temperature and more. **Install firmware…** takes an official GARW update package (the `.zip` you
-would otherwise put on a USB stick) and installs it the same way the stick would. This is also how a
+would otherwise put on a USB stick) and installs it the same way the stick would. The package is
+encrypted; the key to open it is read from the GARW software already on the device, so there's nothing
+to type and nothing stored in the app. This is also how a
 v4 device gets to v5. When it finishes, the device's scratch area is tidied up and the package
 path is cleared so it can't be run twice by accident.
 
 **Controller** — the old phone app's D-pad. Click the arrows or use your keyboard: arrow keys move,
-**S** opens the GARW's OS settings screen (you can also hold **L** or **R** for 3 seconds), **U** in a dash screen shows the dash menu (specific for each dash screen), **Esc** lets go of everything. The GARW only listens to control inputs while this tab is showing.
+**S** opens the dash's settings screen, **L** and **R** hold left or right to reach the device's own
+menu, **Esc** lets go of everything. It only listens while this tab is showing.
 
 ## The header
 
@@ -84,22 +111,30 @@ path is cleared so it can't be run twice by accident.
   back — there's no connect button to press.
 - The repo list remembers what it last saw on the device, so statuses still make sense while you're
   away from GARW — they're marked *device as of <time>* until the device is checked again.
-- The default dash list comes from `default_repos.txt`, a plain text file next to the app. Add a
-  GitHub URL per line to change what new installs start with.
+- The default dash list comes from `default_repos.txt`. A copy is built into the app, but one placed
+  next to the app (or in `~/.garw_genie/`) takes precedence — add a GitHub URL per line to change what
+  new installs start with. Repos you've already got are remembered in your settings either way.
 - GitHub lets you check about 60 times an hour without signing in, which is plenty. If you ever hit
   the limit, **GitHub token…** on the repos tab takes a personal access token and raises it to 5,000.
 - Dashes still in the old v4 layout (a `Name_main.qml` file) are refused with a clear message until
   they've been updated for v5.
-- A device still on v4 firmware connects fine, but only the Firmware / System Info tab and the
-  Controller do anything useful on it — the status pill tells you so. Install the v4→v5 package there
+- A device still on v4 firmware connects fine, but only the Firmware / System Info, Boot & Logo
+  Screens and Controller tabs do anything useful on it — the status pill tells you so. Install the v4→v5 package there
   and the rest unlocks after the reboot.
 
 ---
 
 ### For developers
 
-Everything is one Python file, `garw_genie.py`; the only dependency is `paramiko`. The firmware version
-comes from `/opt/IC7/version.txt` (firmware 5.5+); older v5 units fall back to the float literal in the binary. Settings, the
+Everything is one Python file, `garw_genie.py`; the dependencies are `paramiko` (SSH), `certifi`
+(CA bundle, so HTTPS to GitHub verifies inside the frozen app — `SSL_CERT_FILE` overrides it behind a
+corporate proxy) `pillow` (image conversion for the Boot & Logo Screens tab and smooth preview scaling;
+without it images must already be exact-size PNGs) and `imageio-ffmpeg` (a bundled ffmpeg for the welcome
+video; an ffmpeg on PATH is used first). The firmware version
+comes from `/opt/IC7/version.txt` (firmware 5.5+); older v5 units fall back to the float literal in the binary.
+The firmware package passphrase is never stored: the GARW binary launches the stock updater as
+`K99updater start <passphrase> <ver>`, and the tool greps that string off the binary on the unit at install
+time (and masks it in logs). A binary without that marker aborts the install before anything is uploaded. Settings, the
 dash cache and logs live in `~/.garw_genie/`. Dashes installed from GitHub carry a hidden
 `.garw_source.json` on the device so any laptop sees the same install state. Uploads go to a staging
 folder and are renamed into place, so a dropped connection never leaves a half-written dash.
@@ -112,13 +147,3 @@ A command-line mode covers the same ground (`python garw_genie.py --help`): `--l
 `.github/workflows/build.yml` builds both on every push and attaches them to a release on tags.
 The logo and icons are generated by `assets/make_logo.py` from the bundled Press Start 2P font
 (SIL OFL, see `assets/PressStart2P-LICENSE.txt`).
-
----
-
-### Action Shots
-<img width="1708" height="1004" alt="1" src="https://github.com/user-attachments/assets/0064ee4c-f8da-4716-a7c8-34ec5693ac29" />
-<img width="1712" height="1010" alt="2" src="https://github.com/user-attachments/assets/a3e3818a-a2ad-4f82-82dd-c00a12a68a12" />
-<img width="1716" height="1013" alt="3" src="https://github.com/user-attachments/assets/6ca11fe1-8cce-49ba-9385-c2a005204abe" />
-<img width="1714" height="1011" alt="4" src="https://github.com/user-attachments/assets/303258d9-a7d0-410f-9516-45f942ac92cb" />
-<img width="1707" height="1006" alt="5" src="https://github.com/user-attachments/assets/cd30b581-9341-4a25-a1bd-6574dfaf7964" />
-<img width="1710" height="1013" alt="6" src="https://github.com/user-attachments/assets/5b66eaf7-50f7-478d-a1fc-4b348f58739c" />
