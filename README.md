@@ -53,18 +53,20 @@ for whatever is installed. Statuses are:
 (or just double-click it). **Install all updates** does the lot. Right-click a row to copy its URL or
 commit, open it on GitHub, or check, install or remove just that repo.
 
-**Device Dashes** — what's on the device right now, where each came from, and when. Select and
-**Delete selected…** to remove dashes. **Restart GARW Binary** and **Reboot device** are here too.
+**Device Dashes** — what's on the device right now, where each came from, and when. **Install from
+.zip…** is the manual route for a dash you didn't get from GitHub: pick a zip holding one or more
+dashes (a dash is a folder called `Name` containing `Name.qml` and `Name.qml.png`; anything else in the
+folder comes along), check the list it shows you, and confirm. **Download selected…** and
+**Backup all…** copy dashes off the device into exactly that zip layout, so a backup goes straight
+back on with Install from .zip (the app checks it passes before reporting success). **Delete selected…**
+removes dashes. **Restart GARW Binary** and **Reboot device** are here too.
 
 **Dash Settings** — every dash has a small settings file (redline, warning temperatures, units, and
 so on). Pick a file, and the editor shows each value with the name of the setting it controls next
 to it, plus the default for the line you're on. Change what you like and press **Save to unit** —
-the dash picks the new values up immediately, no reboot. You can also download the files as a
-backup or upload ones you edited elsewhere.
-
-**Upload .zip** — the manual route. Point it at a zip containing one or more dashes and press
-upload. A dash is a folder holding `Name.qml` and `Name.qml.png` (the folder must be called `Name`
-too); anything else in the folder comes along for the ride.
+the dash picks the new values up immediately, no reboot. **Backup all to .zip…** saves every settings file
+in one archive and **Restore from .zip…** puts them back (after a confirmation, then the dash reloads
+them); you can also download or upload individual files.
 
 **Boot & Logo Screens** — three optional files that personalise the device. The **ignition-on
 welcome** is either a **boot logo** (`bootlogo.png`) or a **welcome video** (`welcome.mp4`) — the device shows one or the
@@ -109,6 +111,9 @@ menu, **Esc** lets go of everything. It only listens while this tab is showing.
 
 - The device tabs lock themselves whenever the device isn't answering and unlock the moment it's
   back — there's no connect button to press.
+- Need to look around the device tabs without a device? Click the GARW Genie logo four times quickly
+  to unlock them (and four more to lock again). Anything that actually talks to the device still
+  needs it connected.
 - The repo list remembers what it last saw on the device, so statuses still make sense while you're
   away from GARW — they're marked *device as of <time>* until the device is checked again.
 - The default dash list comes from `default_repos.txt`. A copy is built into the app, but one placed

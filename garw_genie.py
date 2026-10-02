@@ -5,7 +5,7 @@ GARW Genie
 Cross-platform (Windows / macOS / Linux) tool for managing dash screens on a
 GARW IC7 cluster over SSH/SFTP.
 
-  * Upload .zip   — validate a zip of one or many dashes and push it to the unit
+  * Install from .zip (Device Dashes tab) — validate a zip of one or many dashes and push it to the unit
   * GitHub repos  — track dash repos, see when a new commit lands, install/update
   * Device        — list installed dashes (with the repo/commit they came from),
                     delete dashes, reboot
@@ -76,7 +76,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.1.1"
+APP_VERSION = "5.3.0"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -1712,6 +1712,50 @@ class IC7Device:
         self.log(f"All {len(pkgs)} dash(es) uploaded: " + ", ".join(p.name for p in pkgs))
 
     # -- delete --------------------------------------------------------------
+    def download_dashes_zip(self, names: List[str], zip_path: str) -> Tuple[int, int]:
+        """Copy whole dash folders off the unit into a zip laid out exactly as 'Install from .zip'
+        expects (<Name>/<Name>.qml, <Name>/<Name>.qml.png, assets …). Hidden files such as the
+        GitHub marker are kept for reference; the uploader ignores them. Returns (dashes, files)."""
+        bad = [n for n in names if not NAME_RE.match(n)]
+        if bad:
+            raise RuntimeError("Bad dash name(s): " + ", ".join(bad))
+        sftp = self.client.open_sftp()
+        import stat as _stat
+
+        def walk(remote_dir: str):
+            for a in sftp.listdir_attr(remote_dir):
+                p = f"{remote_dir}/{a.filename}"
+                if _stat.S_ISDIR(a.st_mode or 0):
+                    yield from walk(p)
+                elif _stat.S_ISREG(a.st_mode or 0):
+                    yield p, a.st_size or 0
+        total_files = 0
+        try:
+            files: List[Tuple[str, str, int]] = []   # (remote path, arcname, size)
+            for n in names:
+                base = f"{LIBRARY_DIR}/{n}"
+                for rp, sz in walk(base):
+                    files.append((rp, n + rp[len(base):], sz))
+            if not files:
+                raise RuntimeError("Nothing to download — the selected dash folders are empty.")
+            total = sum(sz for _, _, sz in files) or 1
+            done = 0
+            tmp = zip_path + ".part"
+            with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zf:
+                for rp, arc, sz in files:
+                    with sftp.file(rp, "rb") as fh:
+                        data = fh.read()
+                    zf.writestr(arc, data)
+                    FILE_LOG.debug("SFTP get %s (%d bytes) -> zip:%s", rp, len(data), arc)
+                    done += sz
+                    total_files += 1
+                    self.progress(done, total)
+                self.log(f"  {total_files} file(s), {total / 1024:.0f} KB from {len(names)} dash(es)")
+            os.replace(tmp, zip_path)
+        finally:
+            sftp.close()
+        return len(names), total_files
+
     def delete_dashes(self, names: List[str]) -> List[str]:
         """rm -rf each named dash after one confirmation. Returns names removed."""
         names = [n for n in names if NAME_RE.match(n)]
@@ -2853,7 +2897,7 @@ def run_gui(initial_zip: Optional[str] = None):
             tree.column(cols[-1], stretch=True)   # soak up leftover width so the table fills its panel
 
     log_q: "queue.Queue[tuple]" = queue.Queue()
-    state = {"pkgs": None, "busy": False}
+    state = {"busy": False}
 
     # ---------- shell ----------
     outer = ttk.Frame(root, padding=(16, 12, 16, 12), style="Bg.TFrame")
@@ -2869,14 +2913,17 @@ def run_gui(initial_zip: Optional[str] = None):
         except tk.TclError:
             pass
     wordmark = asset_path("garw_genie_header.png")
+    logo_lbl = None
     if wordmark:
         try:
             _imgs["head"] = tk.PhotoImage(file=str(wordmark))
-            ttk.Label(head, image=_imgs["head"], style="Bg.TLabel").pack(side="left", padx=(0, 12))
+            logo_lbl = ttk.Label(head, image=_imgs["head"], style="Bg.TLabel")
+            logo_lbl.pack(side="left", padx=(0, 12))
         except tk.TclError:
             wordmark = None
     if not wordmark:
-        ttk.Label(head, text=APP_NAME, style="Title.TLabel").pack(side="left")
+        logo_lbl = ttk.Label(head, text=APP_NAME, style="Title.TLabel")
+        logo_lbl.pack(side="left")
     ttk.Label(head, text=f"v{APP_VERSION}", style="BgMuted.TLabel").pack(side="left", padx=(0, 0), pady=(9, 0))
     net_pill = ttk.Label(head, text="● Internet", style="Pill.TLabel")
     net_pill.pack(side="left", padx=(16, 6), pady=(6, 0))
@@ -3026,14 +3073,12 @@ def run_gui(initial_zip: Optional[str] = None):
     tab_repo = ttk.Frame(nb, padding=14)
     tab_dev = ttk.Frame(nb, padding=14)
     tab_cfg = ttk.Frame(nb, padding=14)
-    tab_zip = ttk.Frame(nb, padding=14)
     tab_fw = ttk.Frame(nb, padding=14)
     tab_assets = ttk.Frame(nb, padding=(14, 8, 14, 8))
     tab_ctl = ttk.Frame(nb, padding=14)
     nb.add(tab_repo, text="GitHub repos")
     nb.add(tab_dev, text="Device Dashes")
     nb.add(tab_cfg, text="Dash Settings")
-    nb.add(tab_zip, text="Upload .zip")
     nb.add(tab_assets, text="Boot & Logo Screens")
     nb.add(tab_fw, text="Firmware / System Info")
     nb.add(tab_ctl, text="Controller")
@@ -3079,7 +3124,7 @@ def run_gui(initial_zip: Optional[str] = None):
     mon = {"unit": None, "net": None, "ssid": None, "tick": 0, "pending_unit": False, "pending_net": False}
     MONITOR_MS = 4000
 
-    DEVICE_TABS = (tab_dev, tab_cfg, tab_zip, tab_assets, tab_fw, tab_ctl)
+    DEVICE_TABS = (tab_dev, tab_cfg, tab_assets, tab_fw, tab_ctl)
 
     def on_tab_click(e):
         try:
@@ -3144,20 +3189,48 @@ def run_gui(initial_zip: Optional[str] = None):
 
     PARAMIKO_HINT = ("The SSH library 'paramiko' is not installed, so nothing can talk to the GARW device. "
                      "Install it with:   pip install paramiko   — then restart GARW Genie.")
+    DEBUG_HINT = ("Debug mode: tabs unlocked without the GARW device (click the logo 4× again to turn it off). "
+                  "Anything that talks to the device will fail until it answers.")
+    debug = {"unlocked": False, "clicks": [], "flash": None}
 
     def set_device_tabs(enabled: bool):
+        connected = bool(enabled)
         if paramiko is None:
             enabled = False   # hard lock: without SSH no device feature can work, whatever the monitor says
+        elif debug["unlocked"]:
+            enabled = True    # hidden debug unlock (4 clicks on the logo) — look around without the device
         for t in DEVICE_TABS:
             nb.tab(t, state="normal" if enabled else "disabled")
         # Once the unit answers, the SSH login / GARW Wi-Fi / Join controls are greyed out —
         # changing them mid-session would only break a working connection.
         for w in (user_ent, pass_ent, show_pw, ssid_ent, wpass_ent, show_wpw, join_btn):
-            w.configure(state="disabled" if enabled else "normal")
+            w.configure(state="disabled" if connected else "normal")
         if not enabled and nb.select() != str(tab_repo):
             nb.select(tab_repo)
-        lock_hint.configure(text="" if enabled else PARAMIKO_HINT if paramiko is None else
-                            f"The other tabs unlock automatically once the GARW device answers at {HOST} — join Wi-Fi '{TARGET_SSID}'.")
+        lock_hint.configure(text=(PARAMIKO_HINT if paramiko is None else
+                                  DEBUG_HINT if (debug["unlocked"] and not connected) else
+                                  "" if enabled else
+                                  f"The other tabs unlock automatically once the GARW device answers at {HOST} — join Wi-Fi '{TARGET_SSID}'."))
+
+    def logo_clicked(_e=None):
+        """Hidden: 4 clicks on the logo within 2 s toggles debug mode (tabs usable with no device)."""
+        now = time.monotonic()
+        debug["clicks"] = [t for t in debug["clicks"] if now - t < 2.0] + [now]
+        if len(debug["clicks"]) < 4:
+            return
+        debug["clicks"] = []
+        debug["unlocked"] = not debug["unlocked"]
+        log(("DEBUG MODE ON — device tabs unlocked without the GARW device." if debug["unlocked"]
+             else "Debug mode off — tabs follow the device again."))
+        set_device_tabs(bool(mon.get("unit")))
+        set_buttons()
+        if debug["unlocked"] and not mon.get("unit"):
+            set_status(f"● Debug mode  ·  tabs unlocked  ·  GARW device not connected", "warn")
+        elif not mon.get("unit"):
+            set_status(f"● GARW offline", "muted")
+        blink(lock_hint)   # draw the eye to the hint line that now explains the mode
+    logo_lbl.bind("<Button-1>", logo_clicked)
+    logo_lbl.configure(cursor="hand2")
 
     def monitor_apply(ssid, unit, net):
         first = mon["unit"] is None
@@ -3178,7 +3251,8 @@ def run_gui(initial_zip: Optional[str] = None):
                 set_status(f"● GARW live  ·  {HOST}", "ok")
         else:
             where = f"on '{ssid}'" if ssid and ssid != TARGET_SSID else (f"not on Wi-Fi '{TARGET_SSID}'" if not ssid else "unit not answering")
-            set_status(f"● GARW offline  ·  {where}", "muted")
+            set_status(f"● Debug mode  ·  GARW offline  ·  {where}" if debug["unlocked"] else f"● GARW offline  ·  {where}",
+                       "warn" if debug["unlocked"] else "muted")
         if mon.get("auth_failed") and unit:
             return   # wrong login: wait for the user to change credentials rather than retrying every tick
         if unit_up or (first and unit):
@@ -3404,69 +3478,40 @@ def run_gui(initial_zip: Optional[str] = None):
         ui(lambda: messagebox.showinfo(
             APP_NAME, f"Installed to {LIBRARY_DIR}/:\n  " + "\n  ".join(p.name for p in pkgs) + tail, parent=root))
 
-    # ---------- Tab 1: Upload .zip ----------
-    ttk.Label(tab_zip, text="Dash .zip:").grid(row=0, column=0, sticky="w")
-    zip_var = tk.StringVar(value=initial_zip or "")
-    zip_entry = ttk.Entry(tab_zip, textvariable=zip_var)
-    zip_entry.grid(row=0, column=1, sticky="ew", padx=6)
-    browse_btn = ttk.Button(tab_zip, text="Browse…")
-    browse_btn.grid(row=0, column=2)
-    info_var = tk.StringVar(value="Select a .zip to validate it. A zip may hold one dash or many.")
-    ttk.Label(tab_zip, textvariable=info_var, wraplength=760, justify="left").grid(
-        row=1, column=0, columnspan=3, sticky="w", pady=(8, 8))
-    zrow = ttk.Frame(tab_zip)
-    zrow.grid(row=2, column=0, columnspan=3, sticky="w")
-    upload_btn = ttk.Button(zrow, text="Upload to GARW", state="disabled", style="Accent.TButton")
-    upload_btn.pack(side="left")
-    tab_zip.columnconfigure(1, weight=1)
-
-    def validate(path: str):
-        state["pkgs"] = None
-        if not path:
-            info_var.set("Select a .zip to validate it.")
-            set_buttons()
+    # ---------- Install dashes from a .zip (button on the Device Dashes tab) ----------
+    def install_zip(path: str):
+        """Validate a dash zip and, after one confirmation that lists what's inside, install it."""
+        path = (path or "").strip().strip('"')
+        if not path or not os.path.isfile(path):
             return
         try:
             pkgs = validate_zip(path)
         except ValidationError as e:
-            info_var.set(f"✗ {e}")
             log(f"Validation failed: {e}")
-            set_buttons()
+            messagebox.showerror(APP_NAME, f"{os.path.basename(path)} isn't a dash zip the device can use:\n\n{e}", parent=root)
             return
-        state["pkgs"] = pkgs
-        lines = [f"✓ {len(pkgs)} dash{'es' if len(pkgs) != 1 else ''} → {LIBRARY_DIR}/"]
-        lines += [f"    {p.name}  ({len(p.files)} file{'s' if len(p.files) != 1 else ''})" for p in pkgs]
         warnings = [w for p in pkgs for w in p.warnings]
-        lines += ["⚠ " + w for w in warnings]
-        info_var.set("\n".join(lines))
         log(f"Validated {os.path.basename(path)}: " + ", ".join(f"{p.name} ({len(p.files)} files)" for p in pkgs))
         for n in (n for p in pkgs for n in p.notes):
             log(f"  note: {n}")
         for w in warnings:
             log(f"  warning: {w}")
-        set_buttons()
+        existing = [p.name for p in pkgs if p.name in installed]
+        msg = (f"{os.path.basename(path)} contains {len(pkgs)} dash{'es' if len(pkgs) != 1 else ''}:\n\n  "
+               + "\n  ".join(f"{p.name}  ({len(p.files)} file{'s' if len(p.files) != 1 else ''})"
+                               + ("   — replaces the one on the device" if p.name in existing else "") for p in pkgs))
+        if warnings:
+            msg += "\n\n⚠ " + "\n⚠ ".join(warnings)
+        msg += f"\n\nInstall to {LIBRARY_DIR}/ ?"
+        if not messagebox.askyesno("Install dashes from zip?", msg, icon="warning" if (warnings or existing) else "question", parent=root):
+            log("Install cancelled.")
+            return
+        start(lambda: install_packages(pkgs, os.path.basename(path)))
 
-    def browse():
-        path = filedialog.askopenfilename(title="Select dash .zip",
-                                          filetypes=[("Zip files", "*.zip"), ("All files", "*.*")])
+    def do_install_zip():
+        path = filedialog.askopenfilename(title="Select dash .zip", filetypes=[("Zip files", "*.zip"), ("All files", "*.*")], parent=root)
         if path:
-            zip_var.set(path)
-            validate(path)
-
-    def on_entry_change(*_):
-        p = zip_var.get().strip().strip('"')
-        if p and os.path.isfile(p):
-            validate(p)
-
-    def do_upload():
-        pkgs = state["pkgs"]
-        if pkgs:
-            start(lambda: install_packages(pkgs, os.path.basename(pkgs[0].zip_path)))
-
-    browse_btn.configure(command=browse)
-    upload_btn.configure(command=do_upload)
-    zip_entry.bind("<Return>", on_entry_change)
-    zip_entry.bind("<FocusOut>", on_entry_change)
+            install_zip(path)
 
     # ---------- Tab 2: GitHub repos ----------
     rcols = ("repo", "branch", "dash", "latest", "cached", "status")
@@ -3874,14 +3919,22 @@ def run_gui(initial_zip: Optional[str] = None):
     drow.grid(row=2, column=0, columnspan=7, sticky="ew", pady=(8, 0))
     refresh_btn = ttk.Button(drow, text="Refresh")
     refresh_btn.pack(side="left")
+    install_zip_btn = ttk.Button(drow, text="Install from .zip…", style="Accent.TButton")
+    install_zip_btn.pack(side="left", padx=(18, 0))
+    dl_sel_btn = ttk.Button(drow, text="Download selected…")
+    dl_sel_btn.pack(side="left", padx=(18, 0))
+    dl_all_btn = ttk.Button(drow, text="Backup all…")
+    dl_all_btn.pack(side="left", padx=(6, 0))
     delete_btn = ttk.Button(drow, text="Delete selected…", style="Danger.TButton")
-    delete_btn.pack(side="left", padx=(6, 0))
-    reboot_btn = ttk.Button(drow, text="Reboot device", style="Danger.TButton")
+    delete_btn.pack(side="left", padx=(18, 0))
+    drow2 = ttk.Frame(tab_dev)
+    drow2.grid(row=3, column=0, columnspan=7, sticky="ew", pady=(6, 0))
+    dev_status = ttk.Label(drow2, style="Muted.TLabel", text="Press Refresh to read the library from the unit.")
+    dev_status.pack(side="left")
+    reboot_btn = ttk.Button(drow2, text="Reboot device", style="Danger.TButton")
     reboot_btn.pack(side="right")
-    restart_btn = ttk.Button(drow, text="Restart GARW Binary")
+    restart_btn = ttk.Button(drow2, text="Restart GARW Binary")
     restart_btn.pack(side="right", padx=(0, 6))
-    dev_status = ttk.Label(tab_dev, style="Muted.TLabel", text="Press Refresh to read the library from the unit.")
-    dev_status.grid(row=3, column=0, columnspan=7, sticky="w", pady=(6, 0))
     tab_dev.rowconfigure(0, weight=1)
     tab_dev.columnconfigure(5, weight=1)
     dev_preview, set_dev_preview = preview_panel(tab_dev, "Select a dash to see its preview")
@@ -3940,6 +3993,38 @@ def run_gui(initial_zip: Optional[str] = None):
             log(f"{len(rows)} dash(es) on device: " + (", ".join(r['name'] for r in rows) or "(none)"))
         start(worker)
 
+    def do_download_dashes(all_dashes: bool):
+        names = ([r["name"] for r in device_rows] if all_dashes
+                 else [dev_tree.item(i, "values")[0] for i in dev_tree.selection()])
+        if not names:
+            messagebox.showinfo(APP_NAME, "Nothing to download — refresh first" + ("" if all_dashes else ", then select dashes") + ".", parent=root)
+            return
+        stamp = datetime.now().strftime("%Y-%m-%d_%H%M")
+        default = f"GARW_dashes_{stamp}.zip" if all_dashes or len(names) > 1 else f"{names[0]}.zip"
+        dest = filedialog.asksaveasfilename(title="Save dash backup as…", initialfile=default, defaultextension=".zip",
+                                            filetypes=[("Zip archive", "*.zip")], parent=root)
+        if not dest:
+            return
+
+        def worker():
+            if not gui_preflight():
+                raise RuntimeError(f"GARW device not reachable at {HOST}.")
+            log("=" * 60)
+            log(f"DOWNLOAD {len(names)} dash(es) → {dest}")
+            with IC7Device(log, confirm, set_progress) as dev:
+                dev.check_version()
+                n_dash, n_files = dev.download_dashes_zip(names, dest)
+            # prove the result is something 'Install from .zip' will accept
+            try:
+                pkgs = validate_zip(dest)
+                verdict = f"Verified: {len(pkgs)} dash(es) ready to put back with 'Install from .zip…'."
+            except ValidationError as e:
+                verdict = f"WARNING: the zip was saved but the install check reports: {str(e).splitlines()[0]}"
+            log(f"Saved {n_dash} dash(es), {n_files} file(s) → {dest}")
+            log(verdict)
+            ui(lambda: messagebox.showinfo(APP_NAME, f"Saved {n_dash} dash(es) ({n_files} files) to\n{dest}\n\n{verdict}", parent=root))
+        start(worker)
+
     def do_delete():
         names = [dev_tree.item(i, "values")[0] for i in dev_tree.selection()]
         if not names:
@@ -3977,6 +4062,9 @@ def run_gui(initial_zip: Optional[str] = None):
         start(worker)
 
     refresh_btn.configure(command=do_refresh)
+    install_zip_btn.configure(command=do_install_zip)
+    dl_sel_btn.configure(command=lambda: do_download_dashes(False))
+    dl_all_btn.configure(command=lambda: do_download_dashes(True))
     delete_btn.configure(command=do_delete)
     reboot_btn.configure(command=do_reboot)
     restart_btn.configure(command=do_restart_app)
@@ -4042,6 +4130,10 @@ def run_gui(initial_zip: Optional[str] = None):
     cfg_dl_btn.pack(side="left", padx=(6, 0))
     cfg_dl_all_btn = ttk.Button(crow, text="Download all…")
     cfg_dl_all_btn.pack(side="left", padx=(6, 0))
+    cfg_backup_btn = ttk.Button(crow, text="Backup all to .zip…")
+    cfg_backup_btn.pack(side="left", padx=(18, 0))
+    cfg_restore_btn = ttk.Button(crow, text="Restore from .zip…")
+    cfg_restore_btn.pack(side="left", padx=(6, 0))
     cfg_up_btn = ttk.Button(crow, text="Upload files…", style="Accent.TButton")
     cfg_up_btn.pack(side="left", padx=(18, 0))
     cfg_status = ttk.Label(tab_cfg, style="Muted.TLabel", text="Press Refresh to read settings files from the unit.")
@@ -4241,6 +4333,94 @@ def run_gui(initial_zip: Optional[str] = None):
             ui(lambda: messagebox.showinfo(APP_NAME, f"Saved {len(saved)} file(s) to\n{dest}", parent=root))
         start(worker)
 
+    def do_cfg_backup():
+        names = [r["name"] for r in config_rows if r["size"] is not None]
+        if not names:
+            messagebox.showinfo(APP_NAME, "Nothing to back up — refresh first.", parent=root)
+            return
+        stamp = datetime.now().strftime("%Y-%m-%d_%H%M")
+        dest = filedialog.asksaveasfilename(title="Save settings backup as…", initialfile=f"GARW_settings_{stamp}.zip",
+                                            defaultextension=".zip", filetypes=[("Zip archive", "*.zip")], parent=root)
+        if not dest:
+            return
+
+        def worker():
+            if not gui_preflight():
+                raise RuntimeError(f"GARW device not reachable at {HOST}.")
+            import tempfile
+            import shutil
+            tmp = tempfile.mkdtemp(prefix="garw_cfg_")
+            try:
+                with IC7Device(log, confirm, set_progress) as dev:
+                    dev.check_version()
+                    saved = dev.download_configs(names, tmp)
+                    manifest = {"app": f"{APP_NAME} {APP_VERSION}", "created": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                                "device": HOST, "configs_dir": SCREEN_CONFIGS_DIR,
+                                "files": [os.path.basename(p) for p in saved],
+                                "dash_for_file": {r["name"]: r.get("dashes", []) for r in config_rows if r["size"] is not None}}
+                with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as zf:
+                    for pth in saved:
+                        zf.write(pth, "screen_configs/" + os.path.basename(pth))
+                    zf.writestr("manifest.json", json.dumps(manifest, indent=2))
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
+            log(f"Backed up {len(saved)} settings file(s) → {dest}")
+            ui(lambda: messagebox.showinfo(APP_NAME, f"Backed up {len(saved)} settings file(s) to\n{dest}\n\n"
+                                                      "Use 'Restore from .zip…' to put them back.", parent=root))
+        start(worker)
+
+    def do_cfg_restore():
+        src = filedialog.askopenfilename(title="Settings backup to restore", filetypes=[("Zip archive", "*.zip"), ("All files", "*.*")], parent=root)
+        if not src:
+            return
+        try:
+            with zipfile.ZipFile(src) as zf:
+                members = [n for n in zf.namelist() if n.startswith("screen_configs/") and not n.endswith("/")
+                           and "/" not in n[len("screen_configs/"):] and not os.path.basename(n).startswith(".")]
+                manifest = json.loads(zf.read("manifest.json")) if "manifest.json" in zf.namelist() else {}
+        except (zipfile.BadZipFile, OSError, ValueError) as e:
+            messagebox.showerror(APP_NAME, f"Not a settings backup: {e}", parent=root)
+            return
+        if not members:
+            messagebox.showerror(APP_NAME, "This zip has no screen_configs/ folder — it isn't a GARW Genie settings backup.", parent=root)
+            return
+        names = [os.path.basename(n) for n in members]
+        when = _fmt_date(manifest.get("created")) if manifest.get("created") else "unknown date"
+        if not messagebox.askyesno(
+                "Restore settings?",
+                f"Backup from {when} ({manifest.get('app', 'unknown app')}).\n\nRestore {len(names)} settings file(s) to "
+                f"{SCREEN_CONFIGS_DIR} on the device, replacing what's there?\n\n  " + "\n  ".join(names[:12])
+                + ("\n  …" if len(names) > 12 else ""), icon="warning", parent=root):
+            return
+
+        def worker():
+            if not gui_preflight():
+                raise RuntimeError(f"GARW device not reachable at {HOST}.")
+            import tempfile
+            import shutil
+            tmp = tempfile.mkdtemp(prefix="garw_cfg_")
+            try:
+                paths = []
+                with zipfile.ZipFile(src) as zf:
+                    for n in members:
+                        dst = os.path.join(tmp, os.path.basename(n))
+                        with open(dst, "wb") as fh:
+                            fh.write(zf.read(n))
+                        paths.append(dst)
+                log("=" * 60)
+                log(f"RESTORE SETTINGS from {os.path.basename(src)} ({len(paths)} files)")
+                with IC7Device(log, lambda t, m: True, set_progress) as dev:   # already confirmed above
+                    dev.check_version()
+                    sent = dev.upload_configs(paths)
+                    refresh_configs(dev)
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
+            if sent:
+                reload_dash_settings()
+            log(f"Restored {len(sent)} settings file(s).")
+            ui(lambda: messagebox.showinfo(APP_NAME, f"Restored {len(sent)} settings file(s) from\n{os.path.basename(src)}", parent=root))
+        start(worker)
+
     def do_cfg_upload():
         paths = filedialog.askopenfilenames(title="Settings file(s) to upload",
                                             filetypes=[("Settings files", "*.txt *.cfg *.json *.ini"), ("All files", "*.*")])
@@ -4262,6 +4442,8 @@ def run_gui(initial_zip: Optional[str] = None):
     cfg_refresh_btn.configure(command=do_cfg_refresh)
     cfg_dl_btn.configure(command=lambda: do_cfg_download(False))
     cfg_dl_all_btn.configure(command=lambda: do_cfg_download(True))
+    cfg_backup_btn.configure(command=do_cfg_backup)
+    cfg_restore_btn.configure(command=do_cfg_restore)
     cfg_up_btn.configure(command=do_cfg_upload)
     cfg_tree.bind("<<TreeviewSelect>>", on_cfg_select)
     preview.bind("<<Modified>>", on_preview_modified)
@@ -4835,9 +5017,9 @@ def run_gui(initial_zip: Optional[str] = None):
     ctl_tick()
 
     # ---------- wiring ----------
-    all_buttons = [browse_btn, add_btn, rm_btn, token_btn, join_btn, check_btn, install_sel_btn,
-                   install_all_btn, refresh_btn, delete_btn, reboot_btn, restart_btn,
-                   cfg_refresh_btn, cfg_dl_btn, cfg_dl_all_btn, cfg_up_btn, sys_btn, fw_browse_btn]
+    all_buttons = [add_btn, rm_btn, token_btn, join_btn, check_btn, install_sel_btn,
+                   install_all_btn, refresh_btn, install_zip_btn, dl_sel_btn, dl_all_btn, delete_btn, reboot_btn, restart_btn,
+                   cfg_refresh_btn, cfg_dl_btn, cfg_dl_all_btn, cfg_backup_btn, cfg_restore_btn, cfg_up_btn, sys_btn, fw_browse_btn]
 
     def set_buttons():
         busy = state["busy"]
@@ -4845,7 +5027,6 @@ def run_gui(initial_zip: Optional[str] = None):
             b.configure(state="disabled" if busy else "normal")
         if mon.get("unit"):
             join_btn.configure(state="disabled")   # greyed while the GARW device is connected
-        upload_btn.configure(state="normal" if (state["pkgs"] and not busy) else "disabled")
         fw_install_btn.configure(state="normal" if (state.get("fw") and not busy) else "disabled")
         for r in asset_rows.values():
             r["browse"].configure(state="disabled" if busy else "normal")
@@ -4881,7 +5062,7 @@ def run_gui(initial_zip: Optional[str] = None):
             log(f"{r.label}: {r.error}")
     fill_repo_tree()
     if initial_zip:
-        validate(initial_zip)
+        root.after(1500, lambda: install_zip(initial_zip))
     pump()
     set_buttons()
     set_device_tabs(False)
