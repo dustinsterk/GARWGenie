@@ -53,7 +53,11 @@ for whatever is installed. Statuses are:
 (or just double-click it). **Install all updates** does the lot. Right-click a row to copy its URL or
 commit, open it on GitHub, or check, install or remove just that repo.
 
-**Device Dashes** — what's on the device right now, where each came from, and when. **Install from
+**Device Dashes** — what's on the device right now, where each came from, and when. The **Active**
+column shows which dashes the cluster actually cycles through and in what position, and a line under
+the table lists all the active slots including the built-in screens. **Active screens…** lets you change
+what's in each slot (the number of slots is what the device has now, up to six) and restarts the GARW
+binary so it takes effect. **Install from
 .zip…** is the manual route for a dash you didn't get from GitHub: pick a zip holding one or more
 dashes (a dash is a folder called `Name` containing `Name.qml` and `Name.qml.png`; anything else in the
 folder comes along), check the list it shows you, and confirm. **Download selected…** and
@@ -93,7 +97,8 @@ to type and nothing stored in the app. This is also how a
 v4 device gets to v5. When it finishes, the device's scratch area is tidied up and the package
 path is cleared so it can't be run twice by accident.
 
-**Controller** — the old phone app's D-pad. Click the arrows or use your keyboard: arrow keys move,
+**Controller** — the old phone app's D-pad. Click the arrows or use your keyboard: arrow keys move
+(hold ◀ or ▶ for a couple of seconds to open the device's own menu; ▲/▼ repeat so values step quickly),
 **S** opens the dash's settings screen, **L** and **R** hold left or right to reach the device's own
 menu, **Esc** lets go of everything. It only listens while this tab is showing.
 
