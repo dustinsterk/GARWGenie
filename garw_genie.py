@@ -76,7 +76,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.3.0"
+APP_VERSION = "5.3.2"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -2512,7 +2512,9 @@ class Controller:
                         self._send(self.hold_button)   # re-assert so a dropped packet can't cut the hold short
                     delay = HEARTBEAT_S
                 elif self.held:
-                    if self.mode == "hold":
+                    # Left/Right are always a real hold: holding one is how you reach the OS settings,
+                    # and repeated taps would only flip screens. Repeat mode is for stepping values (Up/Down).
+                    if self.mode == "hold" or self.held in ("left", "right"):
                         self._send(self.held)
                         delay = HEARTBEAT_S
                     else:
@@ -2642,9 +2644,18 @@ def apply_theme(root, tk, ttk, retro: bool = True) -> dict:
         import tkinter.font as tkfont
         ttf = asset_path(RETRO_FONT_FILE)
         if ttf:
-            register_font(ttf)
+            register_font(ttf)   # harmless if already registered before Tk started
         fams = set(tkfont.families(root))
         fam = next((f for f in (RETRO_FONT_FAMILY, "Press Start 2P") if f in fams), None)
+        if not fam:
+            # families() can lag behind registration — ask Tk to resolve the name directly instead
+            for cand in (RETRO_FONT_FAMILY, "Press Start 2P"):
+                try:
+                    if tkfont.Font(root, family=cand, size=8).actual("family") == cand:
+                        fam = cand
+                        break
+                except tk.TclError:
+                    pass
         if fam:
             # Press Start 2P is a pixel font: 8 px per em is its native grid, so sizes are kept
             # small and the whole UI scales up via tk scaling. It is monospaced, so it doubles as mono.
@@ -2852,6 +2863,12 @@ def run_gui(initial_zip: Optional[str] = None):
     config_rows: List[dict] = []
 
     set_process_app_name(APP_NAME)
+    if cfg.get("retro_font"):
+        # Register before Tk initialises: on macOS, Tk takes its font-family snapshot at startup, so a
+        # font registered afterwards is invisible to it even though CoreText knows it.
+        _ttf = asset_path(RETRO_FONT_FILE)
+        if _ttf:
+            register_font(_ttf)
     root = tk.Tk()
     root.title(f"{APP_NAME} v{APP_VERSION}")
     try:
@@ -3066,7 +3083,11 @@ def run_gui(initial_zip: Optional[str] = None):
         except OSError:
             pass
         root.destroy()
-        os.execv(sys.executable, [sys.executable] + sys.argv)
+        # A frozen app's sys.executable IS the program: re-run it with the same arguments. From source,
+        # sys.argv[0] is the script and must be kept. (Passing argv[0] to a frozen app made the new
+        # process think its own path was a dash zip.)
+        args = sys.argv[1:] if getattr(sys, "frozen", False) else sys.argv
+        os.execv(sys.executable, [sys.executable] + args)
     ttk.Checkbutton(head, text="8-bit font", variable=retro_var, command=toggle_retro).pack(side="right", padx=(0, 14), pady=(6, 0))
 
     nb = ttk.Notebook(outer)   # packed after the bottom bar so the log keeps its height
@@ -4880,10 +4901,13 @@ def run_gui(initial_zip: Optional[str] = None):
     opts.grid(row=1, column=1, rowspan=2, sticky="nw")
     ctl_active = tk.BooleanVar(value=False)
     ttk.Checkbutton(opts, text="Controller active (sends heartbeat)", variable=ctl_active).pack(anchor="w")
-    ttk.Label(opts, style="Muted.TLabel", text="While a key is held:").pack(anchor="w", pady=(12, 2))
+    ttk.Label(opts, style="Muted.TLabel", text="While ▲ / ▼ is held:").pack(anchor="w", pady=(12, 2))
     mode_var = tk.StringVar(value="repeat")
     ttk.Radiobutton(opts, text="Repeat taps  — values step quickly", variable=mode_var, value="repeat").pack(anchor="w")
     ttk.Radiobutton(opts, text="Hold  — one long press", variable=mode_var, value="hold").pack(anchor="w")
+    ttk.Label(opts, style="Muted.TLabel", wraplength=300, justify="left",
+              text="◀ / ▶ are always a real hold, so keeping one pressed for ≈2 s opens the OS settings "
+                   "(the L and R buttons do a timed hold for you).").pack(anchor="w", pady=(4, 0))
     rate_row = ttk.Frame(opts)
     rate_row.pack(anchor="w", pady=(10, 0), fill="x")
     rate_lbl = ttk.Label(rate_row, style="Muted.TLabel", text="Repeat rate: 5 taps/s")
