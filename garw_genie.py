@@ -76,7 +76,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.3.2"
+APP_VERSION = "5.4.0"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -100,6 +100,21 @@ VERSION_SANE_RANGE = (1.0, 99.0)
 MIN_VERSION = 5.0
 
 SCREEN_CONFIGS_DIR = "/opt/IC7/screen_configs"   # per-dash settings files, named inside each .qml
+SCREEN_ENABLED_FILE = "/opt/IC7/screen_enabled.txt"   # active screens: one 0-based screen index per line
+# Screen index model (v5): 0-4 are the screens built into the GARW binary, in this order; 5 onwards are
+# the folders in /opt/IC7/library in alphabetical order (case-insensitive, as QDir lists them).
+BUILTIN_SCREENS = ("Lotus Elise S2 (05)", "Lotus Elise S2 (08)", "Lotus Elise S3", "Race", "111st")
+MAX_ACTIVE_SCREENS = 6
+
+
+def screen_index_table(library_names: List[str]) -> List[Tuple[int, str, bool]]:
+    """[(index, label, is_builtin)] — the list screen_enabled.txt indexes into."""
+    table = [(i, n, True) for i, n in enumerate(BUILTIN_SCREENS)]
+    for j, n in enumerate(sorted(library_names, key=lambda x: x.lower())):
+        table.append((len(BUILTIN_SCREENS) + j, n, False))
+    return table
+
+
 ASSETS_DIR = "/opt/IC7"                          # branding assets live beside the binary (v5+)
 LEGACY_ASSETS_DIR = "/opt/Garw_IC7"              # … and beside the v4 binary on v4 units
 DEVICE_ASSETS = (
@@ -1581,8 +1596,9 @@ class IC7Device:
         if not has_v5:
             if has_v4:
                 raise RuntimeError(
-                    f"This unit is running v4 firmware ({LEGACY_DIR} present, {BINARY_PATH} missing).\n"
-                    f"v{MIN_VERSION:g} or newer is required — update the unit first. Aborting.")
+                    f"This device is on v4 firmware ({LEGACY_DIR} present, {BINARY_PATH} missing).\n\n"
+                    f"Dashes and dash settings need v{MIN_VERSION:g} or newer. Install the v4→v5 package from the "
+                    "Firmware / System Info tab first — your settings files are carried across by the update.")
             raise RuntimeError(
                 f"Neither {BINARY_PATH} nor {LEGACY_BINARY_PATH} found — is this a GARW device? Aborting.")
         if has_v4:
@@ -1712,6 +1728,41 @@ class IC7Device:
         self.log(f"All {len(pkgs)} dash(es) uploaded: " + ", ".join(p.name for p in pkgs))
 
     # -- delete --------------------------------------------------------------
+    def read_enabled_screens(self) -> Tuple[List[int], int]:
+        """(active indices in slot order, total line count of the file). Blank lines are ignored."""
+        rc, out, _ = self._run(f"cat {_sq(SCREEN_ENABLED_FILE)} 2>/dev/null")
+        if rc != 0:
+            return [], 0
+        lines = out.split("\n")
+        idx = []
+        for ln in lines:
+            ln = ln.strip()
+            if ln.isdigit():
+                idx.append(int(ln))
+        return idx, len(lines)
+
+    def write_enabled_screens(self, indices: List[int], keep_lines: int = 0) -> None:
+        """Rewrite screen_enabled.txt: one index per line, padded with blank lines to the file's
+        previous length so its shape stays exactly as the firmware wrote it."""
+        if not indices or len(indices) > MAX_ACTIVE_SCREENS or any(i < 0 for i in indices):
+            raise RuntimeError(f"Need 1–{MAX_ACTIVE_SCREENS} screen indices.")
+        body = "\n".join(str(i) for i in indices) + "\n"
+        extra = max(0, keep_lines - len(indices) - 1)
+        body += "\n" * extra
+        tmp = SCREEN_ENABLED_FILE + ".uploading"
+        sftp = self.client.open_sftp()
+        try:
+            with sftp.file(tmp, "wb") as fh:
+                fh.write(body.encode("ascii"))
+        finally:
+            sftp.close()
+        rc, _, err = self._run(f"mv {_sq(tmp)} {_sq(SCREEN_ENABLED_FILE)} && chmod a+r {_sq(SCREEN_ENABLED_FILE)} && sync")
+        if rc != 0:
+            self._run(f"rm -f {_sq(tmp)}")
+            raise RuntimeError(f"Failed to write {SCREEN_ENABLED_FILE}: {err.strip()}")
+        FILE_LOG.debug("wrote %s: %s", SCREEN_ENABLED_FILE, indices)
+        self.log(f"Active screens written: {', '.join(map(str, indices))} → {SCREEN_ENABLED_FILE}")
+
     def download_dashes_zip(self, names: List[str], zip_path: str) -> Tuple[int, int]:
         """Copy whole dash folders off the unit into a zip laid out exactly as 'Install from .zip'
         expects (<Name>/<Name>.qml, <Name>/<Name>.qml.png, assets …). Hidden files such as the
@@ -2324,6 +2375,9 @@ echo "@@ic7_bin=$(ls -l /opt/IC7/bin/IC7 2>/dev/null | awk '{print $5}')"
         the SSH session closing. Falls back to `S50screen start` if IC7 wasn't running.
         """
         self.log("Restarting the GARW binary …")
+        if self.detect_layout() == "v4":
+            raise RuntimeError("Restart only knows the v5 GARW binary; this device is on v4 firmware. "
+                               "Use 'Reboot device' instead (or update to v5 from the Firmware / System Info tab).")
         rc, out, _ = self._run("pidof IC7 2>/dev/null || pgrep -x IC7 2>/dev/null")
         pids = out.split()
         env_lines, cwd = [], "/"
@@ -3457,6 +3511,10 @@ def run_gui(initial_zip: Optional[str] = None):
         device_rows[:] = rows
         installed.clear()
         installed.update({r["name"]: r["source"] for r in rows})
+        try:
+            active_state["indices"], active_state["lines"] = dev.read_enabled_screens()
+        except Exception as e:
+            log(f"Could not read {SCREEN_ENABLED_FILE}: {e}")
         dev_png_cache.clear()
         installed_seen["when"] = None
         cfg["device_inventory"] = {"when": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -3923,9 +3981,9 @@ def run_gui(initial_zip: Optional[str] = None):
     repo_tree.bind("<Control-Button-1>", repo_context)  # macOS ctrl-click
 
     # ---------- Tab 3: Device ----------
-    dcols = ("name", "valid", "files", "source", "commit", "installed")
+    dcols = ("name", "active", "valid", "files", "source", "commit", "installed")
     dev_tree = ttk.Treeview(tab_dev, columns=dcols, show="headings", selectmode="extended", height=8)
-    for c, txt, w in (("name", "Dash", 150), ("valid", "Valid", 90), ("files", "Files", 55),
+    for c, txt, w in (("name", "Dash", 150), ("active", "Active", 70), ("valid", "Valid", 90), ("files", "Files", 55),
                       ("source", "Source", 220), ("commit", "Commit", 80), ("installed", "Installed", 130)):
         dev_tree.heading(c, text=txt)
         dev_tree.column(c, width=w, anchor="center", stretch=False)
@@ -3948,10 +4006,14 @@ def run_gui(initial_zip: Optional[str] = None):
     dl_all_btn.pack(side="left", padx=(6, 0))
     delete_btn = ttk.Button(drow, text="Delete selected…", style="Danger.TButton")
     delete_btn.pack(side="left", padx=(18, 0))
+    active_btn = ttk.Button(drow, text="Active screens…")
+    active_btn.pack(side="left", padx=(18, 0))
     drow2 = ttk.Frame(tab_dev)
     drow2.grid(row=3, column=0, columnspan=7, sticky="ew", pady=(6, 0))
     dev_status = ttk.Label(drow2, style="Muted.TLabel", text="Press Refresh to read the library from the unit.")
     dev_status.pack(side="left")
+    active_lbl = ttk.Label(tab_dev, style="Muted.TLabel", text="Active screens: (not read)", wraplength=860, justify="left")
+    active_lbl.grid(row=4, column=0, columnspan=7, sticky="w", pady=(2, 0))
     reboot_btn = ttk.Button(drow2, text="Reboot device", style="Danger.TButton")
     reboot_btn.pack(side="right")
     restart_btn = ttk.Button(drow2, text="Restart GARW Binary")
@@ -3987,6 +4049,19 @@ def run_gui(initial_zip: Optional[str] = None):
         threading.Thread(target=worker, daemon=True).start()
     dev_tree.bind("<<TreeviewSelect>>", on_dev_select, add="+")
 
+    active_state = {"indices": [], "lines": 0}   # from screen_enabled.txt at the last device refresh
+
+    def screen_table():
+        return screen_index_table([r["name"] for r in device_rows])
+
+    def active_slots_for(name: str) -> str:
+        """'1' / '1, 4' — which active slot(s) show this dash."""
+        idx = next((i for i, n, b in screen_table() if n == name and not b), None)
+        if idx is None:
+            return ""
+        slots = [str(k + 1) for k, v in enumerate(active_state["indices"]) if v == idx]
+        return ("● " + ", ".join(slots)) if slots else ""
+
     def fill_device_tree():
         dev_tree.delete(*dev_tree.get_children())
         for r in device_rows:
@@ -3995,11 +4070,22 @@ def run_gui(initial_zip: Optional[str] = None):
                 "no .qml" if not r["has_qml"] else "no .png")
             src = f"{s.get('owner')}/{s.get('repo')} [{s.get('branch')}]" if s.get("repo") else (
                 "manual upload" if not s else "?")
+            act = active_slots_for(r["name"])
             iid = dev_tree.insert("", "end", values=(
-                r["name"], valid, r["files"], src, (s.get("sha") or "")[:7], _fmt_date(s.get("installed"))))
+                r["name"], act, valid, r["files"], src, (s.get("sha") or "")[:7], _fmt_date(s.get("installed"))))
             if not (r["has_qml"] and r["has_png"]):
                 dev_tree.item(iid, tags=("bad",))
+            elif act:
+                dev_tree.item(iid, tags=("active",))
         dev_tree.tag_configure("bad", foreground=P["err"])
+        dev_tree.tag_configure("active", foreground=P["ok"])
+        table = {i: (n, b) for i, n, b in screen_table()}
+        if active_state["indices"]:
+            desc = "  ·  ".join(f"{k + 1}: {table[v][0] + (' (built-in)' if table[v][1] else '')}" if v in table else f"{k + 1}: index {v} (?)"
+                               for k, v in enumerate(active_state["indices"]))
+            active_lbl.configure(text=f"Active screens ({len(active_state['indices'])}):  {desc}")
+        else:
+            active_lbl.configure(text="Active screens: (not read)")
         autosize(dev_tree)
         dev_status.configure(text=f"{len(device_rows)} dash(es) in {LIBRARY_DIR}   ·   "
                                   f"read {datetime.now().strftime('%H:%M:%S')}")
@@ -4012,6 +4098,81 @@ def run_gui(initial_zip: Optional[str] = None):
                 dev.check_version()
                 rows = refresh_installed(dev)
             log(f"{len(rows)} dash(es) on device: " + (", ".join(r['name'] for r in rows) or "(none)"))
+        start(worker)
+
+    def do_active_screens():
+        """Pick which screen fills each active slot. The slot count is what the device has now
+        (at most MAX_ACTIVE_SCREENS); a slot can be left empty to run fewer screens."""
+        if not device_rows:
+            messagebox.showinfo(APP_NAME, "Refresh the device list first.", parent=root)
+            return
+        table = screen_table()
+        labels = [f"{i}  ·  {n}" + ("  (built-in)" if b else "") for i, n, b in table]
+        by_label = {lab: i for lab, (i, _, _) in zip(labels, table)}
+        current = list(active_state["indices"]) or [table[0][0]]
+        n_slots = min(max(len(current), 1), MAX_ACTIVE_SCREENS)
+        win = tk.Toplevel(root)
+        win.title("Active screens")
+        win.configure(bg=P["panel"])
+        win.transient(root)
+        win.resizable(False, False)
+        frm = ttk.Frame(win, padding=16)
+        frm.pack(fill="both", expand=True)
+        ttk.Label(frm, wraplength=520, justify="left",
+                  text=f"The device shows {n_slots} screen{'s' if n_slots != 1 else ''} (the number it has now — that's the "
+                       f"maximum). Pick what goes in each slot; '(empty)' drops a slot. Left/Right on the "
+                       "cluster steps through the slots in this order.").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
+        vars_: List[tk.StringVar] = []
+        for k in range(n_slots):
+            ttk.Label(frm, text=f"Slot {k + 1}:").grid(row=k + 1, column=0, sticky="e", padx=(0, 8), pady=2)
+            v = tk.StringVar()
+            cur = current[k] if k < len(current) else None
+            v.set(next((lab for lab, i in by_label.items() if i == cur), "(empty)"))
+            cb = ttk.Combobox(frm, textvariable=v, values=labels + ["(empty)"], state="readonly", width=40)
+            cb.grid(row=k + 1, column=1, sticky="w", pady=2)
+            vars_.append(v)
+        note = ttk.Label(frm, style="Muted.TLabel", wraplength=520, justify="left",
+                         text=f"Writes {SCREEN_ENABLED_FILE}, then the GARW binary restarts so it reloads the list.")
+        note.grid(row=n_slots + 1, column=0, columnspan=2, sticky="w", pady=(10, 0))
+        row = ttk.Frame(frm)
+        row.grid(row=n_slots + 2, column=0, columnspan=2, sticky="e", pady=(12, 0))
+        result = {"v": None}
+
+        def ok(_e=None):
+            chosen = [by_label[v.get()] for v in vars_ if v.get() in by_label]
+            if not chosen:
+                messagebox.showerror(APP_NAME, "At least one slot needs a screen.", parent=win)
+                return
+            result["v"] = chosen
+            win.destroy()
+
+        def cancel(_e=None):
+            win.destroy()
+        ttk.Button(row, text="Cancel", command=cancel).pack(side="right")
+        ttk.Button(row, text="Apply to device", style="Accent.TButton", command=ok).pack(side="right", padx=(0, 8))
+        win.bind("<Escape>", cancel)
+        win.grab_set()
+        root.wait_window(win)
+        chosen = result["v"]
+        if chosen is None or chosen == current:
+            return
+        names = {i: n for i, n, _ in table}
+
+        def worker():
+            if not gui_preflight():
+                raise RuntimeError(f"GARW device not reachable at {HOST}.")
+            log("=" * 60)
+            log("ACTIVE SCREENS: " + "  ·  ".join(f"{k + 1}: {names.get(i, i)}" for k, i in enumerate(chosen)))
+            with IC7Device(log, confirm) as dev:
+                dev.check_version()
+                dev.write_enabled_screens(chosen, active_state["lines"])
+                refresh_installed(dev)
+                log("Restarting the GARW binary so it reloads the screen list …")
+                try:
+                    dev.restart_dash_app()
+                except Exception as e:
+                    log(f"WARNING: could not restart the GARW binary ({e}) — reboot the device to apply.")
+            log("Done.")
         start(worker)
 
     def do_download_dashes(all_dashes: bool):
@@ -4084,6 +4245,7 @@ def run_gui(initial_zip: Optional[str] = None):
 
     refresh_btn.configure(command=do_refresh)
     install_zip_btn.configure(command=do_install_zip)
+    active_btn.configure(command=do_active_screens)
     dl_sel_btn.configure(command=lambda: do_download_dashes(False))
     dl_all_btn.configure(command=lambda: do_download_dashes(True))
     delete_btn.configure(command=do_delete)
@@ -5042,7 +5204,7 @@ def run_gui(initial_zip: Optional[str] = None):
 
     # ---------- wiring ----------
     all_buttons = [add_btn, rm_btn, token_btn, join_btn, check_btn, install_sel_btn,
-                   install_all_btn, refresh_btn, install_zip_btn, dl_sel_btn, dl_all_btn, delete_btn, reboot_btn, restart_btn,
+                   install_all_btn, refresh_btn, install_zip_btn, active_btn, dl_sel_btn, dl_all_btn, delete_btn, reboot_btn, restart_btn,
                    cfg_refresh_btn, cfg_dl_btn, cfg_dl_all_btn, cfg_backup_btn, cfg_restore_btn, cfg_up_btn, sys_btn, fw_browse_btn]
 
     def set_buttons():
