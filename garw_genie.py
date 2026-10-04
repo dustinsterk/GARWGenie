@@ -40,6 +40,11 @@ import urllib.error
 import urllib.request
 import zipfile
 from dataclasses import dataclass, field
+
+try:
+    import laptimer as _lt
+except ImportError:  # pragma: no cover
+    _lt = None
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -76,7 +81,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.4.0"
+APP_VERSION = "5.5.6"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -1728,6 +1733,48 @@ class IC7Device:
         self.log(f"All {len(pkgs)} dash(es) uploaded: " + ", ".join(p.name for p in pkgs))
 
     # -- delete --------------------------------------------------------------
+    # -- lap timer ------------------------------------------------------------
+    def require_laptimer(self) -> None:
+        """The LapTimer dash is an optional add-on. Refuse clearly when its folder isn't on the device
+        rather than creating files the (absent) dash would never read."""
+        if not self._remote_exists(_lt.LAPTIMER_DIR) or not self._remote_exists(f"{_lt.LAPTIMER_DIR}/LapTimer.qml"):
+            raise RuntimeError(
+                f"The LapTimer dash isn't installed on this device ({_lt.LAPTIMER_DIR} not found).\n\n"
+                "Install the LapTimer dash first (GitHub repos or Install from .zip on the Device Dashes tab); "
+                "the RaceBox and track files live inside its folder.")
+
+    def read_text_file(self, remote: str, max_bytes: int = 4 * 1024 * 1024) -> Optional[bytes]:
+        sftp = self.client.open_sftp()
+        try:
+            with sftp.file(remote, "rb") as fh:
+                data = fh.read(max_bytes)
+            FILE_LOG.debug("SFTP get %s (%d bytes)", remote, len(data))
+            return data
+        except IOError:
+            return None
+        finally:
+            sftp.close()
+
+    def write_text_file(self, remote: str, data: bytes, what: str = "file") -> None:
+        """Staged write (tmp + rename) with a size check. The folder must already exist (for the lap
+        timer files that means the LapTimer dash is installed — see require_laptimer)."""
+        folder = remote.rsplit("/", 1)[0]
+        if not self._remote_exists(folder):
+            raise RuntimeError(f"{folder} does not exist on the device.")
+        tmp = remote + ".uploading"
+        sftp = self.client.open_sftp()
+        try:
+            with sftp.file(tmp, "wb") as fh:
+                fh.write(data)
+        finally:
+            sftp.close()
+        rc, out, err = self._run(f"mv {_sq(tmp)} {_sq(remote)} && chmod a+r {_sq(remote)} && sync && wc -c < {_sq(remote)}")
+        if rc != 0 or out.strip() != str(len(data)):
+            self._run(f"rm -f {_sq(tmp)}")
+            raise RuntimeError(f"Failed to write {remote}: {err.strip() or 'size mismatch'}")
+        FILE_LOG.debug("SFTP put %s (%d bytes)", remote, len(data))
+        self.log(f"Wrote {what}: {remote} ({len(data):,} bytes)")
+
     def read_enabled_screens(self) -> Tuple[List[int], int]:
         """(active indices in slot order, total line count of the file). Blank lines are ignored."""
         rc, out, _ = self._run(f"cat {_sq(SCREEN_ENABLED_FILE)} 2>/dev/null")
@@ -3151,12 +3198,14 @@ def run_gui(initial_zip: Optional[str] = None):
     tab_fw = ttk.Frame(nb, padding=14)
     tab_assets = ttk.Frame(nb, padding=(14, 8, 14, 8))
     tab_ctl = ttk.Frame(nb, padding=14)
+    tab_lap = ttk.Frame(nb, padding=14)
     nb.add(tab_repo, text="GitHub repos")
     nb.add(tab_dev, text="Device Dashes")
     nb.add(tab_cfg, text="Dash Settings")
     nb.add(tab_assets, text="Boot & Logo Screens")
     nb.add(tab_fw, text="Firmware / System Info")
     nb.add(tab_ctl, text="Controller")
+    # tab_lap (Lap Timer) is hidden until Shift + double-click on the logo (see reveal_lap_tab)
 
     bottom = ttk.Frame(outer, style="Bg.TFrame")
     bottom.pack(fill="x", side="bottom")
@@ -3199,7 +3248,7 @@ def run_gui(initial_zip: Optional[str] = None):
     mon = {"unit": None, "net": None, "ssid": None, "tick": 0, "pending_unit": False, "pending_net": False}
     MONITOR_MS = 4000
 
-    DEVICE_TABS = (tab_dev, tab_cfg, tab_assets, tab_fw, tab_ctl)
+    DEVICE_TABS = (tab_dev, tab_cfg, tab_assets, tab_fw, tab_ctl)   # Lap Timer stays open: track editing needs no device
 
     def on_tab_click(e):
         try:
@@ -3287,8 +3336,10 @@ def run_gui(initial_zip: Optional[str] = None):
                                   "" if enabled else
                                   f"The other tabs unlock automatically once the GARW device answers at {HOST} — join Wi-Fi '{TARGET_SSID}'."))
 
-    def logo_clicked(_e=None):
+    def logo_clicked(e=None):
         """Hidden: 4 clicks on the logo within 2 s toggles debug mode (tabs usable with no device)."""
+        if e is not None and (getattr(e, "state", 0) & 0x1):   # Shift held → that's the Lap Timer gesture
+            return
         now = time.monotonic()
         debug["clicks"] = [t for t in debug["clicks"] if now - t < 2.0] + [now]
         if len(debug["clicks"]) < 4:
@@ -3305,6 +3356,18 @@ def run_gui(initial_zip: Optional[str] = None):
             set_status(f"● GARW offline", "muted")
         blink(lock_hint)   # draw the eye to the hint line that now explains the mode
     logo_lbl.bind("<Button-1>", logo_clicked)
+
+    def reveal_lap_tab(_e=None):
+        """Hidden: Shift + double-click on the logo shows the Lap Timer tab (early-access feature)."""
+        if str(tab_lap) in nb.tabs():
+            nb.select(tab_lap)
+            return "break"
+        nb.add(tab_lap, text="Lap Timer")
+        nb.select(tab_lap)
+        log("Lap Timer tab revealed (Shift + double-click on the logo).")
+        debug["clicks"] = []   # don't let the double-click also count towards the 4-click debug toggle
+        return "break"
+    logo_lbl.bind("<Shift-Double-Button-1>", reveal_lap_tab)
     logo_lbl.configure(cursor="hand2")
 
     def monitor_apply(ssid, unit, net):
@@ -3515,6 +3578,11 @@ def run_gui(initial_zip: Optional[str] = None):
             active_state["indices"], active_state["lines"] = dev.read_enabled_screens()
         except Exception as e:
             log(f"Could not read {SCREEN_ENABLED_FILE}: {e}")
+        if _lt:
+            try:
+                lap_refresh_presence(dev)
+            except Exception:
+                pass
         dev_png_cache.clear()
         installed_seen["when"] = None
         cfg["device_inventory"] = {"when": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -5202,9 +5270,373 @@ def run_gui(initial_zip: Optional[str] = None):
         root.after(100, ctl_tick)
     ctl_tick()
 
+    # ---------- Tab: Lap Timer (RaceBox MAC + track database editor) ----------
+    LOCAL_TRACKS = CONFIG_DIR / "tracks.txt"
+    lap = {"db": _lt.TrackDB() if _lt else None, "path": str(LOCAL_TRACKS), "dirty": False, "server": None, "present": None}
+
+    # -- RaceBox --
+    mac_box = ttk.LabelFrame(tab_lap, text="  RaceBox  ", padding=(10, 4, 10, 8))
+    mac_box.grid(row=0, column=0, columnspan=2, sticky="ew")
+    ttk.Label(mac_box, style="Muted.TLabel",
+              text=f"Bluetooth MAC of your RaceBox GPS, stored on the device in {_lt.RACEBOX_MAC_FILE if _lt else ''} "
+                   "(AA:BB:CC:DD:EE:FF — printed on the RaceBox label / shown in its app). The dash re-reads it whenever a dash loads; "
+                   "without the file it uses the default built into LapTimer.qml.").grid(row=0, column=0, columnspan=5, sticky="w")
+    mac_var = tk.StringVar()
+    mac_ent = ttk.Entry(mac_box, textvariable=mac_var, width=24)
+    mac_ent.grid(row=1, column=0, sticky="w", pady=(6, 0))
+    mac_off_var = tk.BooleanVar(value=False)
+
+    def mac_off_toggle():
+        mac_ent.configure(state="disabled" if mac_off_var.get() else "normal")
+    ttk.Checkbutton(mac_box, text="No RaceBox (off)", variable=mac_off_var, command=mac_off_toggle).grid(row=1, column=1, padx=(10, 0), pady=(6, 0))
+    mac_read_btn = ttk.Button(mac_box, text="Read from device")
+    mac_read_btn.grid(row=1, column=2, padx=(12, 0), pady=(6, 0))
+    mac_save_btn = ttk.Button(mac_box, text="Save to device", style="Accent.TButton")
+    mac_save_btn.grid(row=1, column=3, padx=(6, 0), pady=(6, 0))
+    mac_info = ttk.Label(mac_box, style="Muted.TLabel", text="")
+    mac_info.grid(row=1, column=4, sticky="w", padx=(12, 0), pady=(6, 0))
+    lap_presence = ttk.Label(tab_lap, style="Muted.TLabel", wraplength=1100, justify="left",
+                             text=f"LapTimer dash on device: (not checked — connect to the GARW device)")
+    lap_presence.grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 0))
+
+    def lap_refresh_presence(dev: IC7Device):
+        """Called on every device refresh: is the LapTimer add-on installed?"""
+        present = dev._remote_exists(f"{_lt.LAPTIMER_DIR}/LapTimer.qml")
+        lap["present"] = present
+        txt = (f"LapTimer dash on device: ✓ installed ({_lt.LAPTIMER_DIR})" if present else
+               f"LapTimer dash on device: ✗ not installed — {_lt.LAPTIMER_DIR} is missing. The RaceBox and track buttons "
+               "that touch the device will refuse until the LapTimer dash is installed (Device Dashes tab). Local track editing still works.")
+        ui(lap_presence.configure, {"text": txt, "style": "Ok.TLabel" if present else "Warn.TLabel"})
+
+    def mac_normalise(v: str) -> Optional[str]:
+        v = v.strip().upper().replace("-", ":")
+        if _lt and _lt.MAC_RE.match(v):
+            return v
+        if re.fullmatch(r"[0-9A-F]{12}", v):
+            return ":".join(v[i:i + 2] for i in range(0, 12, 2))
+        return None
+
+    def do_mac_read():
+        def worker():
+            if not gui_preflight():
+                raise RuntimeError(f"GARW device not reachable at {HOST}.")
+            with IC7Device(log, confirm) as dev:
+                dev.require_laptimer()
+                data = dev.read_text_file(_lt.RACEBOX_MAC_FILE)
+            if data is None:
+                ui(mac_info.configure, {"text": "On device: — no file (dash uses its built-in default MAC)"})
+                log(f"{_lt.RACEBOX_MAC_FILE} is not on the device — the dash uses the default from LapTimer.qml.")
+                return
+            value, status = _lt.racebox_parse(data)
+
+            def show():
+                mac_off_var.set(value == "off")
+                mac_off_toggle()
+                mac_var.set("" if value in (None, "off") else value)
+                mac_info.configure(text="On device: " + ("RaceBox off" if value == "off" else value or "— no MAC (default used)"))
+            ui(show)
+            log(f"RaceBox file on device: {status}" + (f" — {value}" if value and value != "off" else ""))
+        start(worker)
+
+    def do_mac_save():
+        if mac_off_var.get():
+            value = "off"
+        else:
+            value = mac_normalise(mac_var.get())
+            if not value:
+                messagebox.showerror(APP_NAME, "That isn't a Bluetooth MAC address.\nExpected six pairs of hex digits, e.g. D4:F7:FA:9E:08:97 "
+                                               "(dashes and lower case are fine) — or tick 'No RaceBox (off)'.", parent=root)
+                return
+            mac_var.set(value)
+
+        def worker():
+            if not gui_preflight():
+                raise RuntimeError(f"GARW device not reachable at {HOST}.")
+            with IC7Device(log, confirm) as dev:
+                dev.require_laptimer()
+                existing = dev.read_text_file(_lt.RACEBOX_MAC_FILE)   # keep the file's comment lines
+                dev.write_text_file(_lt.RACEBOX_MAC_FILE, _lt.racebox_render(value, existing), "RaceBox setting")
+                ui(mac_info.configure, {"text": "On device: " + ("RaceBox off" if value == "off" else value)})
+            # the dash re-reads the file whenever a dash loads — a screen flip is enough, no restart needed
+            reload_dash_settings()
+            log("Done." + ("" if value == "off" else " A different MAC connects right away; the same MAC reconnects on the next power cycle."))
+        start(worker)
+    mac_read_btn.configure(command=do_mac_read)
+    mac_save_btn.configure(command=do_mac_save)
+
+    # -- Tracks --
+    trk_box = ttk.LabelFrame(tab_lap, text="  Track database  ", padding=(10, 4, 10, 8))
+    trk_box.grid(row=1, column=0, columnspan=2, sticky="nsew", pady=(8, 0))
+    tab_lap.rowconfigure(1, weight=1)
+    tab_lap.columnconfigure(0, weight=1)
+    trow0 = ttk.Frame(trk_box)
+    trow0.grid(row=0, column=0, columnspan=3, sticky="ew")
+    trk_file_lbl = ttk.Label(trow0, style="Muted.TLabel", text="")
+    trk_file_lbl.pack(side="left")
+    ttk.Label(trow0, text="   Search:", style="Muted.TLabel").pack(side="left", padx=(12, 4))
+    trk_q = tk.StringVar()
+    trk_q_ent = ttk.Entry(trow0, textvariable=trk_q, width=28)
+    trk_q_ent.pack(side="left")
+    tcols = ("name", "region", "country", "sf", "sectors", "pits", "radius")
+    trk_tree = ttk.Treeview(trk_box, columns=tcols, show="headings", selectmode="extended", height=10)
+    for c, txt, w in (("name", "Track", 260), ("region", "Region", 140), ("country", "Country", 140), ("sf", "Start / finish", 170),
+                      ("sectors", "Sectors", 60), ("pits", "Pits", 90), ("radius", "Radius m", 70)):
+        trk_tree.heading(c, text=txt)
+        trk_tree.column(c, width=w, anchor="w" if c in ("name", "region", "country") else "center", stretch=(c == "name"))
+    trk_tree.grid(row=1, column=0, columnspan=2, sticky="nsew", pady=(6, 0))
+    trk_sb = ttk.Scrollbar(trk_box, command=trk_tree.yview)
+    trk_sb.grid(row=1, column=2, sticky="ns", pady=(6, 0))
+    trk_tree.configure(yscrollcommand=trk_sb.set)
+    trk_box.rowconfigure(1, weight=1)
+    trk_box.columnconfigure(0, weight=1)
+    trow = ttk.Frame(trk_box)
+    trow.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(8, 0))
+    trk_new_btn = ttk.Button(trow, text="New track…", style="Accent.TButton")
+    trk_new_btn.pack(side="left")
+    trk_edit_btn = ttk.Button(trow, text="Edit on map…")
+    trk_edit_btn.pack(side="left", padx=(6, 0))
+    trk_dup_btn = ttk.Button(trow, text="Duplicate")
+    trk_dup_btn.pack(side="left", padx=(6, 0))
+    trk_del_btn = ttk.Button(trow, text="Delete", style="Danger.TButton")
+    trk_del_btn.pack(side="left", padx=(6, 0))
+    trk_gmaps_btn = ttk.Button(trow, text="Open in Google Maps")
+    trk_gmaps_btn.pack(side="left", padx=(18, 0))
+    trk_upload_btn = ttk.Button(trow, text="Upload to device", style="Accent.TButton")
+    trk_upload_btn.pack(side="right")
+    trk_download_btn = ttk.Button(trow, text="Download from device")
+    trk_download_btn.pack(side="right", padx=(0, 6))
+    trk_open_btn = ttk.Button(trow, text="Open tracks.txt…")
+    trk_open_btn.pack(side="right", padx=(0, 18))
+    trk_saveas_btn = ttk.Button(trow, text="Save copy as…")
+    trk_saveas_btn.pack(side="right", padx=(0, 6))
+    trk_status = ttk.Label(trk_box, style="Muted.TLabel", wraplength=1100, justify="left", text="")
+    trk_status.grid(row=3, column=0, columnspan=3, sticky="w", pady=(6, 0))
+
+    def trk_save_local():
+        if not lap["db"]:
+            return
+        try:
+            LOCAL_TRACKS.parent.mkdir(parents=True, exist_ok=True)
+            Path(lap["path"]).write_bytes(lap["db"].serialize())
+            lap["dirty"] = False
+        except OSError as e:
+            log(f"ERROR: could not save {lap['path']}: {e}")
+
+    def trk_load_local(path: Optional[str] = None):
+        if not _lt:
+            return
+        p = Path(path or lap["path"])
+        if p.is_file():
+            try:
+                lap["db"] = _lt.TrackDB.parse(p.read_bytes())
+                lap["path"] = str(p)
+                log(f"Loaded {len(lap['db'].tracks)} track(s) from {p}")
+            except Exception as e:
+                messagebox.showerror(APP_NAME, f"Couldn't read {p}:\n{e}", parent=root)
+                return
+        else:
+            # first run: start from the track database shipped with the app, if there is one
+            seed = next((c for c in [app_dir() / "tracks.txt",
+                                     Path(getattr(sys, "_MEIPASS", "") or "") / "tracks.txt",
+                                     Path(__file__).resolve().parent / "tracks.txt"] if c.is_file()), None)
+            lap["db"] = _lt.TrackDB.parse(seed.read_bytes()) if seed else _lt.TrackDB()
+            lap["path"] = str(p)
+            if seed:
+                log(f"Track database started from the bundled {seed.name} ({len(lap['db'].tracks)} tracks) → {p}")
+                trk_save_local()
+        fill_trk_tree()
+
+    def fill_trk_tree(*_):
+        db = lap["db"]
+        trk_tree.delete(*trk_tree.get_children())
+        if not db:
+            return
+        for i in db.sorted_view(trk_q.get()):
+            t = db.tracks[i]
+            pits = "".join(x for x, ok in (("E", t.pit_entry), ("S", t.pit_sf), ("X", t.pit_exit)) if ok)
+            trk_tree.insert("", "end", iid=str(i), values=(t.name, t.region, f"{t.country} ({t.cc})" if t.cc else t.country,
+                                                            _lt.fmt_pt(t.sf), len(t.sectors), pits or "—", t.radius))
+        trk_file_lbl.configure(text=f"{len(db.tracks)} tracks in {lap['path']}")
+        if db.tracks:
+            trk_status.configure(text=f"Edits are saved to {lap['path']} immediately; nothing reaches the device until you press 'Upload to device'. "
+                                      "The map editor opens in your web browser (needs internet for the satellite imagery).")
+        else:
+            trk_status.configure(text=f"No tracks yet. Your working copy lives at {lap['path']}. Get a database with 'Download from device' "
+                                      "(copies the device's tracks.txt there), or 'Open tracks.txt…' to work on a file you already have — "
+                                      "or just press 'New track…' to start one from scratch.")
+    trk_q.trace_add("write", fill_trk_tree)
+
+    def trk_selected() -> List[int]:
+        return [int(i) for i in trk_tree.selection()]
+
+    def editor() -> "_lt.EditorServer":
+        if lap["server"] is None:
+            def on_save(index: int, t: "_lt.Track") -> int:
+                db = lap["db"]
+                dup = db.find(t.name)
+                if index < 0:
+                    if dup is not None:
+                        raise ValueError(f"a track called '{t.name}' already exists")
+                    db.tracks.append(t)
+                    index = len(db.tracks) - 1
+                else:
+                    if dup is not None and dup != index:
+                        raise ValueError(f"another track is already called '{t.name}'")
+                    db.tracks[index] = t
+                trk_save_local()
+                log(f"Track saved: {t.name}  (S/F {_lt.fmt_pt(t.sf)}, {len(t.sectors)} sectors)")
+                ui(fill_trk_tree)
+                return index
+            lap["server"] = _lt.EditorServer(lambda: lap["db"], on_save)
+        return lap["server"]
+
+    def do_trk_edit(index: Optional[int] = None):
+        if index is None:
+            sel = trk_selected()
+            if len(sel) != 1:
+                messagebox.showinfo(APP_NAME, "Select one track to edit.", parent=root)
+                return
+            index = sel[0]
+        url = editor().open(index)
+        log(f"Track editor opened in your browser: {url}")
+        trk_status.configure(text=f"Editor open in your browser ({url}). Save there; the list here updates by itself.")
+
+    def do_trk_new():
+        do_trk_edit(-1)
+
+    def do_trk_dup():
+        sel = trk_selected()
+        if len(sel) != 1:
+            messagebox.showinfo(APP_NAME, "Select one track to duplicate.", parent=root)
+            return
+        src = lap["db"].tracks[sel[0]]
+        name = ask_string(root, tk, ttk, "Duplicate track", "Name for the copy:", src.name + " - Copy")
+        if not name:
+            return
+        if lap["db"].find(name) is not None:
+            messagebox.showerror(APP_NAME, f"A track called '{name}' already exists.", parent=root)
+            return
+        t = _lt.Track.from_line(src.to_line())
+        t.name = name
+        lap["db"].tracks.append(t)
+        trk_save_local()
+        fill_trk_tree()
+        log(f"Track duplicated: {src.name} → {name}")
+
+    def do_trk_del():
+        sel = trk_selected()
+        if not sel:
+            messagebox.showinfo(APP_NAME, "Select the track(s) to delete.", parent=root)
+            return
+        names = [lap["db"].tracks[i].name for i in sel]
+        if not messagebox.askyesno("Delete tracks?", f"Remove {len(names)} track(s) from the local database?\n\n  " + "\n  ".join(names[:15])
+                                   + ("\n  …" if len(names) > 15 else "") + "\n\n(The device is unchanged until you upload.)", icon="warning", parent=root):
+            return
+        for i in sorted(sel, reverse=True):
+            del lap["db"].tracks[i]
+        trk_save_local()
+        fill_trk_tree()
+        log(f"Deleted {len(names)} track(s): " + ", ".join(names))
+
+    def do_trk_gmaps():
+        sel = trk_selected()
+        if len(sel) != 1:
+            return
+        t = lap["db"].tracks[sel[0]]
+        p = t.sf or t.centre
+        if p:
+            import webbrowser
+            webbrowser.open(_lt.google_maps_url(p))
+
+    def do_trk_open():
+        path = filedialog.askopenfilename(title="Open a tracks.txt", filetypes=[("Tracks database", "*.txt"), ("All files", "*.*")], parent=root)
+        if path:
+            trk_load_local(path)
+
+    def do_trk_saveas():
+        dest = filedialog.asksaveasfilename(title="Save tracks.txt copy as…", initialfile="tracks.txt", defaultextension=".txt",
+                                            filetypes=[("Tracks database", "*.txt")], parent=root)
+        if dest:
+            Path(dest).write_bytes(lap["db"].serialize())
+            log(f"Saved a copy of the track database → {dest}")
+
+    def do_trk_download():
+        def worker():
+            if not gui_preflight():
+                raise RuntimeError(f"GARW device not reachable at {HOST}.")
+            with IC7Device(log, confirm) as dev:
+                dev.require_laptimer()
+                data = dev.read_text_file(_lt.TRACKS_FILE)
+            if not data:
+                raise RuntimeError(f"{_lt.TRACKS_FILE} is not on the device.")
+            db = _lt.TrackDB.parse(data)
+            if lap["db"].tracks and not confirm("Replace local tracks?", f"The device has {len(db.tracks)} tracks. Replace the {len(lap['db'].tracks)} "
+                                                 f"in your local tracks.txt with them?"):
+                log("Download cancelled — local tracks unchanged.")
+                return
+            lap["db"] = db
+            lap["path"] = str(LOCAL_TRACKS)
+            trk_save_local()
+            ui(fill_trk_tree)
+            log(f"Downloaded {len(db.tracks)} track(s) from the device → {LOCAL_TRACKS}")
+        start(worker)
+
+    def do_trk_upload():
+        db = lap["db"]
+        if not db or not db.tracks:
+            messagebox.showinfo(APP_NAME, "The local track database is empty.", parent=root)
+            return
+        bad = [(t.name, p) for t in db.tracks for p in t.problems()]
+        if bad:
+            messagebox.showerror(APP_NAME, "Fix these before uploading:\n\n" + "\n".join(f"{n}: {p}" for n, p in bad[:12]), parent=root)
+            return
+        if not messagebox.askyesno("Replace track database on device?",
+                                   f"Upload {len(db.tracks)} tracks to {_lt.TRACKS_FILE}, replacing the database on the device?\n\n"
+                                   "The GARW binary restarts afterwards so the lap timer reloads it.", icon="warning", parent=root):
+            return
+
+        def worker():
+            if not gui_preflight():
+                raise RuntimeError(f"GARW device not reachable at {HOST}.")
+            log("=" * 60)
+            log(f"TRACK DATABASE: {len(db.tracks)} tracks → {_lt.TRACKS_FILE}")
+            with IC7Device(log, confirm) as dev:
+                dev.require_laptimer()
+                old = dev.read_text_file(_lt.TRACKS_FILE)
+                if old:
+                    bak = CONFIG_DIR / "tracks_backups" / f"tracks_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+                    bak.parent.mkdir(parents=True, exist_ok=True)
+                    bak.write_bytes(old)
+                    log(f"  previous device database backed up → {bak}")
+                dev.write_text_file(_lt.TRACKS_FILE, db.serialize(), "track database")
+                log("Restarting the GARW binary so the lap timer reloads the tracks …")
+                try:
+                    dev.restart_dash_app()
+                except Exception as e:
+                    log(f"WARNING: could not restart the GARW binary ({e}) — reboot the device to apply.")
+            log("Done.")
+            ui(lambda: messagebox.showinfo(APP_NAME, f"{len(db.tracks)} tracks uploaded to the device.", parent=root))
+        start(worker)
+
+    trk_new_btn.configure(command=do_trk_new)
+    trk_edit_btn.configure(command=lambda: do_trk_edit())
+    trk_dup_btn.configure(command=do_trk_dup)
+    trk_del_btn.configure(command=do_trk_del)
+    trk_gmaps_btn.configure(command=do_trk_gmaps)
+    trk_open_btn.configure(command=do_trk_open)
+    trk_saveas_btn.configure(command=do_trk_saveas)
+    trk_download_btn.configure(command=do_trk_download)
+    trk_upload_btn.configure(command=do_trk_upload)
+    trk_tree.bind("<Double-1>", lambda e: do_trk_edit())
+    if _lt:
+        trk_load_local()
+    else:
+        trk_status.configure(text="laptimer.py is missing next to garw_genie.py — the Lap Timer tab is unavailable.")
+
     # ---------- wiring ----------
     all_buttons = [add_btn, rm_btn, token_btn, join_btn, check_btn, install_sel_btn,
                    install_all_btn, refresh_btn, install_zip_btn, active_btn, dl_sel_btn, dl_all_btn, delete_btn, reboot_btn, restart_btn,
+                   mac_read_btn, mac_save_btn, trk_download_btn, trk_upload_btn,
                    cfg_refresh_btn, cfg_dl_btn, cfg_dl_all_btn, cfg_backup_btn, cfg_restore_btn, cfg_up_btn, sys_btn, fw_browse_btn]
 
     def set_buttons():
