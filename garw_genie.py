@@ -81,7 +81,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.5.6"
+APP_VERSION = "5.6.2"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -5377,10 +5377,10 @@ def run_gui(initial_zip: Optional[str] = None):
     trk_q = tk.StringVar()
     trk_q_ent = ttk.Entry(trow0, textvariable=trk_q, width=28)
     trk_q_ent.pack(side="left")
-    tcols = ("name", "region", "country", "sf", "sectors", "pits", "radius")
+    tcols = ("name", "type", "region", "country", "sf", "sectors", "pits", "radius")
     trk_tree = ttk.Treeview(trk_box, columns=tcols, show="headings", selectmode="extended", height=10)
-    for c, txt, w in (("name", "Track", 260), ("region", "Region", 140), ("country", "Country", 140), ("sf", "Start / finish", 170),
-                      ("sectors", "Sectors", 60), ("pits", "Pits", 90), ("radius", "Radius m", 70)):
+    for c, txt, w in (("name", "Track", 240), ("type", "Type", 110), ("region", "Region", 130), ("country", "Country", 140), ("sf", "Start", 170),
+                      ("sectors", "Sectors", 60), ("pits", "Pits", 60), ("radius", "Radius m", 70)):
         trk_tree.heading(c, text=txt)
         trk_tree.column(c, width=w, anchor="w" if c in ("name", "region", "country") else "center", stretch=(c == "name"))
     trk_tree.grid(row=1, column=0, columnspan=2, sticky="nsew", pady=(6, 0))
@@ -5454,8 +5454,9 @@ def run_gui(initial_zip: Optional[str] = None):
         for i in db.sorted_view(trk_q.get()):
             t = db.tracks[i]
             pits = "".join(x for x, ok in (("E", t.pit_entry), ("S", t.pit_sf), ("X", t.pit_exit)) if ok)
-            trk_tree.insert("", "end", iid=str(i), values=(t.name, t.region, f"{t.country} ({t.cc})" if t.cc else t.country,
-                                                            _lt.fmt_pt(t.sf), len(t.sectors), pits or "—", t.radius))
+            kind = ("Point-to-point" + (f" {t.start_hdg}°" if t.start_hdg is not None else "")) if t.point_to_point else "Circuit"
+            trk_tree.insert("", "end", iid=str(i), values=(t.name, kind, t.region, f"{t.country} ({t.cc})" if t.cc else t.country,
+                                                            _lt.fmt_pt(t.sf), len(t.sectors), ("—" if t.point_to_point else pits or "—"), t.radius))
         trk_file_lbl.configure(text=f"{len(db.tracks)} tracks in {lap['path']}")
         if db.tracks:
             trk_status.configure(text=f"Edits are saved to {lap['path']} immediately; nothing reaches the device until you press 'Upload to device'. "

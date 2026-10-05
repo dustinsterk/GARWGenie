@@ -6,6 +6,10 @@ tracks.txt format (LapTimer on the device):
     name|region|cc|country|sf_lat,sf_lng|radius_m|sec1;sec2;…|pit_entry|pit_sf|pit_exit|centre<RS>\\n
 Fields are '|'-separated, coordinates are 'lat,lng' with 6 decimals, sectors are ';'-separated,
 every record ends with ASCII RS (0x1e) followed by a newline.
+Point-to-point courses (autocross, hillclimb) add a 12th field, the finish point, after the centre —
+and optionally a 13th, the compass bearing (0–359) a run leaves the start in:
+    …|centre|finLat,finLng|startHdg
+With a finish present the dash times start→finish instead of lap to lap; pit points are ignored.
 """
 from __future__ import annotations
 
@@ -60,12 +64,22 @@ LAPTIMER_DIR = "/opt/IC7/library/LapTimer"       # the LapTimer dash — an opti
 RACEBOX_MAC_FILE = LAPTIMER_DIR + "/racebox_mac.txt"
 TRACKS_FILE = LAPTIMER_DIR + "/tracks.txt"
 MAX_SECTORS = 7
+RADIUS_DEFAULT, RADIUS_MIN, RADIUS_MAX = 50, 10, 300   # metres; the database uses 10–150, mostly 50 and 20
 
 LatLng = Tuple[float, float]
 
 
 def fmt_pt(p: Optional[LatLng]) -> str:
     return f"{p[0]:.6f},{p[1]:.6f}" if p else ""
+
+
+def bearing(a: LatLng, b: LatLng) -> int:
+    """Initial compass bearing from a to b, 0 = north, 90 = east."""
+    la1, la2 = math.radians(a[0]), math.radians(b[0])
+    dlon = math.radians(b[1] - a[1])
+    x = math.sin(dlon) * math.cos(la2)
+    y = math.cos(la1) * math.sin(la2) - math.sin(la1) * math.cos(la2) * math.cos(dlon)
+    return int(round(math.degrees(math.atan2(x, y)))) % 360
 
 
 def parse_pt(s: str) -> Optional[LatLng]:
@@ -89,24 +103,46 @@ class Track:
     pit_sf: Optional[LatLng] = None
     pit_exit: Optional[LatLng] = None
     centre: Optional[LatLng] = None
+    finish: Optional[LatLng] = None       # point-to-point course: separate finish (12th field)
+    start_hdg: Optional[int] = None       # bearing a run leaves the start in, degrees (13th field)
+
+    @property
+    def point_to_point(self) -> bool:
+        return self.finish is not None
 
     @classmethod
     def from_line(cls, line: str) -> "Track":
         f = line.split("|")
-        if len(f) != 11:
-            raise ValueError(f"expected 11 fields, got {len(f)}: {line[:60]}")
+        if len(f) < 11 or len(f) > 13:
+            raise ValueError(f"expected 11–13 fields, got {len(f)}: {line[:60]}")
+        hdg = None
+        if len(f) >= 13 and f[12].strip():
+            hdg = int(round(float(f[12]))) % 360
         return cls(name=f[0], region=f[1], cc=f[2], country=f[3], sf=parse_pt(f[4]),
                    radius=int(float(f[5])) if f[5].strip() else 50,
                    sectors=[parse_pt(p) for p in f[6].split(";") if p.strip()],
-                   pit_entry=parse_pt(f[7]), pit_sf=parse_pt(f[8]), pit_exit=parse_pt(f[9]), centre=parse_pt(f[10]))
+                   pit_entry=parse_pt(f[7]), pit_sf=parse_pt(f[8]), pit_exit=parse_pt(f[9]), centre=parse_pt(f[10]),
+                   finish=parse_pt(f[11]) if len(f) >= 12 else None, start_hdg=hdg)
 
     def to_line(self) -> str:
-        return "|".join([self.name, self.region, self.cc, self.country, fmt_pt(self.sf), str(self.radius),
-                         ";".join(fmt_pt(p) for p in self.sectors), fmt_pt(self.pit_entry), fmt_pt(self.pit_sf),
-                         fmt_pt(self.pit_exit), fmt_pt(self.centre or self.auto_centre())])
+        fields = [self.name, self.region, self.cc, self.country, fmt_pt(self.sf), str(self.radius),
+                  ";".join(fmt_pt(p) for p in self.sectors), fmt_pt(self.pit_entry), fmt_pt(self.pit_sf),
+                  fmt_pt(self.pit_exit), fmt_pt(self.centre or self.auto_centre())]
+        if self.finish:                      # circuits keep the plain 11-field line, byte for byte
+            fields.append(fmt_pt(self.finish))
+            if self.start_hdg is not None:
+                fields.append(str(int(self.start_hdg) % 360))
+        return "|".join(fields)
 
     def points(self) -> List[LatLng]:
-        return [p for p in [self.sf, *self.sectors, self.pit_entry, self.pit_sf, self.pit_exit] if p]
+        return [p for p in [self.sf, *self.sectors, self.finish, self.pit_entry, self.pit_sf, self.pit_exit] if p]
+
+    def suggested_heading(self) -> Optional[int]:
+        """Bearing from the start to the first split (or the finish) — a rough start direction."""
+        nxt = self.sectors[0] if self.sectors else self.finish
+        if not self.sf or not nxt:
+            return None
+        return bearing(self.sf, nxt)
 
     def auto_centre(self) -> Optional[LatLng]:
         pts = self.points()
@@ -124,25 +160,30 @@ class Track:
             out.append("no start/finish point")
         if len(self.sectors) > MAX_SECTORS:
             out.append(f"more than {MAX_SECTORS} sectors")
-        if self.radius <= 0:
-            out.append("radius must be positive")
-        if (self.pit_entry is None) != (self.pit_exit is None):
+        if not (RADIUS_MIN <= self.radius <= RADIUS_MAX):
+            out.append(f"radius must be {RADIUS_MIN}–{RADIUS_MAX} m")
+        if not self.point_to_point and (self.pit_entry is None) != (self.pit_exit is None):
             out.append("pit entry and pit exit go together")
+        if self.start_hdg is not None and not (0 <= self.start_hdg < 360):
+            out.append("start direction must be 0–359°")
         return out
 
     def to_json(self) -> dict:
         return {"name": self.name, "region": self.region, "cc": self.cc, "country": self.country,
                 "sf": self.sf, "radius": self.radius, "sectors": self.sectors, "pit_entry": self.pit_entry,
-                "pit_sf": self.pit_sf, "pit_exit": self.pit_exit, "centre": self.centre or self.auto_centre()}
+                "pit_sf": self.pit_sf, "pit_exit": self.pit_exit, "centre": self.centre or self.auto_centre(),
+                "finish": self.finish, "start_hdg": self.start_hdg}
 
     @classmethod
     def from_json(cls, d: dict) -> "Track":
         pt = lambda v: (float(v[0]), float(v[1])) if v else None  # noqa: E731
         return cls(name=str(d.get("name", "")).strip(), region=str(d.get("region", "")).strip(),
                    cc=str(d.get("cc", "")).strip().upper()[:2], country=str(d.get("country", "")).strip(),
-                   sf=pt(d.get("sf")), radius=int(d.get("radius") or 50),
+                   sf=pt(d.get("sf")), radius=int(d.get("radius") or RADIUS_DEFAULT),
                    sectors=[pt(p) for p in d.get("sectors") or [] if p], pit_entry=pt(d.get("pit_entry")),
-                   pit_sf=pt(d.get("pit_sf")), pit_exit=pt(d.get("pit_exit")), centre=pt(d.get("centre")))
+                   pit_sf=pt(d.get("pit_sf")), pit_exit=pt(d.get("pit_exit")), centre=pt(d.get("centre")),
+                   finish=pt(d.get("finish")),
+                   start_hdg=(int(round(float(d["start_hdg"]))) % 360) if d.get("start_hdg") not in (None, "") else None)
 
 
 class TrackDB:
@@ -278,7 +319,7 @@ EDITOR_HTML = r"""<!doctype html>
 <div class="row"><div><label>Region</label><input id="region"></div><div><label>Country code</label><input id="cc" maxlength="2"></div></div>
 <label>Country</label><input id="country">
 <div class="row" style="margin-top:6px"><button id="geo">Fill region / country from the start / finish location</button></div>
-<label>Radius (m) — how close the car must pass a point to trigger it</label><input id="radius" type="number" min="5" max="500">
+<label>Radius (m) — how close the car must pass a point to trigger it (10–300; 50 suits most circuits, 20 for small or kart tracks)</label><input id="radius" type="number" min="10" max="300" step="5" value="50">
 <label>Place on the map (pick a tool, then click; drag any marker to move it)</label>
 <div class="tools">
  <button class="tool" data-t="sf"><span class="dot" style="background:#ff7a1a"></span>Start / finish</button>
@@ -287,7 +328,12 @@ EDITOR_HTML = r"""<!doctype html>
  <button class="tool" data-t="pit_sf"><span class="dot" style="background:#c08bff"></span>Pit start / finish</button>
  <button class="tool" data-t="pit_exit"><span class="dot" style="background:#5fd38a"></span>Pit exit</button>
  <button class="tool" data-t="centre"><span class="dot" style="background:#ffffff"></span>Track centre</button>
+ <button class="tool" data-t="finish"><span class="dot" style="background:#ff3b6b"></span>Finish (point-to-point)</button>
+ <button class="tool" data-t="hdg"><span class="dot" style="background:#ffffff;border:2px solid #ff7a1a;box-sizing:border-box"></span>Start direction: click ahead</button>
 </div>
+<div class="row" style="margin-top:6px;align-items:end"><div style="flex:0 0 150px"><label>Start direction (° , 0 = N)</label><input id="hdg" type="number" min="0" max="359" placeholder="not set"></div>
+<div class="hint" id="kind" style="margin:0 0 6px 8px">Circuit — laps time start/finish to start/finish.</div></div>
+<div class="hint" id="hdghint"></div>
 <ul id="list"></ul>
 <label>Jump to… (paste a Google Maps link, or lat, lng)</label>
 <div class="row"><input id="jump" placeholder="https://www.google.com/maps/@…  or  51.0, -1.0"><button id="go" style="flex:0 0 auto">Go</button></div>
@@ -300,8 +346,16 @@ EDITOR_HTML = r"""<!doctype html>
 </div><div id="map"></div></div>
 <script>
 const q = new URLSearchParams(location.search); const idx = parseInt(q.get("i") ?? "-1", 10);
-const COL = {sf:"#ff7a1a", sector:"#3b9cff", pit_entry:"#ffd23b", pit_sf:"#c08bff", pit_exit:"#5fd38a", centre:"#ffffff"};
-const NAMES = {sf:"Start / finish", sector:"Sector", pit_entry:"Pit entry", pit_sf:"Pit start / finish", pit_exit:"Pit exit", centre:"Track centre"};
+const COL = {sf:"#ff7a1a", sector:"#3b9cff", pit_entry:"#ffd23b", pit_sf:"#c08bff", pit_exit:"#5fd38a", centre:"#ffffff", finish:"#ff3b6b"};
+const NAMES = {sf:"Start / finish", sector:"Sector", pit_entry:"Pit entry", pit_sf:"Pit start / finish", pit_exit:"Pit exit", centre:"Track centre", finish:"Finish"};
+let hdgArrow = null;
+function bearing(a, b){ const r = Math.PI/180, la1 = a.lat*r, la2 = b.lat*r, dl = (b.lng-a.lng)*r;
+  const x = Math.sin(dl)*Math.cos(la2), y = Math.cos(la1)*Math.sin(la2) - Math.sin(la1)*Math.cos(la2)*Math.cos(dl);
+  return (Math.round(Math.atan2(x, y)/r) + 360) % 360; }
+function destPoint(a, brgDeg, metres){ const R = 6371000, r = Math.PI/180, d = metres/R, b = brgDeg*r, la1 = a.lat*r, lo1 = a.lng*r;
+  const la2 = Math.asin(Math.sin(la1)*Math.cos(d) + Math.cos(la1)*Math.sin(d)*Math.cos(b));
+  const lo2 = lo1 + Math.atan2(Math.sin(b)*Math.sin(d)*Math.cos(la1), Math.cos(d) - Math.sin(la1)*Math.sin(la2));
+  return L.latLng(la2/r, lo2/r); }
 let tool = null, track = null, markers = {sectors: []}, dirty = false, lapLine = null;
 const map = L.map("map", {zoomControl:true}).setView([20, 0], 2);
 const esri = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {maxZoom: 20, attribution: "Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community"}).addTo(map);
@@ -329,11 +383,14 @@ function removeMarker(m){
   markDirty(true); render();
 }
 function setPoint(kind, latlng){
+  if (kind === "hdg"){ if (!markers.sf) { status("Place the start first, then click a point the car heads towards", "err"); return; }
+    document.getElementById("hdg").value = bearing(markers.sf.getLatLng(), latlng); markDirty(true); render(); return; }
   if (kind === "sector"){ if (markers.sectors.length >= 7) { status("Maximum 7 sectors", "err"); return; } markers.sectors.push(mk("sector", latlng, markers.sectors.length+1)); }
   else { if (markers[kind]) map.removeLayer(markers[kind]); markers[kind] = mk(kind, latlng); }
   markDirty(true); render();
   if (kind === "sf" && !v("region") && !v("country") && !v("cc")) geocode(false);   // new track: fill the blanks
 }
+function isP2P(){ return !!markers.finish; }
 async function geocode(force){
   if (!markers.sf) { status("Place the start / finish first", "err"); return; }
   const p = markers.sf.getLatLng(); status("Looking up region / country …", "");
@@ -349,11 +406,35 @@ document.getElementById("geo").onclick = () => geocode(true);
 function render(){
   markers.sectors.forEach((m,i) => { m.n = i+1; m.setTooltipContent(`S${i+1}`); });
   if (lapLine) { map.removeLayer(lapLine); lapLine = null; }
-  if (markers.sf && markers.sectors.length) { const pts = [markers.sf.getLatLng(), ...markers.sectors.map(m => m.getLatLng()), markers.sf.getLatLng()];
-    lapLine = L.polyline(pts, {color: "#3b9cff", weight: 2, dashArray: "6 6", opacity: .7}).addTo(map); }
+  if (markers.sf && (markers.sectors.length || markers.finish)) {
+    const pts = [markers.sf.getLatLng(), ...markers.sectors.map(m => m.getLatLng()), (markers.finish || markers.sf).getLatLng()];
+    lapLine = L.polyline(pts, {color: isP2P() ? "#ff3b6b" : "#3b9cff", weight: 2, dashArray: "6 6", opacity: .7}).addTo(map); }
+  // start-direction arrow (typed value, or the suggested one from the first split / finish)
+  if (hdgArrow) { map.removeLayer(hdgArrow); hdgArrow = null; }
+  const hh = document.getElementById("hdghint");
+  if (markers.sf) { const typed = v("hdg"); const nxt = markers.sectors[0] || markers.finish;
+    if (typed !== "") {   // set by you: solid arrow — this is what gets written to the file
+      const h = +typed, a = markers.sf.getLatLng(), tip = destPoint(a, h, 60), l1 = destPoint(tip, h + 150, 18), l2 = destPoint(tip, h - 150, 18);
+      hdgArrow = L.polyline([[a, tip], [l1, tip, l2]], {color: "#ff7a1a", weight: 3, opacity: .9}).addTo(map);
+      hh.textContent = `Start direction ${h}° will be saved.`; hh.style.color = "";
+    } else {
+      // Not set: nothing is written; the dash learns the direction from the first start crossing. Show the
+      // straight line to S1 only as a faint reference — on a hairpin start it points the WRONG way.
+      if (nxt) { const g = bearing(markers.sf.getLatLng(), nxt.getLatLng()), a = markers.sf.getLatLng();
+        hdgArrow = L.polyline([a, destPoint(a, g, 60)], {color: "#8b93a1", weight: 2, opacity: .6, dashArray: "2 6"}).addTo(map); }
+      hh.textContent = isP2P()
+        ? "Start direction not set — the dash will learn it from your first start crossing (a wrong-way crossing before the first run starts a bogus run). Set it with 'click ahead': click a spot the car heads towards just after the start." + (nxt ? ` The grey dashes point straight at S1 — that is NOT the direction if the start is followed by a hairpin.` : "")
+        : "Optional. Set it with 'click ahead' if you want the dash to know which way runs leave the start.";
+      hh.style.color = isP2P() ? "var(--accent)" : "";
+    } } else hh.textContent = "";
+  const p2p = isP2P();
+  document.getElementById("kind").textContent = p2p ? "Point-to-point — runs time start → finish; pit points are ignored." : "Circuit — laps time start/finish to start/finish.";
+  document.querySelectorAll(".tool").forEach(b => { if (["pit_entry","pit_sf","pit_exit"].includes(b.dataset.t)) { b.disabled = p2p; b.style.opacity = p2p ? .4 : 1; } });
+  document.querySelector(".tool[data-t=sf]").lastChild.textContent = p2p ? "Start" : "Start / finish";
+  if (markers.sf) markers.sf.setTooltipContent(p2p ? "Start" : "Start / finish");
   const ul = document.getElementById("list"); ul.innerHTML = "";
   const rows = [];
-  for (const k of ["sf","centre","pit_entry","pit_sf","pit_exit"]) if (markers[k]) rows.push([NAMES[k], markers[k]]);
+  for (const k of ["sf","finish","centre","pit_entry","pit_sf","pit_exit"]) if (markers[k]) rows.push([k === "sf" && isP2P() ? "Start" : NAMES[k], markers[k]]);
   markers.sectors.forEach((m,i) => rows.push([`Sector ${i+1}`, m]));
   for (const [label, m] of rows){
     const ll = m.getLatLng(); const li = document.createElement("li");
@@ -368,18 +449,21 @@ document.querySelectorAll(".tool").forEach(b => b.onclick = () => { tool = b.dat
 map.on("click", e => { if (tool) setPoint(tool, e.latlng); });
 function ll(m){ if(!m) return null; const p = m.getLatLng(); return [+p.lat.toFixed(6), +p.lng.toFixed(6)]; }
 function collect(){
-  return {name: v("name"), region: v("region"), cc: v("cc"), country: v("country"), radius: parseInt(v("radius")||"50",10),
-          sf: ll(markers.sf), sectors: markers.sectors.map(ll), pit_entry: ll(markers.pit_entry), pit_sf: ll(markers.pit_sf), pit_exit: ll(markers.pit_exit), centre: ll(markers.centre)};
+  return {name: v("name"), region: v("region"), cc: v("cc"), country: v("country"), radius: Math.min(300, Math.max(10, parseInt(v("radius")||"50",10) || 50)),
+          sf: ll(markers.sf), sectors: markers.sectors.map(ll), pit_entry: ll(markers.pit_entry), pit_sf: ll(markers.pit_sf), pit_exit: ll(markers.pit_exit), centre: ll(markers.centre),
+          finish: ll(markers.finish), start_hdg: v("hdg") === "" ? null : +v("hdg")};
 }
 function v(id){ return document.getElementById(id).value.trim(); }
 function load(t){
   track = t; for (const k of ["name","region","cc","country","radius"]) document.getElementById(k).value = t[k] ?? "";
-  for (const k of ["sf","pit_entry","pit_sf","pit_exit","centre"]) if (t[k]) markers[k] = mk(k, t[k]);
+  if (!document.getElementById("radius").value) document.getElementById("radius").value = 50;
+  for (const k of ["sf","pit_entry","pit_sf","pit_exit","centre","finish"]) if (t[k]) markers[k] = mk(k, t[k]);
+  document.getElementById("hdg").value = (t.start_hdg === null || t.start_hdg === undefined) ? "" : t.start_hdg;
   (t.sectors||[]).forEach((p,i) => markers.sectors.push(mk("sector", p, i+1)));
   render(); fit();
 }
 function fit(){
-  const pts = []; for (const k of ["sf","pit_entry","pit_sf","pit_exit","centre"]) if (markers[k]) pts.push(markers[k].getLatLng()); markers.sectors.forEach(m => pts.push(m.getLatLng()));
+  const pts = []; for (const k of ["sf","pit_entry","pit_sf","pit_exit","centre","finish"]) if (markers[k]) pts.push(markers[k].getLatLng()); markers.sectors.forEach(m => pts.push(m.getLatLng()));
   if (pts.length > 1) map.fitBounds(L.latLngBounds(pts).pad(0.3)); else if (pts.length === 1) map.setView(pts[0], 16);
 }
 document.getElementById("fit").onclick = fit;
@@ -389,6 +473,10 @@ document.getElementById("go").onclick = async () => {
 };
 document.getElementById("jump").addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("go").onclick(); });
 for (const id of ["name","region","cc","country","radius"]) document.getElementById(id).addEventListener("input", () => markDirty(true));
+document.getElementById("hdg").addEventListener("input", () => { markDirty(true); render(); });
+document.getElementById("radius").addEventListener("change", () => { const r = document.getElementById("radius"); const n = parseInt(r.value, 10);
+  if (isNaN(n)) r.value = 50; else if (n < 10) { r.value = 10; status("Radius raised to 10 m — smaller than that and GPS error can miss the crossing", "err"); }
+  else if (n > 300) { r.value = 300; status("Radius capped at 300 m", "err"); } });
 document.getElementById("gmaps").onclick = () => { const c = map.getCenter(); window.open(`https://www.google.com/maps/@${c.lat.toFixed(6)},${c.lng.toFixed(6)},${Math.min(map.getZoom(),20)}z/data=!3m1!1e3`, "_blank"); };
 document.getElementById("save").onclick = async () => {
   const body = collect(); body.index = idx;
@@ -396,7 +484,7 @@ document.getElementById("save").onclick = async () => {
   const j = await r.json();
   const btn = document.getElementById("save");
   if (j.ok) { markDirty(false); status(`Saved "${body.name}" to the local tracks.txt (${j.count} tracks).`, "ok");
-    toast(`✓ Saved "${body.name}" — ${j.count} tracks in the local database`);
+    toast(`✓ Saved "${body.name}" — ${j.count} tracks in the local database` + (body.finish && body.start_hdg === null ? "  (no start direction set)" : ""));
     btn.textContent = "✓ Saved"; btn.classList.add("saved"); setTimeout(() => { btn.textContent = "Save track"; btn.classList.remove("saved"); }, 2500);
     if (idx < 0 && j.index >= 0) history.replaceState(null, "", "?i=" + j.index); }
   else { status(j.error || "Save failed", "err"); toast("✗ Not saved: " + (j.error || "save failed"), true); }
