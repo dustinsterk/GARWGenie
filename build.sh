@@ -28,6 +28,7 @@ pyinstaller --noconfirm --clean \
   --osx-bundle-identifier com.turnautomotive.garwgenie \
   --add-data "assets:assets" \
   --add-data "default_repos.txt:." \
+  --add-data "TrackList.txt:." \
   --hidden-import certifi \
   --hidden-import PIL._tkinter_finder \
   --collect-all imageio_ffmpeg \

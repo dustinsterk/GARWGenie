@@ -62,7 +62,18 @@ def racebox_render(value: str, existing: Optional[bytes]) -> bytes:
     return (value + "\n" + rest.rstrip("\n") + "\n").encode("utf-8")
 LAPTIMER_DIR = "/opt/IC7/library/LapTimer"       # the LapTimer dash — an optional add-on, not on every device
 RACEBOX_MAC_FILE = LAPTIMER_DIR + "/racebox_mac.txt"
-TRACKS_FILE = LAPTIMER_DIR + "/tracks.txt"
+USER_TRACKS_FILE = LAPTIMER_DIR + "/UserTracks.txt"   # the only track file the tool reads or writes on the device
+USER_TRACKS_TEMPLATE = """# UserTracks.txt - your own tracks, added to the LapTimer's track library.
+# One track per line, same format as the library:
+#   name|state|cc|country|startLat,startLon|width|splits|pitIn|pitSF|pitOut|ctrLat,ctrLon[|finLat,finLon|startHdg]
+# - keep all 11 standard fields (empty ones as ||), splits separated by ;
+# - add finLat,finLon (and startHdg) for a point-to-point course
+# - a line with the same name as a library track replaces that track
+#   (TrackList.txt lists the library's names, regions and countries)
+# - lines starting with # are ignored; plain newlines are fine
+# Example (remove the # to use it):
+#Test Course|KS|US|United States|39.000000,-99.000000|20|39.002000,-99.000000||||39.000000,-99.000000|39.000000,-98.999700|0
+"""
 MAX_SECTORS = 7
 RADIUS_DEFAULT, RADIUS_MIN, RADIUS_MAX = 50, 10, 300   # metres; the database uses 10–150, mostly 50 and 20
 
@@ -224,6 +235,74 @@ class TrackDB:
         return sorted(idx, key=lambda i: (self.tracks[i].country.lower(), self.tracks[i].name.lower()))
 
 
+@dataclass
+class LibraryEntry:
+    """A track the LapTimer dash ships with (from TrackList.txt): name, where it is, rough centre."""
+    name: str
+    region: str = ""
+    cc: str = ""
+    country: str = ""
+    centre: Optional[LatLng] = None
+
+
+class TrackLibrary:
+    """TrackList.txt — read-only list of the dash's built-in tracks (2 dp centres)."""
+
+    def __init__(self) -> None:
+        self.entries: List[LibraryEntry] = []
+        self.by_name: dict = {}
+
+    @classmethod
+    def parse(cls, data: bytes) -> "TrackLibrary":
+        lib = cls()
+        for line in data.decode("utf-8", "replace").replace("\r", "").split("\n"):
+            if not line.strip() or line.startswith("#"):
+                continue
+            f = line.split("|")
+            if len(f) < 4:
+                continue
+            e = LibraryEntry(name=f[0].strip(), region=f[1].strip(), cc=f[2].strip(), country=f[3].strip(),
+                             centre=parse_pt(f[4]) if len(f) > 4 and f[4].strip() else None)
+            lib.entries.append(e)
+            lib.by_name[e.name] = e
+        return lib
+
+
+class UserTrackDB:
+    """UserTracks.txt — the user's own tracks: plain newline-separated lines, '#' comments kept,
+    no header, no record separators. Same per-line format as the library (11–13 fields)."""
+
+    def __init__(self) -> None:
+        self.tracks: List[Track] = []
+        self.comments: List[str] = []    # leading comment block, kept verbatim on save
+
+    @classmethod
+    def parse(cls, data: bytes) -> "UserTrackDB":
+        db = cls()
+        bad = []
+        for raw in data.decode("utf-8", "replace").replace("\r", "").replace(RS, "").split("\n"):
+            line = raw.rstrip()
+            if not line.strip():
+                continue
+            if line.lstrip().startswith("#"):
+                db.comments.append(line)
+                continue
+            try:
+                db.tracks.append(Track.from_line(line))
+            except Exception as e:  # noqa: BLE001
+                bad.append(f"{line[:50]}… ({e})")
+        if bad:
+            raise ValueError("Unreadable line(s) in UserTracks.txt:\n" + "\n".join(bad[:5]))
+        return db
+
+    def serialize(self) -> bytes:
+        comments = self.comments or USER_TRACKS_TEMPLATE.rstrip("\n").split("\n")
+        return ("\n".join(comments) + "\n" + "".join(t.to_line() + "\n" for t in self.tracks)).encode("utf-8")
+
+    def find(self, name: str) -> Optional[int]:
+        return next((i for i, t in enumerate(self.tracks) if t.name == name), None)
+
+
 def parse_google_maps_link(text: str) -> Optional[LatLng]:
     """lat,lng out of a pasted Google Maps URL (or a plain 'lat, lng')."""
     s = (text or "").strip()
@@ -342,10 +421,10 @@ EDITOR_HTML = r"""<!doctype html>
 <div id="unsaved">● Unsaved changes</div>
 <div id="status"></div>
 <div id="toast"></div>
-<div class="hint">Imagery © Esri, Maxar, Earthstar Geographics. Right-click a marker to delete it. Saving writes to the local tracks.txt in GARW Genie; upload it to the device from the Lap Timer tab.</div>
+<div class="hint">Imagery © Esri, Maxar, Earthstar Geographics. Right-click a marker to delete it. Saving writes to your local UserTracks.txt in GARW Genie; upload it to the device from the Lap Timer tab.</div>
 </div><div id="map"></div></div>
 <script>
-const q = new URLSearchParams(location.search); const idx = parseInt(q.get("i") ?? "-1", 10);
+const q = new URLSearchParams(location.search); const idx = parseInt(q.get("i") ?? "-1", 10); const libName = q.get("lib");
 const COL = {sf:"#ff7a1a", sector:"#3b9cff", pit_entry:"#ffd23b", pit_sf:"#c08bff", pit_exit:"#5fd38a", centre:"#ffffff", finish:"#ff3b6b"};
 const NAMES = {sf:"Start / finish", sector:"Sector", pit_entry:"Pit entry", pit_sf:"Pit start / finish", pit_exit:"Pit exit", centre:"Track centre", finish:"Finish"};
 let hdgArrow = null;
@@ -458,6 +537,7 @@ function load(t){
   track = t; for (const k of ["name","region","cc","country","radius"]) document.getElementById(k).value = t[k] ?? "";
   if (!document.getElementById("radius").value) document.getElementById("radius").value = 50;
   for (const k of ["sf","pit_entry","pit_sf","pit_exit","centre","finish"]) if (t[k]) markers[k] = mk(k, t[k]);
+  if (t.library_prefill_no_centre_marker) {}
   document.getElementById("hdg").value = (t.start_hdg === null || t.start_hdg === undefined) ? "" : t.start_hdg;
   (t.sectors||[]).forEach((p,i) => markers.sectors.push(mk("sector", p, i+1)));
   render(); fit();
@@ -483,15 +563,18 @@ document.getElementById("save").onclick = async () => {
   const r = await fetch("/api/track", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
   const j = await r.json();
   const btn = document.getElementById("save");
-  if (j.ok) { markDirty(false); status(`Saved "${body.name}" to the local tracks.txt (${j.count} tracks).`, "ok");
-    toast(`✓ Saved "${body.name}" — ${j.count} tracks in the local database` + (body.finish && body.start_hdg === null ? "  (no start direction set)" : ""));
+  if (j.ok) { markDirty(false); status(`Saved "${body.name}" to the local UserTracks.txt (${j.count} custom tracks).`, "ok");
+    toast(`✓ Saved "${body.name}" — ${j.count} custom track${j.count === 1 ? "" : "s"} in UserTracks.txt` + (body.finish && body.start_hdg === null ? "  (no start direction set)" : ""));
     btn.textContent = "✓ Saved"; btn.classList.add("saved"); setTimeout(() => { btn.textContent = "Save track"; btn.classList.remove("saved"); }, 2500);
     if (idx < 0 && j.index >= 0) history.replaceState(null, "", "?i=" + j.index); }
   else { status(j.error || "Save failed", "err"); toast("✗ Not saved: " + (j.error || "save failed"), true); }
 };
 document.getElementById("close").onclick = () => { if (!dirty || confirm("Discard unsaved changes?")) window.close(); };
 window.addEventListener("beforeunload", e => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
-fetch("/api/track?i=" + idx).then(r => r.json()).then(j => { if (j.track) load(j.track); else { status("New track — place the start/finish first.", ""); } });
+fetch("/api/track?i=" + idx + (libName ? "&lib=" + encodeURIComponent(libName) : "")).then(r => r.json()).then(j => {
+  if (j.track) { load(j.track); if (j.library) { if (j.track.centre) map.setView(j.track.centre, 15);
+      status(`"${j.track.name}" is a GARW library track. Place the start/finish and splits here; saving creates your own version in UserTracks.txt, which replaces the library one on the device.`, ""); } }
+  else { status("New track — place the start/finish first.", ""); } });
 </script></body></html>
 """
 
@@ -499,10 +582,11 @@ fetch("/api/track?i=" + idx).then(r => r.json()).then(j => { if (j.track) load(j
 class EditorServer:
     """Serves the Leaflet editor on 127.0.0.1 and relays saves back into the TrackDB."""
 
-    def __init__(self, db_getter: Callable[[], TrackDB], on_save: Callable[[int, Track], int],
-                 static_dirs: Optional[List[str]] = None) -> None:
+    def __init__(self, db_getter: Callable[[], object], on_save: Callable[[int, Track], int],
+                 static_dirs: Optional[List[str]] = None, library: Optional[TrackLibrary] = None) -> None:
         self.db_getter = db_getter
         self.on_save = on_save
+        self.library = library
         here = os.path.dirname(os.path.abspath(__file__))
         self.static_dirs = static_dirs or [os.path.join(getattr(sys, "_MEIPASS", here), "assets", "leaflet"),
                                            os.path.join(here, "assets", "leaflet")]
@@ -557,7 +641,14 @@ class EditorServer:
                 elif u.path == "/api/track":
                     i = int(qs.get("i", ["-1"])[0])
                     db = server.db_getter()
-                    self._json({"track": db.tracks[i].to_json() if 0 <= i < len(db.tracks) else None, "index": i})
+                    if 0 <= i < len(db.tracks):
+                        self._json({"track": db.tracks[i].to_json(), "index": i})
+                    elif qs.get("lib") and server.library and qs["lib"][0] in server.library.by_name:
+                        e = server.library.by_name[qs["lib"][0]]   # a GARW library track: prefill name/place, user adds the points
+                        self._json({"track": {"name": e.name, "region": e.region, "cc": e.cc, "country": e.country, "centre": e.centre,
+                                              "radius": RADIUS_DEFAULT, "sectors": []}, "index": -1, "library": True})
+                    else:
+                        self._json({"track": None, "index": i})
                 elif u.path == "/api/geocode":
                     try:
                         self._json(reverse_geocode(float(qs["lat"][0]), float(qs["lng"][0])))
@@ -591,11 +682,12 @@ class EditorServer:
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
         return self.port
 
-    def url(self, index: int) -> str:
-        return f"http://127.0.0.1:{self.start()}/?i={index}"
+    def url(self, index: int, lib_name: Optional[str] = None) -> str:
+        from urllib.parse import quote
+        return f"http://127.0.0.1:{self.start()}/?i={index}" + (f"&lib={quote(lib_name)}" if lib_name else "")
 
-    def open(self, index: int) -> str:
-        url = self.url(index)
+    def open(self, index: int, lib_name: Optional[str] = None) -> str:
+        url = self.url(index, lib_name)
         webbrowser.open(url)
         return url
 

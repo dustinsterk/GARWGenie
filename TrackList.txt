@@ -1,0 +1,2565 @@
+# LapTimer track list (2563 tracks): name|region|cc|country|ctrLat,ctrLon
+# Centres are approximate (2 decimals). To add or change a track, use UserTracks.txt.
+Luanda|Luanda|AO|Angola|-9.01,13.10
+9 de Julio No1|Buenos Aires|AR|Argentina|-35.43,-60.91
+9 de Julio No2|Buenos Aires|AR|Argentina|-35.43,-60.91
+Aeroclub 25 de Mayo - 25|Buenos Aires|AR|Argentina|-35.45,-60.09
+Aeroclub 25 De Mayo - 25 2|Buenos Aires|AR|Argentina|-35.45,-60.09
+Auto Club Castelli|Buenos Aires|AR|Argentina|-36.04,-57.80
+Autodromo Dante Fuhr|La Pampa|AR|Argentina|-37.38,-63.75
+Autodromo de La Rioja - Full|La Rioja|AR|Argentina|-29.41,-66.88
+Autodromo de La Rioja - Kar|La Rioja|AR|Argentina|-29.41,-66.89
+Autodromo De Zapala|Neuquen|AR|Argentina|-38.87,-70.10
+Autodromo Enrique Seeber|Misiones|AR|Argentina|-26.39,-54.66
+Automoto Club Ricardo Risatti - 2|Cordoba|AR|Argentina|-34.11,-63.40
+Automoto Club Ricardo Risatti - Short|Cordoba|AR|Argentina|-34.11,-63.40
+Belgrano Motor Club - Full|Santa Fe|AR|Argentina|-31.91,-61.40
+Cabalen - Corto|Cordoba|AR|Argentina|-31.57,-64.37
+Cabalen - Largo|Cordoba|AR|Argentina|-31.57,-64.36
+Cabalen - Nuevo|Cordoba|AR|Argentina|-31.57,-64.36
+Casilda|Santa Fe|AR|Argentina|-33.06,-61.18
+Circuito De Motos Jorge Marengo - Full|Santa Fe|AR|Argentina|-30.53,-61.97
+Circuito San Pablo - South|Santa Fe|AR|Argentina|-32.20,-61.69
+Circuito San Pablo - South Oval|Sante Fe|AR|Argentina|-32.20,-61.69
+Club Midgistas del Sur|Buenos Aires|AR|Argentina|-38.70,-62.19
+Colon|Buenos Aires|AR|Argentina|-33.91,-61.11
+Comodoro Rivadavia - Long|Chubut|AR|Argentina|-45.90,-67.54
+Comodoro Rivadavia - Short|Chubut|AR|Argentina|-45.90,-67.55
+Complejo Deporte Motor Morteros - Full|Cordoba|AR|Argentina|-30.69,-61.99
+Concepcion|Entre Rios|AR|Argentina|-32.46,-58.31
+Concordia Largo|Salto|AR|Argentina|-31.31,-58.00
+Crisol|Buenos Aires|AR|Argentina|-38.68,-62.18
+Cycles Moto Club Franck|Santa Fe|AR|Argentina|-31.58,-60.97
+Eusebio Marcilla|Buenos Aires|AR|Argentina|-34.65,-61.02
+Gualeguaychu|Entre Rios|AR|Argentina|-33.00,-58.61
+Gualeguaychu - Inverso|Entre Rios|AR|Argentina|-33.00,-58.61
+Hipodromo de Villa Trinidad|Santa Fe|AR|Argentina|-30.22,-61.87
+Hugues|Santa Fe|AR|Argentina|-33.80,-61.35
+Las Flores Race Track|Buenos Aires|AR|Argentina|-36.01,-59.07
+Las Varillas|Cordoba|AR|Argentina|-31.89,-62.74
+Mar del Plata|Buenos Aires|AR|Argentina|-37.99,-57.64
+Marcos Juarez|Cordoba|AR|Argentina|-32.68,-62.15
+Moto Club Forres|Santiago del Estero|AR|Argentina|-27.87,-63.98
+Neuquen - Full|Neuquen|AR|Argentina|-38.86,-68.15
+Neuquen - Intermediate 1|Neuquen|AR|Argentina|-38.86,-68.15
+Neuquen - Intermediate 2|Neuquen|AR|Argentina|-38.85,-68.15
+Neuquen - Short|Neuquen|AR|Argentina|-38.85,-68.15
+Obera|Misiones|AR|Argentina|-27.49,-55.18
+Olavarria No6|Buenos Aires|AR|Argentina|-36.86,-60.25
+Parana - 2|Entre Rios|AR|Argentina|-31.76,-60.38
+Parana - Chico|Entre Rios|AR|Argentina|-31.76,-60.38
+Parque la Pedrera|San Luis|AR|Argentina|-33.69,-65.50
+Pergamino|Buenos Aires|AR|Argentina|-33.94,-60.54
+Pigue|Buenos Aires|AR|Argentina|-37.61,-62.42
+Pista Roja AAPM|Buenos Aires F.D.|AR|Argentina|-34.68,-58.45
+Potrero de Los Funes|San Luis|AR|Argentina|-33.23,-66.23
+Rafaela 2|Santa Fe|AR|Argentina|-31.20,-61.48
+Ramona|Cordoba|AR|Argentina|-31.10,-61.90
+Reconquista|Santa Fe|AR|Argentina|-29.15,-59.71
+Resistencia|Chaco|AR|Argentina|-27.39,-59.00
+Rio Cuarto|Córdoba|AR|Argentina|-33.18,-64.36
+Rio Hondo - Grand Prix|Santiago del Estero|AR|Argentina|-27.51,-64.92
+Rio Hondo - Short|Santiago del Estero|AR|Argentina|-27.51,-64.92
+Roberto Mouras - Full|Buenos Aires|AR|Argentina|-34.98,-58.18
+Roberto Mouras - Short|Buenos Aires|AR|Argentina|-34.98,-58.18
+Rosendo Hernandez|San Luis|AR|Argentina|-33.33,-66.39
+Saenz Pena|Chaco|AR|Argentina|-26.83,-60.38
+Saladillo|Buenos Aires|AR|Argentina|-35.67,-59.81
+San Jorge|Santa Fe|AR|Argentina|-31.91,-61.87
+San Juan Villicum - Long|San Juan|AR|Argentina|-31.40,-68.56
+San Juan Villicum - Short|San Juan|AR|Argentina|-31.40,-68.56
+San Nicolas - Main|Buenos Aires|AR|Argentina|-33.40,-60.20
+San Nicolas - Outer|Buenos Aires|AR|Argentina|-33.40,-60.20
+San Nicolas - Short|Buenos Aires|AR|Argentina|-33.40,-60.20
+San Rafael 1|Mendoza|AR|Argentina|-34.58,-68.40
+Santa Clara|Santa Fe|AR|Argentina|-31.75,-61.31
+Santa Clara - Oval|Santa Fe|AR|Argentina|-31.75,-61.31
+Tandil|Buenos Aires|AR|Argentina|-37.37,-59.11
+Taraborelli|Buenos Aires|AR|Argentina|-38.41,-60.22
+Toay - Corto|La Pampa|AR|Argentina|-36.73,-64.35
+Toay - Largo|La Pampa|AR|Argentina|-36.73,-64.35
+Victoria Entre - Rios A|Entre Rios|AR|Argentina|-32.60,-60.19
+Victoria Entre - Rios B|Entre Rios|AR|Argentina|-32.60,-60.19
+Viedma|Rio Negro|AR|Argentina|-40.86,-63.02
+Viedma - Largo|Rio Negro|AR|Argentina|-40.86,-63.02
+Adelaide Intl|South Australia|AU|Australia|-34.70,138.56
+Albert Park|Victoria|AU|Australia|-37.85,144.97
+Archerfield Speedway|Queensland|AU|Australia|-27.58,153.00
+Avalon Raceway|Victoria|AU|Australia|-38.01,144.46
+Baskerville|Tasmania|AU|Australia|-42.75,147.30
+Bathurst|New South Wales|AU|Australia|-33.45,149.56
+Brandon Flat Track|Queensland|AU|Australia|-19.56,147.35
+Broadford - Full|Victoria|AU|Australia|-37.22,145.08
+Broadford - South|Victoria|AU|Australia|-37.22,145.08
+Collie Motorplex - Long|Western Australia|AU|Australia|-33.43,116.24
+Collie Motorplex - Short|Western Australia|AU|Australia|-33.43,116.24
+Cranes Combined Carrick Speedway|Tasmania|AU|Australia|-41.54,147.02
+Cullen Bullen Raceway|New South Wales|AU|Australia|-33.30,150.03
+Dubbo Dirt Bike Club|New South Wales|AU|Australia|-32.30,148.59
+Eastern Creek Speedway|New South Wales|AU|Australia|-33.82,150.87
+Gilgandra Speedway|New South Wales|AU|Australia|-31.75,148.64
+Gladstone Speedway|Queensland|AU|Australia|-23.85,151.25
+Glenquarry|New South Wales|AU|Australia|-34.53,150.47
+Goulburn Speedway|New South Wales|AU|Australia|-34.75,149.77
+Grafton City Speedway|New South Wales|AU|Australia|-29.68,152.94
+Gulf Western & Independent Oils Latrobe Speedway|Tasmania|AU|Australia|-41.24,146.44
+Gunnedah Speedway|New South Wales|AU|Australia|-30.91,150.21
+Hidden Valley|Northern Territory|AU|Australia|-12.45,130.91
+Hobart Raceway|Tasmania|AU|Australia|-42.78,147.11
+Katherine Speedway|Northern Territory|AU|Australia|-14.48,132.27
+Kurri Kurri Speedway Club|New South Wales|AU|Australia|-32.79,151.49
+Laang Speedway Club|Victoria|AU|Australia|-38.39,142.82
+Lakeside Park|Queensland|AU|Australia|-27.23,152.97
+Luddenham|New South Wales|AU|Australia|-33.86,150.72
+Mallala|South Australia|AU|Australia|-34.42,138.50
+Mangoola Oval|New South Wales|AU|Australia|-32.29,150.77
+Maryborough Speedway|Queensland|AU|Australia|-25.56,152.67
+McCosker Rocky Speedway Rockhampton|Queensland|AU|Australia|-23.37,150.50
+McNamara Park|South Australia|AU|Australia|-37.83,140.65
+Melk - CW|Lower Austria|AU|Australia|48.21,15.33
+Mick Doohan Raceway|Queensland|AU|Australia|-27.39,153.09
+Mid-Western Speedway|Victoria|AU|Australia|-38.00,143.05
+Morgan Park - Long|Queensland|AU|Australia|-28.26,152.04
+Morgan Park - Multi|Queensland|AU|Australia|-28.26,152.04
+Murray Bridge Speedway|South Australia|AU|Australia|-35.12,139.29
+Nepean Motor Sports Club|New South Wales|AU|Australia|-33.65,150.69
+Nhulunbuy Speedway|Northern Territory|AU|Australia|-12.21,136.78
+Northline Speedway|Northern Territory|AU|Australia|-12.45,130.91
+Northwest Speedway Club|New South Wales|AU|Australia|-30.31,149.77
+Norwell|Queensland|AU|Australia|-27.75,153.29
+Nowra Speedway|New South Wales|AU|Australia|-34.90,150.59
+Nyora Raceway|Victoria|AU|Australia|-38.34,145.68
+Olympic Park Speedway Mildura|Victoria|AU|Australia|-34.16,142.13
+Perth Motorplex|Western Australia|AU|Australia|-32.22,115.79
+Pheasant Wood|New South Wales|AU|Australia|-34.76,149.98
+Phillip Island|Victoria|AU|Australia|-38.50,145.23
+Premier Speedway Warrnambool|Victoria|AU|Australia|-38.39,142.58
+Queensland Raceway - Clubman|Queensland|AU|Australia|-27.69,152.65
+Queensland Raceway - National Full|Queensland|AU|Australia|-27.69,152.65
+Queensland Raceway - Sportsman Outer|Queensland|AU|Australia|-27.69,152.65
+Queensland Raceway - Sprint|Queensland|AU|Australia|-27.69,152.65
+Raleigh|New South Wales|AU|Australia|-30.43,152.99
+Rallydrive Australia|Victoria|AU|Australia|-37.74,144.48
+Red Line Raceway|Victoria|AU|Australia|-37.64,143.91
+Sandown|Victoria|AU|Australia|-37.95,145.17
+Simpson Speedway|Victoria|AU|Australia|-38.44,143.29
+Southern 500 Speedway|Victoria|AU|Australia|-38.21,141.62
+Sydney - Amaroo South|New South Wales|AU|Australia|-33.81,150.87
+Sydney - South Short|New South Wales|AU|Australia|-33.81,150.87
+Sydney MP - Brabham Full|New South Wales|AU|Australia|-33.81,150.87
+Sydney MP - Druitt North|New South Wales|AU|Australia|-33.80,150.87
+Symmons Plains|Tasmania|AU|Australia|-41.66,147.25
+Tepon Raceway|Queensland|AU|Australia|-17.43,145.40
+The Bend - East|South Australia|AU|Australia|-35.31,139.52
+The Bend - GT Full|South Australia|AU|Australia|-35.31,139.52
+The Bend - International|South Australia|AU|Australia|-35.31,139.51
+The Bend - Southwest|South Australia|AU|Australia|-35.31,139.51
+The Bend - West|South Australia|AU|Australia|-35.31,139.51
+The Blue Ribbon Raceway Horshsam|Victoria|AU|Australia|-36.55,142.21
+Toowoomba Speedway|Queensland|AU|Australia|-27.53,151.86
+Valvoline Raceway|New South Wales|AU|Australia|-33.83,151.03
+Wakefield Park - Full|New South Wales|AU|Australia|-34.84,149.69
+Wakefield Park - Short East|New South Wales|AU|Australia|-34.84,149.69
+Wakefield Park - Short West|New South Wales|AU|Australia|-34.84,149.69
+Wanneroo - Long|Western Australia|AU|Australia|-31.66,115.79
+Wanneroo - Short|Western Australia|AU|Australia|-31.66,115.79
+Western Speedway (Victoria)|Victoria|AU|Australia|-37.72,142.00
+Winton - Club Short|Victoria|AU|Australia|-36.52,146.09
+Winton - National Long|Victoria|AU|Australia|-36.52,146.09
+Wodonga TAFE|New South Wales|AU|Australia|-36.07,146.72
+Bad Fischau|Lower Austria|AT|Austria|47.83,16.19
+Dynamite Offroadpark Rappolz|Lower Austria|AT|Austria|48.95,15.40
+Lungauring|Salzburg|AT|Austria|47.09,13.66
+Melk|Lower Austria|AT|Austria|48.21,15.33
+Nordring Fuglau|Lower Austria|AT|Austria|48.66,15.55
+OAMTC Fahrsicherheitszentrum Saalfelden-Brandlhof|Zell am See District|AT|Austria|47.48,12.83
+Red Bull Ring - Grand Prix|Styria|AT|Austria|47.22,14.76
+Red Bull Ring - North|Styria|AT|Austria|47.23,14.76
+Red Bull Ring - South|Styria|AT|Austria|47.22,14.76
+Salzburgring|Salzburg|AT|Austria|47.82,13.17
+Bahrain - Endurance|Central Governorate|BH|Bahrain|26.03,50.51
+Bahrain - Grand Prix|Central Governorate|BH|Bahrain|26.03,50.51
+Bahrain - Inner Oasis|Central Governorate|BH|Bahrain|26.03,50.51
+Bahrain - Outer|Central Governorate|BH|Bahrain|26.03,50.51
+Bahrain - Paddock|Central Governorate|BH|Bahrain|26.03,50.51
+Bahrain - Test Oval|Central Governorate|BH|Bahrain|26.03,50.51
+Bushy Park|Saint Philip|BB|Barbados|13.14,-59.47
+Antoing Cross Festival|Wallonia|BE|Belgium|50.56,3.46
+Autocross Crombach|Wallonia|BE|Belgium|50.27,6.08
+Circuit de Chimay asbl|Wallonia|BE|Belgium|50.06,4.30
+Duivelsbergcircuit|Flanders|BE|Belgium|50.95,5.65
+Ecurie Fouronnaise - Top Loe|Flanders|BE|Belgium|50.72,5.83
+Jules Tacheny - East|Wallonia|BE|Belgium|50.30,4.65
+Jules Tacheny - Full|Wallonia|BE|Belgium|50.30,4.65
+Jules Tacheny - West|Wallonia|BE|Belgium|50.30,4.65
+Spa Francorchamps|Wallonia|BE|Belgium|50.44,5.97
+Zolder|Flanders|BE|Belgium|50.99,5.26
+Bermuda Motorcycle Racing Club|Saint George|BM|Bermuda|32.36,-64.66
+Zaluzani|Republika Srpska|BA|Bosnia and Herzegovina|44.85,17.23
+Autodromo Bom Futuro|Mato Grosso|BR|Brazil|-15.50,-56.10
+Autodromo Potenza|Minas Gerais|BR|Brazil|-21.79,-43.66
+AVF|Sao Paulo|BR|Brazil|-22.44,-47.45
+Ayrton Senna - Full|Goias|BR|Brazil|-16.72,-49.19
+Ayrton Senna - Short|Goias|BR|Brazil|-16.72,-49.19
+Brasilia - Full|Federal District|BR|Brazil|-15.78,-47.90
+Brasilia - Outer|Federal District|BR|Brazil|-15.78,-47.90
+Cascavel|Parana|BR|Brazil|-24.98,-53.38
+Circuito Panamericano|Sao Paulo|BR|Brazil|-23.16,-47.41
+Cristais - Curvelo Full|Minas Gerais|BR|Brazil|-18.81,-44.41
+Cristais - Curvelo Intermediate East|Minas Gerais|BR|Brazil|-18.81,-44.41
+Cristais - Curvelo Intermediate West|Minas Gerais|BR|Brazil|-18.80,-44.41
+Cristais - Curvelo Short|Minas Gerais|BR|Brazil|-18.81,-44.41
+Cristais - Pista Oval|Minas Gerais|BR|Brazil|-18.81,-44.41
+Curitiba (AIC)|Parana|BR|Brazil|-25.45,-49.20
+ECPA - 1 H|Sao Paulo|BR|Brazil|-22.74,-47.53
+ECPA - 2 A|Sao Paulo|BR|Brazil|-22.74,-47.53
+Fazenda Capuava|Sao Paulo|BR|Brazil|-23.06,-47.10
+Guapore|Rio Grande do Sul|BR|Brazil|-28.85,-51.85
+Jose Carlos Pace|Sao Paulo|BR|Brazil|-23.70,-46.70
+Junior Poletto Grande Subindo|Bahia|BR|Brazil|-12.10,-45.74
+Londrina|Parana|BR|Brazil|-23.28,-51.17
+Orlando Moura|Mato Grosso do Sul|BR|Brazil|-20.48,-54.47
+Plan Speed Park|Rio de Janeiro|BR|Brazil|-21.92,-41.15
+Plan Speed Park - Invertido|Rio de Janeiro|BR|Brazil|-21.92,-41.16
+Raceville - Completo|Sao Paulo|BR|Brazil|-22.30,-48.23
+Santa Cruz Do Sol|Rio Grande do Sul|BR|Brazil|-29.80,-52.44
+Taruma|Rio Grande do Sul|BR|Brazil|-30.05,-51.02
+Trindade|Goias|BR|Brazil|-16.67,-49.49
+Velocitta - Full|Sao Paulo|BR|Brazil|-22.29,-46.85
+Velocitta - West|Sao Paulo|BR|Brazil|-22.29,-46.85
+Virgilio Tavora - Full|Ceara|BR|Brazil|-3.90,-38.46
+Virgilio Tavora - Outer|Ceara|BR|Brazil|-3.90,-38.46
+Virgilio Tavora - Truck|Ceara|BR|Brazil|-3.90,-38.46
+Drakon|Plovdiv|BG|Bulgaria|42.34,24.74
+Yamamoto Circuit Cambodia|Kampong Speu|KH|Cambodia|11.38,104.58
+5150 Speedway|Ontario|CA|Canada|42.27,-82.39
+Area 27 - Long|British Columbia|CA|Canada|49.16,-119.52
+Area 27 - Short|British Columbia|CA|Canada|49.16,-119.52
+Atlantic Motorsport|Nova Scotia|CA|Canada|45.15,-63.45
+Belle Isle|Ontario|CA|Canada|42.34,-82.99
+Calabogie - East|Ontario|CA|Canada|45.30,-76.67
+Calabogie - Full|Ontario|CA|Canada|45.30,-76.67
+Calabogie - West|Ontario|CA|Canada|45.30,-76.68
+Canadian Tire - Grand Prix|Ontario|CA|Canada|44.05,-78.67
+Circuit Gilles Villeneuve|Quebec|CA|Canada|45.50,-73.53
+CPTC Canadian Power Toboggan Championships|Manitoba|CA|Canada|50.05,-96.50
+Delaware Speedway|Ontario|CA|Canada|42.93,-81.42
+Dirt Autodrome Bas Saint-Laurent|Quebec|CA|Canada|48.24,-68.79
+Edmonton|Alberta|CA|Canada|52.99,-113.45
+Flamboro - Oval|Ontario|CA|Canada|43.33,-80.02
+Gimli|Manitoba|CA|Canada|50.63,-97.05
+Grand Bend - CCW|Ontario|CA|Canada|43.29,-81.72
+Grand Bend - CW|Ontario|CA|Canada|43.29,-81.72
+Honda Indy Toronto|Ontario|CA|Canada|43.63,-79.42
+Kawartha Downs & Speedway|Ontario|CA|Canada|44.21,-78.39
+Langley Quarter Midget Association|British Columbia|CA|Canada|49.02,-122.48
+Mecaglisse Lapping CCW|Quebec|CA|Canada|46.22,-74.11
+Mission Raceway|British Columbia|CA|Canada|49.13,-122.33
+Mohawk Intl Raceway|Ontario|CA|Canada|44.97,-74.71
+Mont Tremblant - Full|Quebec|CA|Canada|46.19,-74.61
+Mont Tremblant - North|Quebec|CA|Canada|46.19,-74.61
+Mont Tremblant - South|Quebec|CA|Canada|46.19,-74.61
+Northport Intl Raceway|British Columbia|CA|Canada|48.93,-117.79
+Oyster Bed Speedway|Prince Edward Island|CA|Canada|46.40,-63.24
+Peterborough Speedway|Ontario|CA|Canada|44.28,-78.43
+Petty International Raceway|New Brunswick|CA|Canada|45.98,-65.13
+RAD Torque Raceway|Alberta|CA|Canada|53.33,-113.60
+Riverside International Speedway|Nova Scotia|CA|Canada|45.56,-62.13
+Rocky Mountain - East|Alberta|CA|Canada|51.56,-114.01
+Rocky Mountain - Full|Alberta|CA|Canada|51.56,-114.01
+Rocky Mountain - West|Alberta|CA|Canada|51.56,-114.01
+Sanair - 1/3 Mile Oval|Quebec|CA|Canada|45.53,-72.88
+Sanair - Road Course|Quebec|CA|Canada|45.53,-72.88
+Sanair - Tri-Oval|Quebec|CA|Canada|45.53,-72.88
+Sanair - Tri-Oval Road Course|Quebec|CA|Canada|45.53,-72.87
+Sauble|Ontario|CA|Canada|44.63,-81.21
+Scotia Speedworld|Nova Scotia|CA|Canada|44.87,-63.54
+Shannonville - Full|Ontario|CA|Canada|44.23,-77.16
+Shannonville - North Fabi|Ontario|CA|Canada|44.23,-77.16
+Shannonville - Outer|Ontario|CA|Canada|44.23,-77.16
+Shannonville - South Nelson|Ontario|CA|Canada|44.23,-77.16
+Southern Ontario Motor Speedway|Ontario|CA|Canada|42.27,-82.18
+Speedway 660|New Brunswick|CA|Canada|45.72,-66.53
+Sunset Speedway (CN)|Ontario|CA|Canada|44.28,-79.61
+Toronto Motorsports - East CCW|Ontario|CA|Canada|42.90,-79.86
+Toronto Motorsports - East CW|Ontario|CA|Canada|42.90,-79.86
+Toronto Motorsports - Full CCW|Ontario|CA|Canada|42.90,-79.86
+Toronto Motorsports - Full CW|Ontario|CA|Canada|42.90,-79.86
+Toronto Motorsports - West CCW|Ontario|CA|Canada|42.90,-79.86
+Toronto Motorsports - West CW|Ontario|CA|Canada|42.90,-79.86
+Trois-Rivieres|Quebec|CA|Canada|46.35,-72.56
+Vancouver Island - Full CCW|British Columbia|CA|Canada|48.80,-123.78
+Vancouver Island - Full CW|British Columbia|CA|Canada|48.80,-123.78
+Vancouver Island - Outer CCW|British Columbia|CA|Canada|48.80,-123.78
+Vancouver Island - Outer CW|British Columbia|CA|Canada|48.80,-123.78
+Vancouver Island - South Loop CCW|British Columbia|CA|Canada|48.80,-123.78
+Vancouver Island - South Loop CW|British Columbia|CA|Canada|48.80,-123.78
+Western Speedway (British Columbia)|British Columbia|CA|Canada|48.47,-123.50
+Arica Raceway|Arica y Parinacota|CL|Chile|-18.39,-70.34
+CAD Quilpue CW|Valparaiso|CL|Chile|-33.06,-71.45
+Codegua - Full|O'Higgins|CL|Chile|-34.04,-70.63
+Codegua - North|O'Higgins|CL|Chile|-34.04,-70.63
+Codegua - South|O'Higgins|CL|Chile|-34.04,-70.63
+Interlomas|Araucania|CL|Chile|-38.62,-72.47
+La Serena|Coquimbo|CL|Chile|-29.98,-71.22
+Las Vizcachas - Extended|Santiago Metropolitan|CL|Chile|-33.60,-70.52
+Las Vizcachas - Oval|Santiago Metropolitan|CL|Chile|-33.60,-70.53
+Las Vizcachas - Short|Santiago Metropolitan|CL|Chile|-33.60,-70.53
+Las Vizcachas - Standard|Santiago Metropolitan|CL|Chile|-33.60,-70.52
+Pacifico Sport CCW|Valparaiso|CL|Chile|-33.66,-71.56
+Beijing Goldenport Park|Beijing|CN|China|40.01,116.56
+Chengdu International Circuit|Sichuan|CN|China|30.58,104.12
+Guangdong|Guangdong|CN|China|23.27,112.82
+Guizhou Junchi International Circuit|Huaxi District|CN|China|26.33,106.68
+Huai'an|Jiangsu|CN|China|33.65,119.18
+Jiangsu Wantrack International - Full|Jiangsu|CN|China|31.67,119.03
+Jiangsu Wantrack International - Layout 3|Jiangsu|CN|China|31.67,119.03
+Jiangsu Wantrack International - School|Jiangsu|CN|China|31.67,119.03
+Jiangsu Wantrack International - Short 1|Jiangsu|CN|China|31.67,119.03
+Jiangsu Wantrack International - Short 2|Jiangsu|CN|China|31.67,119.03
+Nanning|Guangxi|CN|China|22.90,108.49
+Nanning - Long|Guangxi|CN|China|22.90,108.49
+Nanning - Long Alt|Guangxi|CN|China|22.90,108.49
+Ningbo - East|Zhejiang Sheng|CN|China|29.76,121.87
+Ningbo - Long|Zhejiang Sheng|CN|China|29.76,121.87
+Ningbo - West|Zhejiang Sheng|CN|China|29.76,121.87
+Ordos International Circuit|Inner Mongolia|CN|China|39.62,109.87
+ShanDong HeZe International Circuit|ShanDong Province|CN|China|35.12,115.58
+Shanghai Intl - East Long CCW|Shanghai Shi|CN|China|31.34,121.22
+Shanghai Intl - East Long CW|Shanghai Shi|CN|China|31.34,121.22
+Shanghai Intl - Grand Prix|Shanghai Shi|CN|China|31.34,121.22
+Shanghai Intl - Intermediate|Shanghai Shi|CN|China|31.34,121.22
+Shanghai Intl - Northeast|Shanghai Shi|CN|China|31.34,121.22
+Shanghai Intl - Southeast|Shanghai Shi|CN|China|31.34,121.23
+Shanghai Intl - West Long|Shanghai Shi|CN|China|31.34,121.22
+Shanghai Intl - West Short|Shanghai Shi|CN|China|31.34,121.22
+Shanghai Tianma Circuit|Shanghai Shi|CN|China|31.08,121.12
+V1 Auto World|Tianjin|CN|China|39.38,116.99
+Wuhan International Street Track|Hubei|CN|China|30.50,114.17
+Wuyi|Zhejiang|CN|China|28.84,119.77
+XiAn Automobile|Shaanxi|CN|China|34.44,109.17
+Yangzhou|Jiangsu Sheng|CN|China|32.43,119.49
+Zhejiang - East|Zhejiang Sheng|CN|China|30.03,120.47
+Zhejiang - Full|Zhejiang Sheng|CN|China|30.03,120.47
+Zhejiang - West|Zhejiang Sheng|CN|China|30.04,120.46
+Zhuhai|Guangdong|CN|China|22.37,113.56
+Zhuzhou - Full|Hunan|CN|China|27.83,113.06
+Zhuzhou - Short|Hunan|CN|China|27.83,113.06
+Zhuzhou - South Test Loop|Hunan|CN|China|27.83,113.06
+Corona Club Xtreme Park|Cauca|CO|Colombia|2.56,-76.56
+Tocancipa - East Oval|Cundinamarca|CO|Colombia|4.96,-73.94
+Tocancipa - Full CCW|Cundinamarca|CO|Colombia|4.96,-73.94
+Tocancipa - Full CW|Cundinamarca|CO|Colombia|4.96,-73.95
+Tocancipa - West CCW|Cundinamarca|CO|Colombia|4.96,-73.95
+Tocancipa - West CW|Cundinamarca|CO|Colombia|4.96,-73.95
+La Guacima Corto 2015|Alajuela|CR|Costa Rica|9.97,-84.25
+Grobnik|Primorsko-Goranska|HR|Croatia|45.38,14.51
+Stadion Milenium|Medimurska|HR|Croatia|46.37,16.66
+Achna - Full|Ammochostos|CY|Cyprus|35.03,33.80
+Achna - Short|Ammochostos|CY|Cyprus|35.03,33.80
+Vysoke Myto|Pardubicky|CZ|Czech Republic|49.94,16.17
+Vysoke Myto - Protismer|Pardubicky|CZ|Czech Republic|49.94,16.17
+300 Zatacek Gustava Havla|Kralovehradecky|CZ|Czechia|50.38,15.63
+AUTO KLUB Prerov|Olomoucky|CZ|Czechia|49.48,17.43
+Autoklub RAC Sedlcany|Central Bohemia|CZ|Czechia|49.67,14.43
+Autoklub v ACR Nova Paka|Kralovehradecky|CZ|Czechia|50.49,15.54
+Brno|South Moravian|CZ|Czechia|49.21,16.45
+Dymokury|Central Bohemia|CZ|Czechia|50.24,15.21
+Most|Ustecky|CZ|Czechia|50.52,13.60
+CHGP Bellahoj 2022|Capital Region|DK|Denmark|55.70,12.52
+Classic Race Aarhus|Central Jutland|DK|Denmark|56.13,10.21
+Jyllandsringen - Full|Central Jutland|DK|Denmark|56.17,9.66
+Jyllandsringen - Short|Central Jutland|DK|Denmark|56.18,9.66
+Kolding KoreTekniske Anleg A/S|South Denmark|DK|Denmark|55.48,9.43
+Korskrobanen|South Denmark|DK|Denmark|55.53,8.59
+Lovelbanen|Central Jutland|DK|Denmark|56.54,9.45
+Nisseringen|Naestved Municipality|DK|Denmark|55.22,11.90
+Norlundbanen|Central Jutland|DK|Denmark|56.09,9.15
+Nysumbanen|North Denmark|DK|Denmark|56.74,9.77
+Ornedalsbanen|North Denmark|DK|Denmark|57.33,10.47
+Padborg Park|South Denmark|DK|Denmark|54.87,9.27
+Ring Djursland|Central Jutland|DK|Denmark|56.34,10.68
+Sjaellandsringen|Zealand|DK|Denmark|55.60,12.14
+Soholmbanen|South Denmark|DK|Denmark|55.53,9.50
+Mobil 1|Santo Domingo|DO|Dominican Republic|18.47,-69.75
+Mobil 1 - Contrario|Santo Domingo|DO|Dominican Republic|18.47,-69.75
+Yahuarcocha|Imbabura|EC|Ecuador|0.38,-78.09
+Kulbilohu krossirada|Tartu|EE|Estonia|58.25,26.41
+Missokula Rallikrosirada|Aluksnes Rajons|EE|Estonia|57.62,27.26
+Porsche Ring - Full|Paernumaa|EE|Estonia|58.40,24.45
+Porsche Ring - South|Paernumaa|EE|Estonia|58.40,24.45
+Tarvastu Motoklubi|Eesti|EE|Estonia|58.25,25.75
+Vasalemma Rallikrossirada|Harjumaa|EE|Estonia|59.23,24.28
+Ahvenisto|Haeme|FI|Finland|61.00,24.41
+Alastaro - Full|Satakunta|FI|Finland|60.98,22.66
+Alastaro - Medium|Satakunta|FI|Finland|60.98,22.66
+Alastaro - Short|Satakunta|FI|Finland|60.98,22.66
+Botniaring - Club Southeast|Southern Ostrobothnia|FI|Finland|62.62,22.03
+Botniaring - Long|Southern Ostrobothnia|FI|Finland|62.62,22.02
+Botniaring - Oval Northwest|Southern Ostrobothnia|FI|Finland|62.63,22.02
+Botniaring - Short Northwest|Southern Ostrobothnia|FI|Finland|62.63,22.02
+Eurajoki|Satakunta|FI|Finland|61.19,21.66
+Hyvinkaan Vauhtipuisto|Uusimaa|FI|Finland|60.66,24.90
+Jaahdyspohjan Moottorirata|Pirkanmaa|FI|Finland|62.20,23.85
+Jalasjarven moottorikerho|Southern Ostrobothnia|FI|Finland|62.39,22.65
+Karppamaen moottorirata|Seinajoki|FI|Finland|63.04,23.05
+Karvia|Northern Satakunta|FI|Finland|62.14,22.60
+Kemora - Long|Central Ostrobothnia|FI|Finland|63.42,23.99
+Kemora - Short|Central Ostrobothnia|FI|Finland|63.42,23.98
+Kolkanlahti|Central Finland|FI|Finland|62.75,25.17
+KymiRing - East|Kymenlaakso|FI|Finland|60.88,26.48
+KymiRing - Full|Kymenlaakso|FI|Finland|60.88,26.48
+Mantyharjun Moottorikerho|Southern Savonia|FI|Finland|61.47,26.97
+Motopark|Southern Savonia|FI|Finland|62.06,27.56
+Pesamaki - Moottorirata|Satakunta|FI|Finland|62.02,22.11
+Pesamaki Rallicross|Satakunta|FI|Finland|62.02,22.11
+Sastamala|Pirkanmaa|FI|Finland|61.56,22.91
+Saukkolan EK Oy|Haeme|FI|Finland|60.77,24.36
+Tervacross Ry - Kestila|Siikalatva sub-region|FI|Finland|64.41,26.26
+Toijala Rallicross|Pirkanmaa|FI|Finland|61.12,23.83
+Tykkimaki - RX|Kymenlaakso|FI|Finland|60.88,26.80
+Tykkimaki - Supermoto|Kymenlaakso|FI|Finland|60.88,26.80
+Vilppula JM/RC|Pirkanmaa|FI|Finland|61.92,24.55
+Abbeville|Picardie|FR|France|50.14,1.83
+Albi|Midi-Pyrenees|FR|France|43.91,2.11
+Ales|Languedoc-Roussillon|FR|France|44.16,4.07
+Ales - Inverse|Languedoc-Roussillon|FR|France|44.16,4.07
+Anneau du Rhin Competition 3,0 Km|Alsace|FR|France|47.95,7.42
+Anneau du Rhin Vitesse 3,7 Km|Alsace|FR|France|47.95,7.42
+Autocross Saint Georges de Montaigu|Pays de la Loire|FR|France|46.92,-1.31
+Auxois Sud|Bourgogne|FR|France|47.22,4.56
+Bordeaux-Merignac|Nouvelle-Aquitaine|FR|France|44.84,-0.73
+Bourbonnais|Auvergne|FR|France|46.54,3.43
+Bresse|Bourgogne|FR|France|46.55,5.33
+Candie|Midi-Pyrenees|FR|France|43.54,1.39
+Carole|Ile-de-France|FR|France|48.98,2.52
+CFDT - Centre Technique et d'Essais Renault Aubevoye|Haute-Normandie|FR|France|49.17,1.31
+Chambley|Lorraine|FR|France|49.03,5.89
+Charade|Auvergne|FR|France|45.74,3.03
+Chenevieres|Lorraine|FR|France|48.52,6.65
+Circuit des Ducs|Le Menil-Guyon|FR|France|48.55,0.26
+Circuit du Var|Provence-Alpes-Cote d'Azur|FR|France|43.35,6.34
+Circuits Espace Plus|Ile-de-France|FR|France|48.62,2.22
+Clastres|Picardie|FR|France|49.75,3.21
+Croix-En-Ternois|Nord-Pas-de-Calais|FR|France|50.38,2.30
+Dijon-Prenois - Grand Prix|Bourgogne|FR|France|47.36,4.90
+Dijon-Prenois - Short|Bourgogne|FR|France|47.36,4.90
+Dreux Asphalte|Centre-Val de Loire|FR|France|48.76,1.37
+Ecuyers - Full 3.5 Km|Picardie|FR|France|49.11,3.51
+Ecuyers - North 1.2 Km|Picardie|FR|France|49.11,3.51
+Ecuyers - South 2.3 Km|Picardie|FR|France|49.11,3.51
+Fay de Bretagne|Pays de la Loire|FR|France|47.35,-1.80
+Folembray - Full|Picardie|FR|France|49.55,3.30
+Folembray - North|Picardie|FR|France|49.55,3.31
+Folembray - South|Picardie|FR|France|49.54,3.30
+Fontenay le Comte|Pays de la Loire|FR|France|46.44,-0.80
+Haute Saintonge|Poitou-Charentes|FR|France|45.24,-0.09
+Issoire|Auvergne|FR|France|45.54,3.27
+Le Circuit des Hell Hawks|Champagne-Ardenne|FR|France|49.43,3.90
+Le Laquais|Rhone-Alpes|FR|France|45.47,5.30
+Le Mans - Bugatti|Pays de la Loire|FR|France|47.95,0.21
+Le Mans - Maison Blanche - East|Pays de la Loire|FR|France|47.94,0.21
+Le Mans - Maison Blanche - Full|Pays de la Loire|FR|France|47.94,0.21
+Le Mans - Maison Blanche - Short|Pays de la Loire|FR|France|47.94,0.21
+Le Mans - Maison Blanche - Southwest|Pays de la Loire|FR|France|47.94,0.21
+Le Mans - Sarthe|Pays de la Loire|FR|France|47.94,0.23
+Ledenon|Languedoc-Roussillon|FR|France|43.92,4.51
+Linas-Montlhery|Ile-de-France|FR|France|48.62,2.24
+Loheac|Bretagne|FR|France|47.86,-1.90
+Loheac Rallycross|Brittany|FR|France|47.86,-1.89
+Lurcy-Levis Grand|Auvergne|FR|France|46.72,2.95
+Magny-Cours - Academy|Bourgogne|FR|France|46.87,3.16
+Magny-Cours - Club|Bourgogne|FR|France|46.86,3.17
+Magny-Cours - Grand Prix|Bourgogne|FR|France|46.86,3.16
+Magny-Cours - National|Bourgogne|FR|France|46.86,3.16
+Mas du Clos - Full|Limousin|FR|France|45.93,2.30
+Mas du Clos - Short|Limousin|FR|France|45.93,2.30
+Mirecourt|Grand Est|FR|France|48.32,6.08
+Mireval Dry Handling|Languedoc-Roussillon|FR|France|43.52,3.80
+Mireval Skidpad|Languedoc-Roussillon|FR|France|43.52,3.79
+Mireval Wet Handling|Languedoc-Roussillon|FR|France|43.52,3.80
+Mornay Interieur|Limousin|FR|France|46.32,1.93
+Nogaro - Caupenne|Midi-Pyrenees|FR|France|43.77,-0.04
+Nogaro - Club|Midi-Pyrenees|FR|France|43.77,-0.04
+Nogaro - Grand Prix|Midi-Pyrenees|FR|France|43.77,-0.04
+Pau-Arnos|Aquitaine|FR|France|43.45,-0.53
+Pau-Ville|Aquitaine|FR|France|43.29,-0.36
+Paul Ricard - Castellet|Provence-Alpes-Cote d'Azur|FR|France|43.25,5.81
+Paul Ricard - Full|Provence-Alpes-Cote d'Azur|FR|France|43.25,5.79
+Paul Ricard - Short|Provence-Alpes-Cote d'Azur|FR|France|43.25,5.80
+Rouen|Seine-Maritime|FR|France|49.43,1.10
+Saint-Igny Autocross|Rhone|FR|France|46.24,4.43
+Tours Speedway|Indre-et-Loire|FR|France|47.38,0.73
+Utac Ceram|Picardie|FR|France|49.14,2.60
+Vaison Piste|Bourgogne|FR|France|46.76,4.44
+Val de Vienne - East|Poitou-Charentes|FR|France|46.20,0.64
+Val de Vienne - Full|Poitou-Charentes|FR|France|46.20,0.63
+Val de Vienne - West|Poitou-Charentes|FR|France|46.20,0.63
+Rustavi - Full|Kvemo Kartli|GE|Georgia|41.57,44.95
+Rustavi - Northeast|Kvemo Kartli|GE|Georgia|41.57,44.95
+Rustavi - Southwest|Kvemo Kartli|GE|Georgia|41.57,44.95
+ADAC Fahrsicherheitszentrum|North Rhine-Westphalia|DE|Germany|51.73,7.17
+ADAC Trainingsanlage Fulda/Dietershausen|KS|DE|Germany|50.51,9.81
+ATP Papenburg HAK|Lower Saxony|DE|Germany|53.05,7.51
+Audi driving experience center Neuburg|Bavaria|DE|Germany|48.73,11.25
+Autocrossstrecke Krautscheid|Rheinland-Pfalz|DE|Germany|50.07,6.32
+Blister Berg - Full|North Rhine-Westphalia|DE|Germany|51.79,9.07
+Blister Berg - Ostschleife|North Rhine-Westphalia|DE|Germany|51.79,9.07
+Blister Berg - Westscleife|North Rhine-Westphalia|DE|Germany|51.79,9.06
+Gross Dolln T3 A+B+D|Brandenburg|DE|Germany|53.03,13.56
+Hockenheimring - Grand Prix|Baden-Wuerttemberg|DE|Germany|49.33,8.57
+Hockenheimring - National|Baden-Wuerttemberg|DE|Germany|49.33,8.57
+Hockenheimring - Short|Baden-Wuerttemberg|DE|Germany|49.33,8.57
+Lausitzring - Grand Prix|Brandenburg|DE|Germany|51.53,13.93
+Lausitzring - Long|Brandenburg|DE|Germany|51.53,13.92
+Lausitzring - Oval|Brandenburg|DE|Germany|51.53,13.93
+Lausitzring - Short|Brandenburg|DE|Germany|51.53,13.93
+Massen Dirt Track|Brandenburg|DE|Germany|51.60,13.76
+Matschenberg Offroad Arena|Saxony|DE|Germany|51.09,14.49
+MC Seelow e.V.|Brandenburg|DE|Germany|52.53,14.39
+Meppen|Lower Saxony|DE|Germany|52.76,7.28
+Motorsport-Club Olching e. V. im ADAC|Bavaria|DE|Germany|48.21,11.32
+MSC Moorwinkelsdamm|Lower Saxony|DE|Germany|53.33,7.96
+Norisring|Bavaria|DE|Germany|49.43,11.13
+Nurburgring - Grand Prix|Rheinland-Pfalz|DE|Germany|50.33,6.94
+Nurburgring - Mullenbachschleife|Rheinland-Pfalz|DE|Germany|50.33,6.94
+Nurburgring - Nsch|Rheinland-Pfalz|DE|Germany|50.36,6.96
+Nurburgring - Sprint|Rheinland-Pfalz|DE|Germany|50.33,6.94
+Oschersleben - B Course|Saxony-Anhalt|DE|Germany|52.03,11.28
+Oschersleben - C Course|Saxony-Anhalt|DE|Germany|52.03,11.27
+Oschersleben - Full|Saxony-Anhalt|DE|Germany|52.03,11.28
+Papenburg|Lower Saxony|DE|Germany|53.05,7.51
+Porsche Test Track|Saxony|DE|Germany|51.41,12.30
+Sachsenring|Saxony|DE|Germany|50.79,12.69
+Schleizer Dreieck|Thuringia|DE|Germany|50.56,11.82
+Schlusselfeld Handling Kurs|Bavaria|DE|Germany|49.75,10.65
+Solitude|Baden-Wuerttemberg|DE|Germany|48.76,9.06
+Spreewaldring|Brandenburg|DE|Germany|52.00,13.69
+Athens - Full|Attica|GR|Greece|37.99,23.36
+Athens - North|Attica|GR|Greece|37.99,23.36
+Athens - South|Attica|GR|Greece|37.99,23.36
+Athens - South Short|Attica|GR|Greece|37.99,23.36
+Markopoulo Park - 1|Attica|GR|Greece|37.88,23.97
+Markopoulo Park - 2|Attica|GR|Greece|37.88,23.97
+Meteora Race Park|Thessalia|GR|Greece|39.59,21.73
+Serres|Central Macedonia|GR|Greece|41.07,23.52
+Pedro Cofino - Center|Escuintla|GT|Guatemala|14.38,-90.82
+Pedro Cofino - Center+East CW|Escuintla|GT|Guatemala|14.38,-90.82
+Pedro Cofino - Center+East Outer|Escuintla|GT|Guatemala|14.38,-90.82
+Pedro Cofino - Center+West CW|Escuintla|GT|Guatemala|14.38,-90.82
+Pedro Cofino - East|Escuintla|GT|Guatemala|14.38,-90.82
+Pedro Cofino - Full CW|Escuintla|GT|Guatemala|14.38,-90.82
+Pedro Cofino - Outer CW|Escuintla|GT|Guatemala|14.38,-90.82
+Pedro Cofino - West|Escuintla|GT|Guatemala|14.38,-90.82
+South Dakota Circuit|Essequibo Islands-West Demerara|GY|Guyana|6.49,-58.25
+Circuit 9|Ouest|HT|Haiti|18.58,-72.32
+Balaton Park|Fejer|HU|Hungary|47.01,18.20
+Euroring|Pest|HU|Hungary|47.15,19.46
+Hungaroring|Pest|HU|Hungary|47.58,19.25
+Pannonia Ring|Vas|HU|Hungary|47.30,17.04
+Buddh - GP Full|Uttar Pradesh|IN|India|28.35,77.53
+Buddh - Short North|Uttar Pradesh|IN|India|28.35,77.54
+Buddh - Short South|Uttar Pradesh|IN|India|28.35,77.53
+Madras - Full|Tamil Nadu|IN|India|13.00,79.99
+Madras - Short|Tamil Nadu|IN|India|13.00,79.99
+Bulungan|Bulungan Regency|ID|Indonesia|2.79,117.45
+GBT|East Java|ID|Indonesia|-7.23,112.62
+Gery Mang Subang|West Java|ID|Indonesia|-6.55,107.77
+Mandalika|West Nusa Tenggara|ID|Indonesia|-8.90,116.31
+Sentul|West Java|ID|Indonesia|-6.53,106.86
+Sirkuit Balipat|South Kalimantan|ID|Indonesia|-3.15,115.09
+Sirkuit Green Park Blitar|Jawa Timur|ID|Indonesia|-8.08,112.18
+Sirkuit Kalan|Kalimantan Timur|ID|Indonesia|-0.57,117.12
+Sirkuit Puncak Mario Sidrap|Sulawesi Selatan|ID|Indonesia|-3.78,119.83
+Sirkuit Sabaru|Central Kalimantan|ID|Indonesia|-2.31,113.94
+Kells|Ulster|IE|Ireland|53.72,-7.01
+Mondello Park - Intermediate East+North|Leinster|IE|Ireland|53.26,-6.75
+Mondello Park - International Full|Leinster|IE|Ireland|53.26,-6.75
+Mondello Park - Intl Loop North|Leinster|IE|Ireland|53.26,-6.75
+Mondello Park - Intl Loop North Short|Leinster|IE|Ireland|53.26,-6.75
+Mondello Park - National East+South|Leinster|IE|Ireland|53.26,-6.75
+Mondello Park - Short East|Leinster|IE|Ireland|53.26,-6.75
+Munster 100|Munster|IE|Ireland|51.97,-8.39
+Skerries|Leinster|IE|Ireland|53.56,-6.13
+Tipperary Raceway - Oval|Munster|IE|Ireland|52.47,-7.79
+Billown Circuit|Castletown|IM|Isle of Man|54.09,-4.66
+Arad Racing|Southern District|IL|Israel|31.26,35.16
+Motor City Israel - Full|Southern District|IL|Israel|31.27,34.73
+Motor City Israel - North|Southern District|IL|Israel|31.27,34.73
+Adria - Full|Veneto|IT|Italy|45.04,12.15
+Alle Cave|Veneto|IT|Italy|45.95,12.33
+Autocross Club Romano Canavese|Piedmont|IT|Italy|45.43,7.90
+Autocross Torchiarolo - Autodromo del Salento|Apulia|IT|Italy|40.47,18.06
+Binetto|Apulia|IT|Italy|40.99,16.74
+Castelletto|Lombardy|IT|Italy|45.07,9.11
+Cellole|Campania|IT|Italy|41.19,13.85
+Cerrina Race Track - Generic|Piedmont|IT|Italy|45.00,7.49
+Cerrina Race Track - Long|Piedmont|IT|Italy|45.00,7.49
+Cremona|Lombardy|IT|Italy|45.08,10.31
+dell'Umbria|Umbria|IT|Italy|43.13,12.24
+Galliano Park|Emilia-Romagna|IT|Italy|44.20,12.09
+Gilles Villeneuve|Sicily|IT|Italy|37.49,14.30
+Imola|Emilia-Romagna|IT|Italy|44.34,11.71
+Isam|Latium|IT|Italy|41.70,13.14
+Ittiri Arena|Sardinia|IT|Italy|40.59,8.57
+Lombardore|Piedmont|IT|Italy|45.24,7.72
+Maggiora|Piedmont|IT|Italy|45.70,8.42
+Maggiora Reverse|Piedmont|IT|Italy|45.70,8.42
+Misano - Grand Prix|Emilia-Romagna|IT|Italy|43.96,12.68
+Misano - Short|Emilia-Romagna|IT|Italy|43.96,12.68
+Misano - South|Emilia-Romagna|IT|Italy|43.96,12.68
+Modena|Emilia-Romagna|IT|Italy|44.63,10.81
+Monza|Lombardy|IT|Italy|45.62,9.29
+Monza - Junior|Lombardy|IT|Italy|45.62,9.28
+Monza - Oval CCW|Lombardy|IT|Italy|45.62,9.29
+Monza - Oval CW|Lombardy|IT|Italy|45.62,9.29
+Mores|Sardinia|IT|Italy|40.51,8.83
+Mugello - Grand Prix|Tuscany|IT|Italy|44.00,11.37
+Mugello - Short|Tuscany|IT|Italy|44.00,11.37
+Nardo Circolare|Apulia|IT|Italy|40.32,17.81
+Nardo Handling|Apulia|IT|Italy|40.32,17.82
+Pergusa|Sicily|IT|Italy|37.52,14.31
+Pista autocross Veronella|Veneto|IT|Italy|45.35,11.30
+Pista ICE Pragelato|Piedmont|IT|Italy|45.02,6.95
+Pomposa|Emilia-Romagna|IT|Italy|44.71,12.21
+Salmour|Piedmont|IT|Italy|44.58,7.82
+Sarno|Campania|IT|Italy|40.84,14.57
+Speedway Marche|The Marches|IT|Italy|43.39,13.64
+Tarsia|Calabria|IT|Italy|39.62,16.31
+Tazio Nuvolari - 2.8Km CW|Lombardy|IT|Italy|45.07,8.99
+Tazio Nuvolari - Full 5260M|Lombardy|IT|Italy|45.07,8.99
+Tazio Nuvolari - Short|Lombardy|IT|Italy|45.07,8.99
+Torretta Orario|Sicily|IT|Italy|38.11,13.23
+Vairano|Lombardy|IT|Italy|45.27,9.26
+Valle Dei Templi|Sicily|IT|Italy|37.39,13.75
+Vallelunga - Club|Latium|IT|Italy|42.16,12.37
+Vallelunga - Full|Latium|IT|Italy|42.16,12.37
+Vallelunga - Medium|Latium|IT|Italy|42.16,12.37
+Vallelunga - West|Latium|IT|Italy|42.16,12.37
+Varano - Full|Emilia-Romagna|IT|Italy|44.68,10.02
+Varano - Short|Emilia-Romagna|IT|Italy|44.68,10.02
+Varano - Test Loop|Emilia-Romagna|IT|Italy|44.68,10.03
+Dover Raceway|Saint Ann|JM|Jamaica|18.42,-77.38
+Aomori Speed Park|Aomori|JP|Japan|40.76,140.84
+Asan Circuit|Tokushima|JP|Japan|34.09,133.86
+Auto Land Tsukude|Tsukudesuganuma|JP|Japan|35.03,137.47
+Autopolis - Full|Kumamoto|JP|Japan|33.04,130.97
+Autopolis - Short|Kumamoto|JP|Japan|33.04,130.97
+Central Circuit|Hyogo|JP|Japan|35.03,134.92
+Ebisu Circuit - East|Nihommatsu|JP|Japan|37.64,140.37
+Ebisu Circuit - West|Nihommatsu|JP|Japan|37.64,140.37
+Fuji|Shizuoka|JP|Japan|35.37,138.93
+HSR Circuit Course|Kumamoto|JP|Japan|32.90,130.88
+Magarigawa Club - Full|Chiba|JP|Japan|35.08,139.88
+Magarigawa Club - Short|Chiba|JP|Japan|35.08,139.88
+Maze Circuit - 1|Niigata|JP|Japan|37.75,138.80
+Maze Circuit - 2|Niigata|JP|Japan|37.75,138.80
+Meihan Sportsland - 1|Nara|JP|Japan|34.63,136.00
+Meihan Sportsland - 2|Nara|JP|Japan|34.64,136.00
+Meihan Sportsland - 3|Nara|JP|Japan|34.64,136.00
+Mine Circuit|Yamaguchi|JP|Japan|34.14,131.10
+Motegi - East|Tochigi|JP|Japan|36.53,140.23
+Motegi - Full|Tochigi|JP|Japan|36.53,140.23
+Motegi - Oval|Tochigi|JP|Japan|36.53,140.23
+Motegi - West|Tochigi|JP|Japan|36.53,140.23
+Motorland Suzuka|Mie|JP|Japan|34.81,136.51
+Nakayama Circuit - Car|Okayama|JP|Japan|34.79,134.18
+Nasu Motor Sports Land|Tochigi|JP|Japan|36.97,140.13
+New Tokyo Circuit|Chiba|JP|Japan|35.46,140.09
+Nikko Circuit|Tochigi|JP|Japan|36.66,139.86
+Okayama - Full GP|Hyogo|JP|Japan|34.92,134.22
+Okayama - Piper|Hyogo|JP|Japan|34.91,134.22
+Okegawa Sports Land - Var 1|Saitama|JP|Japan|35.97,139.53
+Okegawa Sports Land - Var 2|Saitama|JP|Japan|35.97,139.53
+Okegawa Sports Land - Var 3|Saitama|JP|Japan|35.97,139.53
+Sodegaura Forest - Full|Chiba|JP|Japan|35.39,140.09
+Sodegaura Forest - Inner|Chiba|JP|Japan|35.39,140.09
+Sodegaura Forest - Outer|Chiba|JP|Japan|35.39,140.09
+SPA Naoiri|Oita|JP|Japan|33.10,131.41
+SPA Nishiura Motor Park|Gamagori|JP|Japan|34.77,137.19
+Sports Land Tamada - Var 1|Hiroshima|JP|Japan|34.56,132.56
+Sports Land Tamada - Var 2|Hiroshima|JP|Japan|34.56,132.56
+Sugo|Miyagi|JP|Japan|38.14,140.78
+Suzuka - East|Mie|JP|Japan|34.84,136.54
+Suzuka - Full|Mie|JP|Japan|34.84,136.53
+Suzuka - West|Mie|JP|Japan|34.84,136.53
+Suzuka Twin Circuit - Full|Mie|JP|Japan|34.81,136.50
+Suzuka Twin Circuit - Short|Mie|JP|Japan|34.81,136.50
+Tokachi - Clubman East|Hokkaido|JP|Japan|42.63,143.29
+Tokachi - Grand Prix Full|Hokkaido|JP|Japan|42.63,143.29
+Tokachi - Junior West|Hokkaido|JP|Japan|42.63,143.28
+TS-Takata Circuit - 1|Hiroshima|JP|Japan|34.75,132.71
+TS-Takata Circuit - 2|Hiroshima|JP|Japan|34.75,132.71
+Tsukuba - 1000|Ibaraki|JP|Japan|36.15,139.93
+Tsukuba - 2000|Ibaraki|JP|Japan|36.15,139.92
+Tsukuba - Oval|Ibaraki|JP|Japan|36.15,139.92
+Sokol - Big|Almaty Oblysy|KZ|Kazakhstan|43.58,76.57
+Sokol - Small|Almaty Oblysy|KZ|Kazakhstan|43.58,76.57
+Everland - East|Gyeonggi-do|KR|Korea, Republic of|37.30,127.22
+Everland - Full|Gyeonggi-do|KR|Korea, Republic of|37.30,127.21
+Everland - West|Gyeonggi-do|KR|Korea, Republic of|37.30,127.21
+Inje - Full|Gangwon-do|KR|Korea, Republic of|38.00,128.29
+Inje - North|Gangwon-do|KR|Korea, Republic of|38.00,128.29
+Inje - South|Gangwon-do|KR|Korea, Republic of|38.00,128.29
+Korea Intl - Grand Prix Full|Jeollanam-do|KR|Korea, Republic of|34.74,126.41
+Korea Intl - National North|Jeollanam-do|KR|Korea, Republic of|34.74,126.41
+Korea Intl - Short South|Jeollanam-do|KR|Korea, Republic of|34.73,126.41
+TaeBaek|Gangwon-do|KR|Korea, Republic of|37.08,129.02
+Kuwait Motor Town - Full|Al Ahmadi|KW|Kuwait|28.93,48.14
+Kuwait Motor Town - Northeast|Al Ahmadi|KW|Kuwait|28.93,48.14
+Kuwait Motor Town - Southwest|Al Ahmadi|KW|Kuwait|28.92,48.14
+333 Short|Garkalne|LV|Latvia|56.95,24.41
+333 Short - Inverted|Garkalne|LV|Latvia|56.95,24.41
+Bikernieki - Full|Stopini|LV|Latvia|56.97,24.22
+Bikernieki - High Speed North|Stopini|LV|Latvia|56.97,24.23
+Bikernieki - Skill South|Stopini|LV|Latvia|56.96,24.22
+Musa Raceland|Bauskas Rajons|LV|Latvia|56.38,24.25
+Sporta Komplekss Pilskalni|Jekabpils novads|LV|Latvia|56.34,25.87
+Nemuno Ziedas|Kauno apskritis|LT|Lithuania|54.92,23.71
+Vilkyciai RX|Lithuania|LT|Lithuania|55.53,21.46
+Goodyear Colmar-Berg|Luxembourg|LU|Luxembourg|49.79,6.10
+Macau Grand Prix|Macau|MO|Macau|22.20,113.55
+Johor|Johor|MY|Malaysia|1.48,103.91
+Kampung Gajah|Perak|MY|Malaysia|4.17,100.95
+LLRKS|Selangor|MY|Malaysia|3.32,101.26
+Melaka|Melaka|MY|Malaysia|2.30,102.31
+Melaka Reverse|Melaka|MY|Malaysia|2.30,102.31
+Sepang - Full|Negeri Sembilan|MY|Malaysia|2.76,101.74
+Sepang - North|Negeri Sembilan|MY|Malaysia|2.76,101.74
+Sepang - South|Negeri Sembilan|MY|Malaysia|2.76,101.74
+Aguascalientes Mexico - Oval|Aguascalientes|MX|Mexico|21.72,-102.33
+Aguascalientes Mexico - Roval|Aguascalientes|MX|Mexico|21.72,-102.33
+Aguila|Michoacan|MX|Mexico|19.58,-101.42
+APEX Racetrack|Jalisco|MX|Mexico|20.60,-103.50
+Autodromo Los Cabos|Baja California Sur|MX|Mexico|23.17,-109.68
+Autodromo Rancho Probaja|Baja California Sur|MX|Mexico|23.97,-110.29
+Cajititlan Triovalo|Jalisco|MX|Mexico|20.45,-103.27
+Cancun|Quintana Roo|MX|Mexico|21.11,-86.84
+Centro Dinamico Pegaso|Mexico|MX|Mexico|19.37,-99.56
+Chiapas - Oval|Chiapas|MX|Mexico|16.78,-93.25
+Chiapas - Roval|Chiapas|MX|Mexico|16.78,-93.25
+Circuito Bronco|Baja California Sur|MX|Mexico|24.13,-110.25
+El Dorado - Big Oval|Chihuahua|MX|Mexico|28.82,-105.95
+El Dorado - Medium Oval|Chihuahua|MX|Mexico|28.82,-105.95
+El Dorado - Roval|Chihuahua|MX|Mexico|28.82,-105.95
+El Dorado - Small Oval|Chihuahua|MX|Mexico|28.82,-105.95
+Estero Beach Race|Baja California|MX|Mexico|31.78,-116.61
+Guadalajara - Club|Jalisco|MX|Mexico|20.53,-103.34
+Guadalajara - Full|Jalisco|MX|Mexico|20.53,-103.34
+Guadalajara - Short|Jalisco|MX|Mexico|20.53,-103.34
+Hermanos Rodriguez|Mexico City|MX|Mexico|19.40,-99.09
+Hermanos Rodriguez - Oval|Mexico City|MX|Mexico|19.40,-99.09
+La Paz Centenario|Baja California Sur|MX|Mexico|24.08,-110.43
+Leon|Guanajuato|MX|Mexico|21.04,-101.57
+Moises Solana|Hidalgo|MX|Mexico|20.05,-98.69
+Monterrey - El Frijol Oval|Nuevo Leon|MX|Mexico|25.86,-100.22
+Monterrey - Full|Nuevo Leon|MX|Mexico|25.86,-100.22
+Potosino|San Luis Potosi|MX|Mexico|22.09,-100.73
+Queretaro - Full|Queretaro|MX|Mexico|20.59,-100.33
+Queretaro - Oval|Queretaro|MX|Mexico|20.59,-100.33
+San Luis 400|San Luis Potosi|MX|Mexico|22.18,-100.99
+Yucatan - CCW|Yucatan|MX|Mexico|21.19,-89.62
+Yucatan - CW|Yucatan|MX|Mexico|21.19,-89.62
+Zacatecas 1400M|Zacatecas|MX|Mexico|22.64,-102.48
+Monaco|Commune de Monaco|MC|Monaco|43.73,7.42
+Monaco - Circuit|Commune de Monaco|MC|Monaco|43.74,7.43
+Tony Rust Racing Track|Khomas|NA|Namibia|-22.57,17.00
+Eurocircuit|Noord-Brabant|NL|Netherlands|51.34,5.43
+Lelystad|Flevoland|NL|Netherlands|52.45,5.50
+Midland Circuit Oval|Flevoland|NL|Netherlands|52.45,5.50
+TT Circuit Assen - GP Full|Drenthe|NL|Netherlands|52.96,6.52
+TT Circuit Assen - Junior|Drenthe|NL|Netherlands|52.96,6.53
+TT Circuit Assen - North|Drenthe|NL|Netherlands|52.96,6.53
+TT Circuit Assen - South|Drenthe|NL|Netherlands|52.96,6.52
+Varsselring|Gelderland|NL|Netherlands|52.05,6.37
+Venray|Limburg|NL|Netherlands|51.52,5.88
+Zandvoort - East|North Holland|NL|Netherlands|52.39,4.55
+Zandvoort - Full|North Holland|NL|Netherlands|52.39,4.55
+Zandvoort - National|North Holland|NL|Netherlands|52.39,4.54
+All Terrain Offroad Racing Club|Auckland|NZ|New Zealand|-36.53,174.54
+Cemetery Circuit|Manawatu-Wanganui|NZ|New Zealand|-39.94,175.05
+Euromarque - East|Canterbury|NZ|New Zealand|-43.53,172.48
+Euromarque - Long|Canterbury|NZ|New Zealand|-43.53,172.48
+Euromarque - Outer|Canterbury|NZ|New Zealand|-43.53,172.48
+Euromarque - Oval|Canterbury|NZ|New Zealand|-43.53,172.48
+Hampton Downs - Club West|Waikato|NZ|New Zealand|-37.35,175.07
+Hampton Downs - International Full|Waikato|NZ|New Zealand|-37.35,175.08
+Hampton Downs - National East|Waikato|NZ|New Zealand|-37.35,175.08
+Highlands - East Short Loop|Otago|NZ|New Zealand|-45.06,169.17
+Highlands - Full|Otago|NZ|New Zealand|-45.06,169.17
+Highlands - North Short|Otago|NZ|New Zealand|-45.06,169.17
+Highlands - North+East|Otago|NZ|New Zealand|-45.06,169.17
+Highlands - North+West|Otago|NZ|New Zealand|-45.06,169.17
+Highlands - West Loop|Otago|NZ|New Zealand|-45.06,169.17
+Huntly Speedway|Waikato|NZ|New Zealand|-37.53,175.19
+Levels - Long|Canterbury|NZ|New Zealand|-44.29,171.20
+Levels - Short|Canterbury|NZ|New Zealand|-44.30,171.20
+Manfeild - Club South|Manawatu-Wanganui|NZ|New Zealand|-40.24,175.55
+Manfeild - Grand Prix CCW|Manawatu-Wanganui|NZ|New Zealand|-40.24,175.56
+Manfeild - Grand Prix CW|Manawatu-Wanganui|NZ|New Zealand|-40.24,175.56
+Manfeild - Intl Full CCW|Manawatu-Wanganui|NZ|New Zealand|-40.24,175.56
+Manfeild - Intl Full CW|Manawatu-Wanganui|NZ|New Zealand|-40.24,175.56
+Manfeild - Short CCW|Manawatu-Wanganui|NZ|New Zealand|-40.24,175.56
+Manfeild - Short CW|Manawatu-Wanganui|NZ|New Zealand|-40.24,175.56
+Meremere Dirt Track Club|Waikato|NZ|New Zealand|-37.33,175.06
+Ngawaro|Western Bay of Plenty District|NZ|New Zealand|-37.95,176.17
+Oreti Park Speedway|Southland|NZ|New Zealand|-46.44,168.25
+Pukekohe|Auckland|NZ|New Zealand|-37.22,174.92
+Ruapuna - West|Canterbury|NZ|New Zealand|-43.53,172.48
+Taranaki Offroad Racing Club|Taranaki|NZ|New Zealand|-39.25,174.27
+Taupo - Full|Waikato|NZ|New Zealand|-38.67,176.14
+Taupo - Northeast|Waikato|NZ|New Zealand|-38.66,176.15
+Taupo - Southwest|Waikato|NZ|New Zealand|-38.67,176.14
+Teretonga Park|Southland|NZ|New Zealand|-46.44,168.26
+Western Springs Speedway|Auckland|NZ|New Zealand|-36.86,174.73
+MRE|Edo|NG|Nigeria|6.28,5.99
+Arctic Circle Raceway|Nordland|NO|Norway|66.42,14.44
+Brekka Motorbane Nmk Aremark|Ostfold|NO|Norway|59.31,11.67
+Konsmo Motorbane|Vest-Agder|NO|Norway|58.32,7.36
+Kristiansands Automobilklubb|Aust-Agder|NO|Norway|58.30,8.17
+Momarken Travbane|Ostfold|NO|Norway|59.57,11.33
+NMK Bo|Telemark|NO|Norway|59.44,9.12
+NMK Elverum|Hedmark|NO|Norway|60.86,11.69
+NMK Gardermoen|Akershus|NO|Norway|60.19,11.14
+NMK Hamar - Vendkvern Motorbane|Hedmark|NO|Norway|60.85,11.11
+NMK Krabyskogen|Oppland|NO|Norway|60.65,10.88
+NMK Melhus|Sor-Trondelag|NO|Norway|63.21,10.39
+Rudskogen|Ostfold|NO|Norway|59.37,11.26
+Solor Motorsenter RallyCross|Hedmark|NO|Norway|60.70,12.31
+Uvdal Motorsenter|Buskerud|NO|Norway|60.30,8.83
+Valerbanen - Full|Hedmark|NO|Norway|60.70,11.81
+Valerbanen - North|Hedmark|NO|Norway|60.71,11.81
+Valerbanen - Northwest|Hedmark|NO|Norway|60.71,11.81
+Valerbanen - Northwest Short|Hedmark|NO|Norway|60.71,11.81
+Valerbanen - South|Hedmark|NO|Norway|60.70,11.81
+Panama|Panama|PA|Panama|8.97,-79.83
+La Chutana|Lima|PE|Peru|-12.40,-76.75
+La Chutana"|Lima|PE|Peru|-12.40,-76.75
+Tacna - Long CCW|Tacna|PE|Peru|-18.11,-70.31
+Tacna - Long CW|Tacna|PE|Peru|-18.11,-70.31
+Tacna - Short CCW|Tacna|PE|Peru|-18.11,-70.31
+Tacna - Short CW|Tacna|PE|Peru|-18.11,-70.31
+Batangas - Full|Calabarzon|PH|Philippines|13.82,121.28
+Batangas - Short|Calabarzon|PH|Philippines|13.82,121.28
+Clark Intl - East|Central Luzon|PH|Philippines|15.21,120.54
+Clark Intl - Full|Central Luzon|PH|Philippines|15.21,120.54
+Clark Intl - West|Central Luzon|PH|Philippines|15.21,120.54
+Tarlac Circuit Hill|Central Luzon|PH|Philippines|15.50,120.50
+Autodrom Pomorze|Pomeranian Voivodeship|PL|Poland|54.18,18.71
+Autodrom Pomorze Reverse|województwo pomorskie|PL|Poland|54.18,18.71
+Motopark Koszalin Split|West Pomeranian Voivodeship|PL|Poland|54.18,16.19
+Silesia Ring - East|Opole Voivodeship|PL|Poland|50.53,18.10
+Silesia Ring - East+West|Opole Voivodeship|PL|Poland|50.53,18.10
+Silesia Ring - West|Opole Voivodeship|PL|Poland|50.53,18.09
+Tor Jastrzab Auto|Masovian Voivodeship|PL|Poland|51.26,20.93
+Tor Jastrzab Motorcycle|Masovian Voivodeship|PL|Poland|51.26,20.93
+Tor Kielce - Big|Swietokrzyskie|PL|Poland|50.96,20.54
+Tor Kielce - Little|Swietokrzyskie|PL|Poland|50.96,20.54
+Tor Poznan|Greater Poland Voivodeship|PL|Poland|52.42,16.81
+Tor Slomczyn|Masovian Voivodeship|PL|Poland|51.88,20.93
+Tor Slomczyn - Rallycross|Masovian Voivodeship|PL|Poland|51.88,20.93
+Tor Slomczyn Reverse|Masovian Voivodeship|PL|Poland|51.88,20.93
+Algarve|Faro|PT|Portugal|37.23,-8.63
+Alto Do Rocario|Aveiro|PT|Portugal|40.68,-8.34
+Circuito Internacional de Montalegre|Vila Real|PT|Portugal|41.85,-7.76
+Estoril|Lisbon|PT|Portugal|38.75,-9.39
+Eurocircuito Automovel de Lousada|Lousada|PT|Portugal|41.27,-8.29
+Vila Real|Vila Real|PT|Portugal|41.30,-7.72
+EcoTrack|Toa Baja|PR|Puerto Rico|18.44,-66.21
+Puerto Rico Intl Speedway - Full|Penuelas|PR|Puerto Rico|17.97,-66.67
+Puerto Rico Intl Speedway - Outer|Penuelas|PR|Puerto Rico|17.97,-66.67
+Salinas Speedway|Salinas|PR|Puerto Rico|17.97,-66.27
+Academia Titi Aur|Comuna Crevedia|RO|Romania|44.63,25.90
+MotorPark Romania - Center Short|Prahova|RO|Romania|44.78,26.47
+MotorPark Romania - Center+East|Prahova|RO|Romania|44.78,26.47
+MotorPark Romania - Center+West|Prahova|RO|Romania|44.78,26.47
+MotorPark Romania - East Short|Ialomita|RO|Romania|44.78,26.48
+MotorPark Romania - Full|Prahova|RO|Romania|44.78,26.47
+MotorPark Romania - West Short|Prahova|RO|Romania|44.78,26.47
+Transilvania|Mures|RO|Romania|46.43,24.42
+ADM Raceway - Full|Verkhneye Myachkovo|RU|Russia|55.56,37.99
+Altai Krai - 1|Altai Krai|RU|Russia|53.01,83.58
+Altai Krai - 2|Altai Krai|RU|Russia|53.01,83.58
+Autodrom St. Petersburg - 1|Leningrad Oblast|RU|Russia|59.78,30.45
+Autodrom St. Petersburg - 2|Leningrad Oblast|RU|Russia|59.78,30.45
+Autodrom St. Petersburg - Full|Leningrad Oblast|RU|Russia|59.78,30.46
+Avtodrom Belyy Kolodets|Voronezhskaya oblast|RU|Russia|51.63,38.97
+Avtodrom Kvts - 1|Samara Oblast|RU|Russia|53.56,49.22
+Avtodrom Kvts - 2|Samara Oblast|RU|Russia|53.56,49.22
+Avtodrom Kvts - 3|Samara Oblast|RU|Russia|53.56,49.22
+Avtodrom Usady|Vysokogorsky District|RU|Russia|55.98,49.32
+Avtokross Gukovskaya|Rostov|RU|Russia|47.99,39.92
+Avtoshkola Kama|Republic of Tatarstan|RU|Russia|55.70,52.43
+Crimea Grand Prix - Full|Crimea|RU|Russia|45.26,33.40
+Dirt Track Tsamk|Kursk Oblast|RU|Russia|51.74,36.29
+Fort Grozny Autodrom - Full|Chechnya|RU|Russia|43.30,45.66
+Fort Grozny Autodrom - Full 1|Chechnya|RU|Russia|43.31,45.66
+Fort Grozny Autodrom - Full 2|Chechnya|RU|Russia|43.31,45.66
+Fort Grozny Autodrom - Full South 1|Chechnya|RU|Russia|43.30,45.66
+Fort Grozny Autodrom - Full South 2|Chechnya|RU|Russia|43.30,45.66
+Fort Grozny Autodrom - Full South 3|Chechnya|RU|Russia|43.30,45.66
+Krossovyy Avtodrom|Stavropol'skiy|RU|Russia|44.95,41.91
+Krutoi Log Autocross|Kursk Oblast|RU|Russia|51.73,36.10
+Metallurg|Sverdlovsk Oblast|RU|Russia|56.38,61.99
+Motor|St.-Petersburg|RU|Russia|59.85,30.45
+Novosibirsk Automobile Sports Federation|Novosibirsk|RU|Russia|54.38,81.85
+NRing - North|Nizhny Novgorod Oblast|RU|Russia|56.12,43.60
+NRing - North 2|Nizhny Novgorod Oblast|RU|Russia|56.12,43.60
+NRing - North 3|Nizhny Novgorod Oblast|RU|Russia|56.12,43.60
+NRing - North Bike|Nizhny Novgorod Oblast|RU|Russia|56.12,43.60
+NRing - North Test|Nizhny Novgorod Oblast|RU|Russia|56.12,43.60
+Pargolovo Cross|St.-Petersburg|RU|Russia|60.08,30.22
+Ulianovsk|Ul'janovsk|RU|Russia|54.29,48.27
+Voronezh|Oblast' di Voronez|RU|Russia|51.61,39.18
+Zelenogorsk|Krasnoyarsk Krai|RU|Russia|56.10,94.61
+Igora Drive - GP Full|Leningrad|RU|Russian Federation|60.51,30.20
+Igora Drive - North Loop|Leningrad|RU|Russian Federation|60.52,30.19
+Igora Drive - Short South|Leningrad|RU|Russian Federation|60.51,30.20
+KazanRing|Tatarstan|RU|Russian Federation|55.87,49.26
+Moscow Raceway - Full|Moskovskaya|RU|Russian Federation|56.00,36.26
+Moscow Raceway - Short West|Moskovskaya|RU|Russian Federation|56.00,36.25
+Moscow Raceway - Sprint East|Moskovskaya|RU|Russian Federation|56.00,36.26
+Smolensk Ring|Smolensk|RU|Russian Federation|54.99,33.37
+Sochi - Grand Prix|Krasnodarskiy|RU|Russian Federation|43.41,39.96
+Diriyah ePrix|Ar Riyad|SA|Saudi Arabia|24.74,46.58
+Jeddah|Makkah|SA|Saudi Arabia|21.64,39.10
+Reem - Full|Ar Riyad|SA|Saudi Arabia|24.38,45.98
+Reem - Oval|Ar Riyad|SA|Saudi Arabia|24.38,45.98
+Reem - Short|Ar Riyad|SA|Saudi Arabia|24.38,45.98
+Dakar-Baobabs|Thies|SN|Senegal|14.60,-17.02
+NAVAK - Full CCW|Autonomna Pokrajina Vojvodina|RS|Serbia|44.84,19.96
+NAVAK - Full CW|Autonomna Pokrajina Vojvodina|RS|Serbia|44.84,19.96
+Navak TD|Autonomna Pokrajina Vojvodina|RS|Serbia|44.84,19.96
+Slovakia Ring - 1 CCW Medium|Trnavsky|SK|Slovakia|48.06,17.57
+Slovakia Ring - 1 CW Medium|Trnavsky|SK|Slovakia|48.05,17.57
+Slovakia Ring - 2 CCW Outer|Trnavsky|SK|Slovakia|48.06,17.57
+Slovakia Ring - 2 CW Outer|Trnavsky|SK|Slovakia|48.05,17.57
+Slovakia Ring - 3 CCW Loop|Trnavsky|SK|Slovakia|48.06,17.57
+Slovakia Ring - 3 CW Loop|Trnavsky|SK|Slovakia|48.05,17.57
+Slovakia Ring - 4 CCW Full|Trnavsky|SK|Slovakia|48.05,17.57
+Slovakia Ring - 4 CW Full|Trnavsky|SK|Slovakia|48.05,17.57
+Slovakia Ring - 6 CCW Inner|Trnavsky|SK|Slovakia|48.06,17.57
+Slovakia Ring - 6 CW Inner|Trnavsky|SK|Slovakia|48.05,17.57
+AMZS Center Varne Voznje|Vransko|SI|Slovenia|46.24,14.97
+Gaj|Krsko|SI|Slovenia|45.89,15.50
+Aldo Scribante|Eastern Cape|ZA|South Africa|-33.81,25.65
+Dezzi Raceway|KwaZulu-Natal|ZA|South Africa|-30.77,30.43
+East London|Eastern Cape|ZA|South Africa|-33.05,27.88
+Killarney - Full CCW|Western Cape|ZA|South Africa|-33.82,18.53
+Killarney - Full CW|Western Cape|ZA|South Africa|-33.82,18.53
+Killarney - Oval|Western Cape|ZA|South Africa|-33.82,18.53
+Killarney - Short West|Western Cape|ZA|South Africa|-33.82,18.53
+Kyalami|Gauteng|ZA|South Africa|-26.00,28.07
+Midvaal Raceway|Gauteng|ZA|South Africa|-26.61,28.06
+Phakisa Freeway - GP Long|Orange Free State|ZA|South Africa|-27.90,26.71
+Phakisa Freeway - Oval|Orange Free State|ZA|South Africa|-27.90,26.71
+Phakisa Freeway - Short|Orange Free State|ZA|South Africa|-27.90,26.71
+Port Elizabeth Ovaltrack Raceway|Eastern Cape|ZA|South Africa|-33.90,25.46
+Red Star Raceway - Full CCW|Mpumalanga|ZA|South Africa|-26.07,28.75
+Red Star Raceway - Full CW|Mpumalanga|ZA|South Africa|-26.07,28.75
+Red Star Raceway - Short CCW|Mpumalanga|ZA|South Africa|-26.07,28.75
+Red Star Raceway - Short CW|Mpumalanga|ZA|South Africa|-26.08,28.75
+The Rock Raceway|Gauteng|ZA|South Africa|-26.21,28.35
+Zwartkops|Gauteng|ZA|South Africa|-25.81,28.11
+Pocheon Raceway - Full|Gangwon-do|KR|South Korea|38.06,127.19
+Pocheon Raceway - Short|Gangwon-do|KR|South Korea|38.06,127.19
+Albacete - Full|Castille-La Mancha|ES|Spain|39.01,-1.79
+Alcarras|Aragon|ES|Spain|41.62,0.40
+Alcarras SM|Aragon|ES|Spain|41.62,0.41
+Almeria - Andalucia 1 Long|Andalusia|ES|Spain|37.09,-2.27
+Almeria - Andalucia 2 Medium|Andalusia|ES|Spain|37.09,-2.27
+Almeria - Andalucia 3 Short|Andalusia|ES|Spain|37.09,-2.27
+Almeria - East Circuit|Andalusia|ES|Spain|37.09,-2.26
+Almeria - Iberia Full Track|Andalusia|ES|Spain|37.09,-2.27
+Andalucia|Andalusia|ES|Spain|37.09,-2.28
+Aragon - East|Aragon|ES|Spain|41.08,-0.20
+Aragon - Full|Aragon|ES|Spain|41.08,-0.20
+Aragon - West|Aragon|ES|Spain|41.08,-0.21
+Ascari - Center|Andalusia|ES|Spain|36.82,-5.08
+Ascari - Center+North|Andalusia|ES|Spain|36.82,-5.08
+Ascari - Center+South|Andalusia|ES|Spain|36.82,-5.08
+Ascari - Full|Andalusia|ES|Spain|36.82,-5.08
+Ascari - North|Andalusia|ES|Spain|36.83,-5.08
+Ascari - South|Andalusia|ES|Spain|36.82,-5.08
+Autocross Arteixo|Galicia|ES|Spain|43.31,-8.47
+Autocross Carballo|Bergantinos|ES|Spain|43.25,-8.67
+Automobile Club Pineda|Burgos|ES|Spain|41.89,-3.69
+Bayas|Basque Country|ES|Spain|42.69,-2.90
+Bayas - Inverso|Basque Country|ES|Spain|42.69,-2.90
+Benameji|Cordoba|ES|Spain|37.27,-4.53
+Calafat - Full|Catalonia|ES|Spain|40.93,0.84
+Calafat - Inner|Catalonia|ES|Spain|40.93,0.84
+Calafat - Outer|Catalonia|ES|Spain|40.93,0.84
+Can Padro|Catalonia|ES|Spain|41.65,1.88
+Cartagena|Murcia|ES|Spain|37.65,-1.03
+Castelloli|Catalonia|ES|Spain|41.59,1.69
+Catalunya - Club|Catalonia|ES|Spain|41.57,2.25
+Catalunya - Grand Prix|Catalonia|ES|Spain|41.57,2.26
+Catalunya - National|Catalonia|ES|Spain|41.57,2.26
+Circuit d'autocros de lleida|Catalonia|ES|Spain|41.59,0.57
+Circuito Alcolea|Castille-La Mancha|ES|Spain|41.04,-2.47
+Circuito Llanos de Alba|Leon|ES|Spain|42.81,-5.65
+Circuito Maspalomas|Canary Islands|ES|Spain|27.78,-15.51
+Circuito Mendavia|Navarre|ES|Spain|42.48,-2.20
+Circuito Municipal De Consuegra|TO|ES|Spain|39.44,-3.61
+Fuente Alamo|Murcia|ES|Spain|37.75,-1.19
+Guadix|Andalusia|ES|Spain|37.40,-3.07
+Guadix - Reverse|Andalusia|ES|Spain|37.40,-3.07
+HWK Academy|Alicante|ES|Spain|38.24,-0.71
+Idiada Dry Handling|Catalonia|ES|Spain|41.26,1.51
+Idiada Wet Handling|Catalonia|ES|Spain|41.26,1.53
+Jarama|Madrid|ES|Spain|40.62,-3.59
+Jerez|Andalusia|ES|Spain|36.71,-6.03
+La Base Motor Club|A Coruna|ES|Spain|43.17,-8.64
+La Ribera|Valencia|ES|Spain|39.23,-0.47
+Mallorca RennArena|Balearic Islands|ES|Spain|39.49,2.79
+Monteblanco|Andalusia|ES|Spain|37.36,-6.57
+Montjuic Circuit|Catalonia|ES|Spain|41.37,2.15
+Navarra - Long|Navarre|ES|Spain|42.56,-2.17
+Navarra - Medium|Navarre|ES|Spain|42.56,-2.17
+Navarra - Short|Navarre|ES|Spain|42.56,-2.16
+Ricardo Tormo - Grand Prix|Valencia|ES|Spain|39.49,-0.63
+Ricardo Tormo - National|Valencia|ES|Spain|39.49,-0.63
+Ricardo Tormo - School Inner|Valencia|ES|Spain|39.49,-0.63
+Totana|MU|ES|Spain|37.78,-1.45
+Zarcilla de Ramos|MU|ES|Spain|37.86,-1.86
+Anderstorp - Grand Prix|Joenkoeping|SE|Sweden|57.26,13.60
+Anderstorp - North|Joenkoeping|SE|Sweden|57.27,13.61
+Anderstorp - South|Joenkoeping|SE|Sweden|57.26,13.60
+Arjangs Motorklubb|Vaermland|SE|Sweden|59.52,11.82
+Bergsaker|Vaesternorrland|SE|Sweden|62.42,17.22
+Bjorshultsbanan|Soedermanland|SE|Sweden|58.71,17.00
+Bollnas Motorklubb|Gaevleborg|SE|Sweden|61.36,16.28
+Drivelab|Stockholm|SE|Sweden|59.62,17.90
+Falkenberg|Halland|SE|Sweden|56.98,12.57
+Films MK|Uppsala|SE|Sweden|60.19,17.62
+Finnskoga Motorklubb - Full|Hedmark|SE|Sweden|60.92,12.55
+Finnskoga Motorklubb - Short|Hedmark|SE|Sweden|60.92,12.55
+Finnskoga Motorklubb - Short 2|Hedmark|SE|Sweden|60.92,12.55
+Gellerasen - Grand Prix|OErebro|SE|Sweden|59.38,14.52
+Gellerasen - Short|OErebro|SE|Sweden|59.38,14.51
+Gotlandring - North 3.1 Km|Gotland|SE|Sweden|57.84,18.84
+Gotlandring - Tjelvar|Gotland|SE|Sweden|57.84,18.83
+Haninge RallyCross|Stockholm|SE|Sweden|59.15,18.22
+Hokedalen Motorstadion|Vaermland|SE|Sweden|59.86,12.31
+Karlstads Motor Club-Bil|Vaermland|SE|Sweden|59.37,13.54
+Kinnekulle Ring|Vaestra Goetaland|SE|Sweden|58.55,13.40
+Knutstorp|Skane|SE|Sweden|55.99,13.12
+Koping|Koping Municipality|SE|Sweden|59.50,16.04
+Laholmsmotorklubbmotorklubb|Halland|SE|Sweden|56.47,13.11
+Laxa Motorklubb|OErebro|SE|Sweden|58.98,14.66
+Lidkopings MCK|Vaestra Goetaland|SE|Sweden|58.49,13.20
+Linkopings|OEstergoetland|SE|Sweden|58.39,15.72
+Lycksele Motorklubb - Full|Vaesterbotten|SE|Sweden|64.60,18.79
+Mantorp Park - Long|OEstergoetland|SE|Sweden|58.37,15.28
+Mantorp Park - Mjolby Loop|OEstergoetland|SE|Sweden|58.37,15.28
+Mantorp Park - Paris Loop|OEstergoetland|SE|Sweden|58.37,15.28
+Mittsverigebanan|Vaesternorrland|SE|Sweden|62.60,17.82
+Motorstadion Krakvilan Norrkoping|OEstergoetland|SE|Sweden|58.59,16.24
+Ostersund Motorstadion|Jaemtland|SE|Sweden|63.20,14.78
+Ostmark Motor & FF|Vaermland|SE|Sweden|60.29,12.74
+Pitea Motorsallskap|Norrbotten|SE|Sweden|65.26,21.59
+Skelleftea Motorsallskap|Vaesterbotten|SE|Sweden|64.71,20.77
+SMK Arboga - Long|OErebro|SE|Sweden|59.40,15.52
+SMK Arboga - Short|OErebro|SE|Sweden|59.40,15.52
+Solvalla|Stockholm|SE|Sweden|59.37,17.94
+Strangnas Motorstadion|Soedermanland|SE|Sweden|59.34,16.91
+Sturup - Full|Skane|SE|Sweden|55.53,13.36
+Sturup - Short 1|Skane|SE|Sweden|55.53,13.36
+Sturup - Short 2|Skane|SE|Sweden|55.53,13.36
+Sturup - Short 3|Skane|SE|Sweden|55.53,13.35
+Sturup - Short 4|Skane|SE|Sweden|55.53,13.36
+Sturup - Short 5|Skane|SE|Sweden|55.53,13.36
+Tierp Arena - Full|Uppsala|SE|Sweden|60.34,17.43
+Tomelilla Motorklubb|Skane|SE|Sweden|55.56,13.91
+Tomtfallets Motorstadion|Vaermland|SE|Sweden|59.86,13.47
+Vasteras Motorstadion AB|Vaestmanland|SE|Sweden|59.65,16.60
+Westombanan|Vaermland|SE|Sweden|59.68,12.65
+Lignieres Anti-Horaire|Bern|CH|Switzerland|47.09,7.08
+Dapeng Bay - Full|Taiwan|TW|Taiwan, Province of China|22.45,120.48
+Dapeng Bay - Short|Taiwan|TW|Taiwan, Province of China|22.45,120.48
+Lihpao - Fire East|Taiwan|TW|Taiwan, Province of China|24.32,120.69
+Lihpao - G2 Full|Taiwan|TW|Taiwan, Province of China|24.32,120.69
+Lihpao - Thunder West|Taiwan|TW|Taiwan, Province of China|24.32,120.68
+Lihpao - Wind Inner|Taiwan|TW|Taiwan, Province of China|24.32,120.69
+Bangsaen Street Circuit|Chon Buri|TH|Thailand|13.30,100.90
+Bira|Chon Buri|TH|Thailand|12.92,101.01
+Chang Intl (Buriram) - Full|Buriram|TH|Thailand|14.96,103.08
+Chang Intl (Buriram) - Northeast|Buriram|TH|Thailand|14.96,103.09
+Chang Intl (Buriram) - South Short|Buriram|TH|Thailand|14.96,103.09
+Chang Intl (Buriram) - South+East|Buriram|TH|Thailand|14.96,103.08
+Chang Intl (Buriram) - South+West|Buriram|TH|Thailand|14.96,103.08
+Chang Intl (Buriram) - West|Buriram|TH|Thailand|14.96,103.08
+Korat Stadium|Nakhon Ratchasima|TH|Thailand|14.93,102.05
+MSP MK4|Bangkok|TH|Thailand|13.77,100.75
+Prachuap Street Circuit|Prachuap Khiri Khan|TH|Thailand|11.81,99.80
+Thailand Circuit|Nakhon Pathom|TH|Thailand|13.91,100.17
+Wallerfield International Raceway|Borough of Arima|TT|Trinidad and Tobago|10.61,-61.21
+Istanbul Auto-drom - 1|Istanbul|TR|Turkey|40.89,29.35
+Istanbul Auto-drom - 2|Istanbul|TR|Turkey|40.89,29.35
+Kenan Sofuoglu Pisti|Sakarya|TR|Turkey|40.70,30.57
+TOSFED Korfez - Yaris Pisti|Kocaeli|TR|Turkey|40.74,29.78
+Ulku Park|Bornova|TR|Turkey|38.43,27.27
+Istanbul - Grand Prix|Kocaeli|TR|Turkie|40.96,29.41
+Istanbul - Intermediate|Kocaeli|TR|Turkie|40.96,29.41
+Chaika|Kyiv City|UA|Ukraine|50.44,30.29
+Dubai - Club Short|Dubai|AE|United Arab Emirates|25.05,55.24
+Dubai - East Hill|Dubai|AE|United Arab Emirates|25.05,55.24
+Dubai - GP Full|Dubai|AE|United Arab Emirates|25.05,55.24
+Dubai - International East|Dubai|AE|United Arab Emirates|25.05,55.24
+Dubai - National West|Dubai|AE|United Arab Emirates|25.05,55.24
+Dubai - West Loop|Dubai|AE|United Arab Emirates|25.05,55.23
+Yas Marina - Corkscrew|Abu Dhabi|AE|United Arab Emirates|24.47,54.61
+Yas Marina - Grand Prix|Abu Dhabi|AE|United Arab Emirates|24.47,54.61
+Yas Marina - North|Abu Dhabi|AE|United Arab Emirates|24.47,54.61
+Yas Marina - North Short|Abu Dhabi|AE|United Arab Emirates|24.47,54.61
+Yas Marina - South|Abu Dhabi|AE|United Arab Emirates|24.47,54.61
+Aghadowey Oval|Northern Ireland|GB|United Kingdom|55.04,-6.59
+Aintree|England|GB|United Kingdom|53.48,-2.94
+Anglesey - Club|Wales|GB|United Kingdom|53.19,-4.50
+Anglesey - Coastal|Wales|GB|United Kingdom|53.19,-4.50
+Anglesey - Grand Prix|Wales|GB|United Kingdom|53.19,-4.50
+Anglesey - National|Wales|GB|United Kingdom|53.19,-4.50
+Armoy Race Circuit|Northern Ireland|GB|United Kingdom|55.14,-6.32
+Bedford - East|England|GB|United Kingdom|52.23,-0.46
+Bedford - GT|England|GB|United Kingdom|52.23,-0.47
+Bedford - North|England|GB|United Kingdom|52.23,-0.47
+Bedford - South|England|GB|United Kingdom|52.23,-0.47
+Bedford - South+East+North|England|GB|United Kingdom|52.23,-0.47
+Bedford - South+West|England|GB|United Kingdom|52.23,-0.47
+Bedford - West|England|GB|United Kingdom|52.23,-0.48
+Bishopscourt - Intermediate|Northern Ireland|GB|United Kingdom|54.31,-5.58
+Bishopscourt - International|Northern Ireland|GB|United Kingdom|54.31,-5.58
+Bishopscourt - National|Northern Ireland|GB|United Kingdom|54.31,-5.58
+Bishopscourt - Short|Northern Ireland|GB|United Kingdom|54.30,-5.58
+Blyton Park - Eastern|England|GB|United Kingdom|53.46,-0.69
+Blyton Park - Inner|England|GB|United Kingdom|53.46,-0.69
+Blyton Park - North Inner|England|GB|United Kingdom|53.46,-0.69
+Blyton Park - North Outer|England|GB|United Kingdom|53.46,-0.69
+Blyton Park - Outer|England|GB|United Kingdom|53.46,-0.69
+Blyton Park - South|England|GB|United Kingdom|53.46,-0.69
+Blyton Park - the Loop|England|GB|United Kingdom|53.46,-0.69
+Brands Hatch - GP Long|England|GB|United Kingdom|51.36,0.26
+Brands Hatch - Indy Short|England|GB|United Kingdom|51.36,0.26
+Cadwell Park - Club|England|GB|United Kingdom|53.31,-0.06
+Cadwell Park - Full|England|GB|United Kingdom|53.31,-0.06
+Cadwell Park - Woodlands|England|GB|United Kingdom|53.31,-0.06
+Castle Combe|England|GB|United Kingdom|51.49,-2.21
+Cookstown 100 Circuit|Northern Ireland|GB|United Kingdom|54.65,-6.80
+Croft - Club a|England|GB|United Kingdom|54.45,-1.55
+Croft - Club B|England|GB|United Kingdom|54.45,-1.56
+Croft - Main|England|GB|United Kingdom|54.45,-1.56
+Darley Moor CCW|England|GB|United Kingdom|52.98,-1.74
+Donington Park - Grand Prix|England|GB|United Kingdom|52.83,-1.37
+Donington Park - National|England|GB|United Kingdom|52.83,-1.37
+East Fortune|Scotland|GB|United Kingdom|56.00,-2.71
+Goodwood|England|GB|United Kingdom|50.86,-0.76
+Kirkistown|Northern Ireland|GB|United Kingdom|54.46,-5.47
+Knockhill - CCW|Scotland|GB|United Kingdom|56.13,-3.50
+Knockhill - CW|Scotland|GB|United Kingdom|56.13,-3.50
+Llandow|Cymru / Wales|GB|United Kingdom|51.43,-3.50
+Lockwell Hill - Activity Centre|England|GB|United Kingdom|53.12,-1.06
+Lockwell Hill - Activity Centre 1|England|GB|United Kingdom|53.12,-1.06
+Lydden Hill|England|GB|United Kingdom|51.18,1.20
+M-Sport|England|GB|United Kingdom|54.68,-3.40
+Mallory Park - Oval|England|GB|United Kingdom|52.60,-1.34
+Mallory Park - Road Course|England|GB|United Kingdom|52.60,-1.34
+Oulton Park - Fosters|England|GB|United Kingdom|53.18,-2.62
+Oulton Park - International|England|GB|United Kingdom|53.18,-2.62
+Oulton Park - Island|England|GB|United Kingdom|53.18,-2.62
+Pembrey - Full|Wales|GB|United Kingdom|51.71,-4.32
+Pembrey - Short|Wales|GB|United Kingdom|51.70,-4.32
+Rockingham Intl|England|GB|United Kingdom|52.51,-0.66
+Silverstone - Grand Prix|England|GB|United Kingdom|52.07,-1.02
+Silverstone - International|England|GB|United Kingdom|52.07,-1.02
+Silverstone - National|England|GB|United Kingdom|52.08,-1.01
+Silverstone - Stowe|England|GB|United Kingdom|52.07,-1.02
+Snetterton - 100 CCW|England|GB|United Kingdom|52.47,0.94
+Snetterton - 100 CW|England|GB|United Kingdom|52.47,0.94
+Snetterton - 200|England|GB|United Kingdom|52.46,0.95
+Snetterton - 300|England|GB|United Kingdom|52.46,0.95
+Teesside|England|GB|United Kingdom|54.58,-1.19
+Teesside - Reverse|England|GB|United Kingdom|54.58,-1.19
+Teesside - Short|England|GB|United Kingdom|54.58,-1.19
+Thruxton|England|GB|United Kingdom|51.21,-1.60
+TT Course IOM 2016|Douglas|GB|United Kingdom|54.24,-4.51
+105 Speedway|Texas|US|United States|30.34,-95.16
+141 Speedway|Wisconsin|US|United States|44.25,-87.77
+281 speedway|Texas|US|United States|32.29,-98.19
+300 Raceway|Iowa|US|United States|42.44,-91.02
+304 Speedway - Brushcreek Falls RV Resort|West Virginia|US|United States|37.45,-81.06
+311 Motor Speedway|North Carolina|US|United States|36.35,-80.04
+35 Raceway Park|Ohio|US|United States|39.39,-83.18
+4-17 Southern Speedway|Florida|US|United States|26.91,-82.00
+41-A Speedway|Tennessee|US|United States|36.37,-86.98
+411 Motor Speedway|Tennessee|US|United States|35.86,-83.78
+81 Speedway|Kansas|US|United States|37.82,-97.34
+AAR Speedway|North Carolina|US|United States|36.12,-80.15
+ABC Raceway|Wisconsin|US|United States|46.54,-90.88
+Abilene Speedway|Texas|US|United States|32.45,-99.83
+Acadiana Speedway|Louisiana|US|United States|30.31,-91.95
+Accord Speedway|New York|US|United States|41.83,-74.22
+Ace Speedway|North Carolina|US|United States|36.19,-79.50
+Acme Speedway|Pennsylvania|US|United States|40.14,-79.46
+Action Track USA|Pennsylvania|US|United States|40.52,-75.78
+Acura Gran Prix Of Long Beach|California|US|United States|33.76,-118.19
+Addison|New York|US|United States|42.07,-77.28
+Adirondack Intl - Big Oval|New York|US|United States|43.85,-75.45
+Adirondack Intl - Roval|New York|US|United States|43.85,-75.45
+Adirondack Intl - Small Oval|New York|US|United States|43.85,-75.45
+Adobe Mtn Speedway|Arizona|US|United States|33.69,-112.16
+Adrian Speedway|Missouri|US|United States|38.43,-94.35
+Adventure Mountain|Michigan|US|United States|46.78,-89.09
+Afton Motorsports Park|New York|US|United States|42.22,-75.52
+Airborne Park Speedway|New York|US|United States|44.63,-73.50
+Airport Raceway|Kansas|US|United States|37.92,-100.71
+Airport Speedway|Delaware|US|United States|39.69,-75.61
+Akron Speedway|Indiana|US|United States|41.06,-86.03
+Albany Motor Spwy|Georgia|US|United States|31.50,-84.12
+Albany MX|Oregon|US|United States|44.68,-123.05
+Albany-Saratoga Speedway|New York|US|United States|42.99,-73.78
+Alcona Park|Michigan|US|United States|44.68,-83.40
+All American Speedway|California|US|United States|38.76,-121.29
+All-Tech Raceway|Florida|US|United States|29.99,-82.61
+Alliance Speedway|Nebraska|US|United States|42.09,-102.85
+Alpenrose - Quarter Midget Racing Association|Oregon|US|United States|45.48,-122.74
+Ambassador Racing|Florida|US|United States|27.76,-82.25
+America Motor Speedway|Arkansas|US|United States|35.39,-94.26
+AmericanValleySpwy|California|US|United States|39.94,-120.92
+Anderson Motor Speedway|South Carolina|US|United States|34.66,-82.59
+Anderson Speedway|Indiana|US|United States|40.09,-85.70
+Angell Park Speedway|Wisconsin|US|United States|43.18,-89.21
+Angels Motorsports Park|Alabama|US|United States|30.84,-88.19
+Angola Motor Speedway|Indiana|US|United States|41.69,-84.88
+Antigo 24|Wisconsin|US|United States|45.15,-89.14
+Antioch Speedway|California|US|United States|38.01,-121.82
+Anza-Borrego Desert State Park|California|US|United States|32.91,-115.78
+Apex - South CCW|Arizona|US|United States|33.08,-112.13
+Apex - South CW|Arizona|US|United States|33.08,-112.13
+Arizona Speedway|Arizona|US|United States|33.31,-111.57
+Ark-La-Tex Speedway|Louisiana|US|United States|32.83,-94.01
+Arkoma Speedway|Oklahoma|US|United States|35.33,-94.44
+Arlington - Oval|Minnesota|US|United States|44.61,-94.09
+Arroyo Seco Raceway - CCW|New Mexico|US|United States|32.24,-107.43
+Arroyo Seco Raceway - CW|New Mexico|US|United States|32.24,-107.43
+Arthur Raceway|Michigan|US|United States|43.45,-83.76
+Ashway Speedway|Tennessee|US|United States|36.02,-83.66
+Aspen|Colorado|US|United States|39.27,-106.88
+Atco Speedway|New Jersey|US|United States|39.78,-74.83
+Atlanta Motorsports - Drift Loop|Georgia|US|United States|34.43,-84.17
+Atlanta Motorsports - East|Georgia|US|United States|34.43,-84.18
+Atlanta Motorsports - Full|Georgia|US|United States|34.43,-84.18
+Atlanta Motorsports - Short|Georgia|US|United States|34.43,-84.18
+Atlanta Motorsports - West|Georgia|US|United States|34.44,-84.18
+Atoka Raceway Park|Tennessee|US|United States|35.42,-89.69
+Atomic Motor Raceway|Idaho|US|United States|43.45,-112.81
+Atomic Speedway|Ohio|US|United States|39.20,-83.02
+Attica Raceway Park|Ohio|US|United States|41.07,-82.88
+Aubrey|Texas|US|United States|33.29,-97.11
+Auburndale Speedway|Florida|US|United States|28.03,-81.79
+Auto City Speedway - Big|Michigan|US|United States|43.16,-83.70
+Auto City Speedway - Small|Michigan|US|United States|43.16,-83.70
+Autobahn - Full|Illinois|US|United States|41.45,-88.13
+Autobahn - North|Illinois|US|United States|41.46,-88.12
+Autobahn - South|Illinois|US|United States|41.45,-88.13
+Avenger Motor Speedway|Alabama|US|United States|31.81,-86.51
+Aztec Speedway|New Mexico|US|United States|36.81,-108.00
+Back River Raceway|New York|US|United States|42.07,-77.93
+Badger Creek Super Speedway|Iowa|US|United States|40.74,-93.56
+Baer Field Motorsports Park - Full|Indiana|US|United States|40.97,-85.20
+Bailey's Motor Speedway|Alabama|US|United States|33.36,-85.30
+Bainbridge|Ohio|US|United States|39.21,-83.42
+Bakersfield Speedway|California|US|United States|35.45,-119.03
+Baltimore Grand Prix|Maryland|US|United States|39.28,-76.62
+BAPS Motor Speedway|Pennsylvania|US|United States|40.11,-76.83
+Barber - East|Alabama|US|United States|33.53,-86.62
+Barber - Full|Alabama|US|United States|33.53,-86.62
+Barber - Short|Alabama|US|United States|33.53,-86.62
+Bark River Intl Raceway|Michigan|US|United States|45.68,-87.31
+Barlett Bridge Raceway|Maine|US|United States|43.57,-70.65
+Barona Speedway|California|US|United States|32.98,-116.84
+Batesville Motor Speedway|Arkansas|US|United States|35.72,-91.74
+Baton Rouge Raceway|Louisiana|US|United States|30.62,-91.12
+Battle Mtn Raceway|Nevada|US|United States|40.61,-116.87
+Battleground Speedway|Texas|US|United States|29.85,-95.06
+Baylands Quarter Midget racing|California|US|United States|37.24,-121.72
+Bear Ridge Speedway|New Hampshire|US|United States|44.00,-72.17
+Bear Ridge Speedway Andrews|North Carolina|US|United States|35.21,-83.82
+Beatrice Speedway|Nebraska|US|United States|40.26,-96.78
+Beaver Creek Speedway|Alabama|US|United States|34.86,-86.61
+Beaver Dam Raceway|Wisconsin|US|United States|43.45,-88.81
+Beckley Motor Speedway|West Virginia|US|United States|37.84,-81.21
+Bedford Fairgrounds Speedway|Pennsylvania|US|United States|40.02,-78.52
+Bedrock Raceway|Illinois|US|United States|38.49,-90.01
+Beech Bend Raceway|Kentucky|US|United States|37.02,-86.40
+Beech Ridge Motor Speedway|Maine|US|United States|43.61,-70.38
+Belle-Clair Speedway|Illinois|US|United States|38.50,-89.98
+Belleville Speedway|Kansas|US|United States|39.83,-97.63
+Bemidji Speedway|Minnesota|US|United States|47.45,-94.78
+Ben Hur Speedway|Indiana|US|United States|40.06,-86.98
+Benton County Speedway|Iowa|US|United States|42.15,-92.02
+Benton Speedway|Missouri|US|United States|37.06,-89.51
+Berlin Raceway|Michigan|US|United States|43.04,-85.84
+Bethany Speedway|Michigan|US|United States|40.26,-94.05
+Bi-State Speedway|Indiana|US|United States|40.04,-87.38
+Big Country Speedway|Wyoming|US|United States|41.07,-104.80
+Big Diamond Speedway|Pennsylvania|US|United States|40.68,-76.30
+Big O Speedway|Texas|US|United States|32.31,-96.51
+Big Root Speedway|Arkansas|US|United States|34.56,-93.02
+Big Sky Speedway - Oval|Montana|US|United States|46.00,-108.47
+Birch Run - Big|Michigan|US|United States|43.27,-83.78
+Birch Run - Small|Michigan|US|United States|43.27,-83.78
+Black Hills Speedway|South Dakota|US|United States|44.06,-103.15
+Blackhawk Farms|Illinois|US|United States|42.49,-89.12
+Blackwater Speedway|Florida|US|United States|30.94,-86.63
+Blairsville Speedway|Pennsylvania|US|United States|40.49,-79.27
+Bliss International Speedway|New York|US|United States|42.58,-78.25
+Bloomington Speedway|Indiana|US|United States|39.11,-86.52
+Blue Mountain Quarter Midget Association|Pennsylvania|US|United States|40.77,-75.58
+Bluegrass Speedway|Kentucky|US|United States|37.78,-85.49
+Bluegrass Speedway 1|Kentucky|US|United States|37.78,-85.49
+Blythe Speedway|Arizona|US|United States|33.62,-114.56
+BMP Speedway|Montana|US|United States|45.80,-108.48
+Bobcat Speedway|Iowa|US|United States|41.93,-96.08
+Bohmer's Route 66 Raceway|Illinois|US|United States|40.82,-88.68
+Bolivar Speedway|Missouri|US|United States|37.55,-93.39
+Bond County Raceway|Illinois|US|United States|38.88,-89.40
+Boone County Raceway|Nebraska|US|United States|41.68,-98.01
+Boone Speedway|Iowa|US|United States|42.03,-93.88
+Boothill Speedway|Louisiana|US|United States|32.46,-93.97
+Bowman Gray|North Carolina|US|United States|36.08,-80.22
+Boyd Raceway|Texas|US|United States|33.04,-97.57
+Boyd's Speedway|Georgia|US|United States|34.98,-85.19
+Bradford Speedway|Pennsylvania|US|United States|41.94,-78.54
+Brainerd - Competition|Minnesota|US|United States|46.41,-94.27
+Brainerd - Donnybrook|Minnesota|US|United States|46.42,-94.28
+Brewerton Speedway|New York|US|United States|43.25,-76.14
+Bridgeport Speedway|New Jersey|US|United States|39.82,-75.32
+Bristol|Tennessee|US|United States|36.52,-82.26
+Bronson Speedway|Florida|US|United States|29.47,-82.61
+Brooklyn Raceway|Iowa|US|United States|41.71,-92.47
+Brown County Speedway|South Dakota|US|United States|45.49,-98.49
+Brownstown Bullring|Illinois|US|United States|38.99,-88.96
+Brownstown Speedway|Indiana|US|United States|38.87,-86.03
+Brunswick Speedway|Virginia|US|United States|36.69,-77.85
+Brushcreek Motorsports Complex|Ohio|US|United States|38.90,-83.45
+Bubba Raceway|Florida|US|United States|29.28,-82.19
+Buckeye Qtr Midget|Ohio|US|United States|39.88,-82.94
+Buena Vista Raceway|Iowa|US|United States|42.68,-95.30
+Buffalo Raceway|New York|US|United States|42.74,-78.82
+Buffalo River Speedway|Minnesota|US|United States|46.88,-96.50
+Butler Motor Speedway|Michigan|US|United States|42.03,-84.87
+Butte County Speedway|South Dakota|US|United States|44.71,-103.90
+Buttonwillow - East CCW|California|US|United States|35.49,-119.54
+Buttonwillow - East CW|California|US|United States|35.49,-119.54
+Buttonwillow - East+West CCW|California|US|United States|35.49,-119.54
+Buttonwillow - East+West CW|California|US|United States|35.49,-119.54
+Buttonwillow - East+West Short CCW|California|US|United States|35.49,-119.54
+Buttonwillow - East+West Short CW|California|US|United States|35.49,-119.54
+Buttonwillow - the Circuit CCW|California|US|United States|35.50,-119.56
+Buttonwillow - the Circuit CW|California|US|United States|35.50,-119.55
+Buttonwillow - West CCW|California|US|United States|35.49,-119.55
+Buttonwillow - West CW|California|US|United States|35.49,-119.55
+Buttonwillow - West Short CCW|California|US|United States|35.49,-119.55
+Buttonwillow - West Short CW|California|US|United States|35.49,-119.55
+Caesars Creek Speedway|Ohio|US|United States|39.49,-83.95
+Caffeine and Octane Lanier|Georgia|US|United States|34.16,-83.81
+California Mid State Fair Grounds|California|US|United States|35.64,-120.69
+Calistoga Speedway|California|US|United States|38.59,-122.59
+Callahan Speedway|Florida|US|United States|30.59,-81.83
+Callaway Raceway|Missouri|US|United States|38.79,-91.96
+Calumet County Speedway|Wisconsin|US|United States|44.02,-88.17
+Can-Am - Small Oval|New York|US|United States|44.20,-75.95
+Can-Am - Speedway|New York|US|United States|44.20,-75.95
+Canby Speedway|Minnesota|US|United States|44.72,-96.27
+Caney Valley Speedway|Kansas|US|United States|37.02,-95.94
+Caneyville|Kentucky|US|United States|37.42,-86.50
+Cannonball Motor Speedway|Ohio|US|United States|40.09,-81.02
+Canyon MX - Motocross|Arizona|US|United States|33.79,-112.28
+Capital City Speedway|Virginia|US|United States|37.73,-77.48
+Capitol Quarter Midget Association|California|US|United States|38.68,-121.45
+Capitol Quarter Midgets Lansing|Michigan|US|United States|42.78,-84.54
+Caraway Speedway|North Carolina|US|United States|35.77,-79.88
+Cardinal Speedway|New Mexico|US|United States|32.47,-103.16
+Carlton County Fair|Minnesota|US|United States|46.50,-92.69
+Caroga Creek Raceway|New York|US|United States|43.01,-74.54
+Carolina Motorsports - East CCW|South Carolina|US|United States|34.49,-80.59
+Carolina Motorsports - East CW|South Carolina|US|United States|34.49,-80.59
+Carolina Motorsports - Full CCW|South Carolina|US|United States|34.49,-80.59
+Carolina Motorsports - Full CW|South Carolina|US|United States|34.49,-80.59
+Carolina Motorsports - West CCW|South Carolina|US|United States|34.49,-80.60
+Carolina Motorsports - West CW|South Carolina|US|United States|34.49,-80.60
+Carteret County Speedway|North Carolina|US|United States|34.73,-77.06
+Cashmere Speedway|West Virginia|US|United States|37.45,-80.79
+Casino Speedway|South Dakota|US|United States|44.93,-97.17
+Casper Speedway|Wyoming|US|United States|42.88,-106.32
+Castle Rock Raceway|Washington|US|United States|46.27,-122.92
+CC Speedway|Texas|US|United States|27.78,-97.46
+Cedar County Fair|Nebraska|US|United States|42.63,-97.25
+Cedar County Raceway|Iowa|US|United States|41.77,-91.15
+Cedar Lake Speedway|Wisconsin|US|United States|45.19,-92.59
+Center Township|Ohio|US|United States|40.02,-81.48
+Centerville Speedway|Arkansas|US|United States|35.11,-93.18
+Central Arizona Raceway|Arizona|US|United States|32.87,-111.57
+Cerro Gordo Speedway|Illinois|US|United States|39.88,-88.73
+Champaign County Speedway|Illinois|US|United States|40.12,-88.21
+chandler motor speedway|Indiana|US|United States|38.05,-87.38
+Charleston Speedway - Full|Illinois|US|United States|39.50,-88.19
+Charlotte - Dirt Oval|North Carolina|US|United States|35.36,-80.68
+Charlotte - Outside Paved Oval|North Carolina|US|United States|35.35,-80.68
+Charlotte - Oval|North Carolina|US|United States|35.35,-80.68
+Charlotte - Roval|North Carolina|US|United States|35.35,-80.68
+Chateau Raceway|Minnesota|US|United States|43.74,-92.96
+Chemung Speedrome|Pennsylvania|US|United States|42.01,-76.63
+Cherokee Speedway|South Carolina|US|United States|35.11,-81.60
+Cherry Raceway|Michigan|US|United States|44.56,-85.41
+Chicagoland|Illinois|US|United States|41.47,-88.06
+Chillicothe|Ohio|US|United States|39.16,-82.76
+Chippewa County Fair|Michigan|US|United States|46.27,-84.49
+Chowchilla Speedway|California|US|United States|37.11,-120.25
+Chris Beck Arena|California|US|United States|38.43,-122.70
+Chuckwalla - CCW|California|US|United States|33.75,-115.32
+Chuckwalla - CW|California|US|United States|33.75,-115.32
+Circle City Raceway|Indiana|US|United States|39.73,-86.04
+Circleville Raceway Park|Ohio|US|United States|39.65,-82.96
+Circuit of the Americas - Full|Texas|US|United States|30.13,-97.63
+Circuit of the Americas - National South|Texas|US|United States|30.13,-97.64
+Citrus County Speedway|Florida|US|United States|28.81,-82.32
+CJ Speedway|Iowa|US|United States|41.28,-91.35
+Claremont Motorsports - Big|New Hampshire|US|United States|43.39,-72.35
+Claremont Motorsports - Small|New Hampshire|US|United States|43.39,-72.35
+Clarksville Speedway|Tennessee|US|United States|36.61,-87.35
+Clay City Raceway|Kentucky|US|United States|37.84,-83.90
+Clay Co. Fairground|Iowa|US|United States|43.15,-95.15
+Clay County KS Fair|Kansas|US|United States|39.37,-97.11
+Clay County Speedway|Illinois|US|United States|38.71,-88.51
+Clayhill Motorsports Park|Tennessee|US|United States|36.02,-88.68
+Cleveland County Speedway|North Carolina|US|United States|35.15,-84.92
+Clifford|Kentucky|US|United States|37.89,-82.60
+Clinton County Speedway|Pennsylvania|US|United States|41.07,-77.45
+Clover|South Carolina|US|United States|35.11,-81.29
+Club Motorsports|New Hampshire|US|United States|43.82,-71.25
+Clyde Martin Memorial Speedway|Pennsylvania|US|United States|40.28,-76.26
+Cochran Motor Speedway|Georgia|US|United States|32.42,-83.33
+Cocopah Speedway|Arizona|US|United States|32.62,-114.66
+Coleridge Speedway|North Carolina|US|United States|35.63,-79.64
+Coles County Speedway|Illinois|US|United States|39.51,-88.27
+Colorado National Speedway|Colorado|US|United States|40.06,-104.97
+Colorado State Patrol - CCW|Colorado|US|United States|39.75,-105.18
+Colorado State Patrol - CW|Colorado|US|United States|39.75,-105.18
+Columbus 151 Speedway|Wisconsin|US|United States|43.29,-89.10
+Columbus Anoka|Minnesota|US|United States|45.22,-93.10
+Columbus Speedway|Mississippi|US|United States|33.53,-88.29
+Concord Speedway - 1|North Carolina|US|United States|35.31,-80.52
+Concord Speedway - 2|North Carolina|US|United States|35.31,-80.52
+Coody Creek Speedway|Oklahoma|US|United States|35.74,-95.39
+Coos Bay Speedway|Oregon|US|United States|43.26,-124.23
+Cordele Motor Speedway|Georgia|US|United States|32.01,-83.77
+Coronado North Island NAS|California|US|United States|32.71,-117.21
+Corrigan Oil Speedway|Michigan|US|United States|42.60,-84.49
+Costa Mesa Speedway|California|US|United States|33.67,-117.90
+Cottage Grove Speedway|Oregon|US|United States|43.81,-123.05
+County Line Raceway|North Carolina|US|United States|35.84,-77.91
+Coveview Speedway|Pennsylvania|US|United States|39.79,-78.18
+Coweta Raceway|Georgia|US|United States|33.32,-84.85
+Crandon Off Road|Wisconsin|US|United States|45.57,-88.94
+Crawford County Speedway Arkansas|Arkansas|US|United States|35.54,-94.38
+Crawford County Speedway Iowa|Iowa|US|United States|42.03,-95.36
+Creek County Speedway|Oklahoma|US|United States|35.97,-96.19
+Cresco Speedway|Iowa|US|United States|43.38,-92.13
+Cridersville Speedway|Ohio|US|United States|40.63,-84.14
+Cross Anchor Raceway|South Carolina|US|United States|34.67,-81.85
+Cross Roads Speedway|Florida|US|United States|30.49,-83.13
+Crossville Speedway|Tennessee|US|United States|36.00,-85.09
+Crow Wing County Fair|Minnesota|US|United States|46.33,-94.19
+Crystal Motor Speedway|Michigan|US|United States|43.26,-84.91
+Culbertson Speedway|Nebraska|US|United States|40.23,-100.83
+Cycleland Speedway|California|US|United States|39.58,-121.69
+Dakota County Tech (Dctc)|Michigan|US|United States|44.74,-93.07
+Dakota State Fair Speedway|South Dakota|US|United States|44.37,-98.23
+Dallas County Speedway IO|Iowa|US|United States|41.63,-94.02
+Darana Heartland Park Grand Prix|Kansas|US|United States|38.93,-95.68
+Darlington|South Carolina|US|United States|34.30,-79.91
+Davenport Speedway|Iowa|US|United States|41.54,-90.62
+Dawgwood Speedway|Georgia|US|United States|34.69,-84.82
+Dawson County Raceway|Nebraska|US|United States|40.77,-99.74
+Daytona - Oval|Florida|US|United States|29.18,-81.07
+Daytona - Roval|Florida|US|United States|29.18,-81.07
+Deep South Speedway GA|Georgia|US|United States|31.20,-83.25
+Deer Creek Speedway|Minnesota|US|United States|43.72,-92.48
+Delaware Intl Speedway|Delaware|US|United States|38.47,-75.56
+Delaware Speedway Iowa|Iowa|US|United States|42.47,-91.34
+Dells Raceway Park|Wisconsin|US|United States|43.68,-89.85
+Deming Speedway|Washington|US|United States|48.83,-122.24
+Desert Thunder|Utah|US|United States|39.59,-110.84
+Detroit Grand Prix - Detroit (Wayne)|Michigan|US|United States|42.33,-83.04
+Devil's Bowl Speedway - TX|Texas|US|United States|32.74,-96.53
+Devils Lake Speedway|North Dakota|US|United States|48.05,-98.50
+Diamond Mtn Speedway Utah|Utah|US|United States|40.47,-109.44
+Diamond Park Speedway|Arkansas|US|United States|34.02,-93.76
+Dillon Motor Speedway|South Carolina|US|United States|34.45,-79.37
+Dirt City|Wisconsin|US|United States|44.96,-88.03
+Dirt Oval 66|Illinois|US|United States|41.46,-88.07
+Dixie Speedway|Georgia|US|United States|34.09,-84.56
+Dixieland Speedway|North Carolina|US|United States|36.41,-76.33
+Dodge City Raceway|Kansas|US|United States|37.72,-100.03
+Dodge City Speedway|New York|US|United States|42.68,-74.40
+Dodge County Fairgrounds Speedway|Wisconsin|US|United States|43.44,-88.76
+Dodge County MN Speedway|Minnesota|US|United States|44.04,-92.74
+Doe Run Raceway|Missouri|US|United States|37.74,-90.51
+Dog Hollow Speedway|Pennsylvania|US|United States|40.59,-78.90
+Dominion Raceway|Virginia|US|United States|38.14,-77.50
+Dominion Raceway - Oval|Virginia|US|United States|38.14,-77.50
+Dothan Motor Speedway|Alabama|US|United States|31.10,-85.28
+Double X Speedway|Missouri|US|United States|38.63,-92.62
+Douglas County Speedway|Oregon|US|United States|43.20,-123.36
+Dover - Big Oval|Delaware|US|United States|39.19,-75.53
+Dover - Small Oval|Delaware|US|United States|39.19,-75.53
+Dublin Motor Speedway|North Carolina|US|United States|34.67,-78.71
+Duck River Raceway Park|Tennessee|US|United States|35.55,-86.63
+Dumplin Valley Raceway|Tennessee|US|United States|35.99,-83.58
+DuQuoin State Fairgrounds Racetrack - 1 2mi|Illinois|US|United States|37.98,-89.23
+DuQuoin State Fairgrounds Racetrack - 1mi|Illinois|US|United States|37.98,-89.22
+Duvall's Speedway|Arkansas|US|United States|35.32,-92.99
+Dyer County Fair Association|Tennessee|US|United States|36.06,-89.36
+Eagle Raceway|Nebraska|US|United States|40.81,-96.39
+Eagle River Speedway|Wisconsin|US|United States|45.90,-89.32
+Eagle Valley Speedway|Wisconsin|US|United States|45.06,-91.28
+Eagles Canyon - East CCW|Texas|US|United States|33.37,-97.43
+Eagles Canyon - East CW|Texas|US|United States|33.37,-97.43
+Eagles Canyon - East+West CCW|Texas|US|United States|33.37,-97.43
+Eagles Canyon - East+West CW|Texas|US|United States|33.37,-97.43
+Eagles Canyon - West CCW|Texas|US|United States|33.37,-97.44
+Eagles Canyon - West CW|Texas|US|United States|33.37,-97.44
+Ealeyville Speedway|Illinois|US|United States|39.75,-89.43
+East Alabama Motor Speedway|Alabama|US|United States|32.46,-85.15
+East Bay Raceway Park|Florida|US|United States|27.88,-82.39
+East Carolina Motor Speedway|North Carolina|US|United States|35.82,-77.28
+East Lincoln Motor Speedway|North Carolina|US|United States|35.42,-81.05
+Eastside Speedway|Virginia|US|United States|38.10,-78.85
+Echo Valley Speedway|Iowa|US|United States|42.95,-91.81
+EchoPark Speedway - Legends Oval|Georgia|US|United States|33.39,-84.32
+EchoPark Speedway - Oval|Georgia|US|United States|33.38,-84.32
+EchoPark Speedway - Roval|Georgia|US|United States|33.38,-84.32
+El Paso|Arkansas|US|United States|35.10,-92.01
+El Paso County Raceway|Colorado|US|United States|39.03,-104.30
+El Reno Grascar Association|Oklahoma|US|United States|35.53,-97.97
+Eldora Speedway|Ohio|US|United States|40.32,-84.63
+Eleanor|West Virginia|US|United States|38.54,-81.94
+Electric City Speedway Montana|Montana|US|United States|47.53,-111.28
+Elkhart County 4-H Fair|Indiana|US|United States|41.58,-85.80
+Elkins Raceway|West Virginia|US|United States|39.02,-79.82
+English Creek Speedway|Iowa|US|United States|41.21,-93.18
+Englishtown Road Course|New Jersey|US|United States|40.33,-74.35
+Ephrata Raceway Park|Washington|US|United States|47.30,-119.54
+Eriez Speedway|Pennsylvania|US|United States|42.05,-79.97
+ERX Motor Park|Minnesota|US|United States|45.36,-93.56
+ERX Motor Park Full|Minnesota|US|United States|45.36,-93.56
+Escanaba Motor Speedway|Michigan|US|United States|45.76,-87.08
+Evan Mills Raceway|New York|US|United States|44.08,-75.81
+Evergreen Raceway|Pennsylvania|US|United States|41.03,-76.00
+Evergreen Speedway - Big Oval|Washington|US|United States|47.87,-121.99
+Evergreen Speedway - Small Oval|Washington|US|United States|47.87,-121.99
+Fairbury Speedway|Illinois|US|United States|40.74,-88.51
+Fairgrounds Raceway|North Carolina|US|United States|36.23,-81.63
+Fairlane Acres Speedway|Delaware|US|United States|39.10,-75.42
+Fairmont Raceway|Minnesota|US|United States|43.66,-94.49
+Farmer City Raceway|Illinois|US|United States|40.25,-88.64
+Farmington Empire Speedway|Missouri|US|United States|37.82,-90.46
+Farmville|North Carolina|US|United States|35.56,-77.63
+Fast Fridays Motorcycle Speedway|California|US|United States|38.89,-121.07
+Fastlane Raceway|Georgia|US|United States|33.42,-85.35
+Fernley 95A Speedway|Nevada|US|United States|39.54,-119.24
+Fiesta City Speedway|Minnesota|US|United States|44.94,-95.72
+Findlay Stadium Speedway|Washington|US|United States|47.72,-117.03
+Firebird - Bondurant|Arizona|US|United States|33.26,-111.97
+Firebird - East CCW|Arizona|US|United States|33.27,-111.96
+Firebird - East CW|Arizona|US|United States|33.27,-111.96
+Firebird - West CCW|Arizona|US|United States|33.27,-111.97
+Firebird - West CW|Arizona|US|United States|33.27,-111.97
+Five Flags Speedway|Florida|US|United States|30.50,-87.31
+Five Mile Point Speedway|New York|US|United States|42.09,-75.82
+Fix It Forward Speedway|North Dakota|US|United States|46.87,-96.93
+Flat Rock Speedway|Michigan|US|United States|42.08,-83.31
+Flat Run Speedway|Pennsylvania|US|United States|40.98,-78.19
+Flatrock - Club|Tennessee|US|United States|35.88,-84.75
+Flatrock - Club East|Tennessee|US|United States|35.88,-84.75
+Flatrock - Club West|Tennessee|US|United States|35.88,-84.75
+Flatrock Speedway|Indiana|US|United States|40.97,-84.81
+Flomaton Speedway|Alabama|US|United States|31.03,-87.26
+Florence Motor Speedway|South Carolina|US|United States|34.14,-79.92
+Florence Speedway|Kentucky|US|United States|38.87,-84.70
+Florida Dirt Motor Speedway|Florida|US|United States|28.32,-82.42
+Florida Intl - East Loop|Florida|US|United States|29.85,-82.06
+Florida Intl - Full CW|Florida|US|United States|29.85,-82.06
+Florida Intl - West Loop CCW|Florida|US|United States|29.85,-82.06
+Florida Intl - West Loop CW|Florida|US|United States|29.85,-82.06
+Fonda Speedway|New York|US|United States|42.95,-74.37
+Foothills Raceway|South Carolina|US|United States|34.96,-82.57
+Fork Mountain Raceway|Virginia|US|United States|36.80,-79.91
+Fort Payne Motor Speedway|Alabama|US|United States|34.44,-85.88
+Franklin|Georgia|US|United States|33.38,-85.12
+Franklin County Speedway|Virginia|US|United States|37.02,-80.04
+Frederick County Fair|Virginia|US|United States|39.25,-78.10
+Fredericktown Raceway|Missouri|US|United States|37.55,-90.28
+Freedom Factory - Oval|Florida|US|United States|27.47,-82.32
+Freedom Motorsports Park|New York|US|United States|42.48,-78.43
+Freeport Raceway Park|Illinois|US|United States|42.27,-89.62
+Fremont Raceway - Dirt Oval|Ohio|US|United States|41.34,-83.16
+Fremont Speedway|Ohio|US|United States|41.36,-83.11
+Friendship Speedway|North Carolina|US|United States|36.27,-80.79
+Frozen Ocean Motocross Park Oval|New York|US|United States|42.83,-76.44
+Fulton Speedway|New York|US|United States|43.28,-76.38
+Galesburg Speedway|Michigan|US|United States|42.28,-85.40
+Gallatin Speedway|Montana|US|United States|45.78,-111.14
+Gas City Speedway|Indiana|US|United States|40.48,-85.56
+Gator Motorplex|Texas|US|United States|30.45,-95.49
+Gator Speedway|Tennessee|US|United States|35.52,-88.59
+Genesee Speedway|New York|US|United States|42.99,-78.15
+Geographical Center Speedway|North Dakota|US|United States|48.37,-99.99
+George County Motorsports Park|Mississippi|US|United States|30.92,-88.51
+Gibson County|Tennessee|US|United States|35.95,-88.95
+GingerMan|Michigan|US|United States|42.41,-86.14
+Gladwin Vintage Snowmobile Club|Michigan|US|United States|43.98,-84.48
+Glenridge Motorsports Park|New York|US|United States|42.93,-74.41
+Godspeed Raceway|Tennessee|US|United States|36.00,-83.51
+Golden Isles Speedway|Georgia|US|United States|31.24,-81.76
+Golden Sands Speedway|Wisconsin|US|United States|44.43,-89.67
+Golden Spike Speedway|Minnesota|US|United States|43.65,-94.10
+Golden Triangle Raceway Park - Beaumont|Texas|US|United States|30.05,-94.30
+Golden Triangle Raceway Park - Short|Texas|US|United States|30.05,-94.30
+Good Hope Speedway|Ohio|US|United States|40.92,-80.60
+Good's Raceway|Ohio|US|United States|41.03,-81.04
+Goodyear Proving Grounds|Ohio|US|United States|41.05,-81.47
+Grand Prize of America|Georgia|US|United States|32.09,-81.08
+Grandview Speedway|Pennsylvania|US|United States|40.37,-75.61
+Granite City Motor Park|Minnesota|US|United States|45.61,-94.11
+Grant County Speedway|Wisconsin|US|United States|42.85,-90.70
+Grape Creek|Texas|US|United States|31.57,-100.57
+Grattan|Michigan|US|United States|43.10,-85.38
+Gravity Park|Wisconsin|US|United States|44.05,-88.17
+Grays Harbor Raceway|Washington|US|United States|47.01,-123.38
+Grayson County Speedway|Texas|US|United States|33.61,-96.48
+Great Jones County|Iowa|US|United States|42.25,-91.19
+Greenbelt Speedway|Iowa|US|United States|42.36,-93.09
+Greenville Speedway|Mississippi|US|United States|33.39,-91.00
+Greenville-Pickens Speedway|South Carolina|US|United States|34.83,-82.50
+Greenwood Valley Action Track|Pennsylvania|US|United States|41.12,-76.46
+Gresham Motorsports Park|Georgia|US|United States|34.17,-83.55
+Grundy County Speedway|Illinois|US|United States|41.41,-88.42
+GTR Complex|South Carolina|US|United States|33.77,-81.15
+Gulf Coast Raceway|Alabama|US|United States|30.43,-87.77
+Gulf Coast Speedway|Texas|US|United States|29.29,-95.32
+Hagerstown Qtr Midget|Maryland|US|United States|39.66,-77.84
+Hagerstown Speedway|Maryland|US|United States|39.66,-77.84
+Halifax County Motor Speedway|North Carolina|US|United States|36.28,-77.87
+Hallett|Oklahoma|US|United States|36.22,-96.59
+Hallsville|Texas|US|United States|32.57,-94.63
+Halvor Lines Speedway|Minnesota|US|United States|46.75,-92.21
+Hamilton County Speedway|Iowa|US|United States|42.46,-93.81
+Hamlin Speedway|Pennsylvania|US|United States|41.38,-75.42
+Hancock County Speedway|Iowa|US|United States|43.08,-93.79
+Harris Hill - CCW|Texas|US|United States|29.92,-97.87
+Harris Hill - CW|Texas|US|United States|29.92,-97.87
+Harris Speedway|North Carolina|US|United States|35.24,-81.88
+Hartford Speedway|Michigan|US|United States|42.21,-86.17
+Hartville|Missouri|US|United States|37.22,-92.54
+Hartwell Speedway|Georgia|US|United States|34.28,-82.97
+Hastings|Nebraska|US|United States|40.58,-98.35
+Hastings - NY|New York|US|United States|43.37,-76.16
+Hastings - Short|Nebraska|US|United States|40.58,-98.35
+Havasu 95 Speedway|Arizona|US|United States|34.45,-114.25
+Hawkeye Downs Speedway|Iowa|US|United States|41.93,-91.68
+Hayden Speedway|Colorado|US|United States|40.49,-107.26
+HBR Raceway|Illinois|US|United States|37.44,-89.03
+Heart O' Texas|Texas|US|United States|31.68,-97.10
+Henderson County|Tennessee|US|United States|35.52,-88.50
+Hendry County Motorsports|Florida|US|United States|26.77,-81.09
+Hermiston Raceway|Oregon|US|United States|45.89,-119.30
+Hesston Speedway|Pennsylvania|US|United States|40.43,-78.13
+Hibbing Raceway|Minnesota|US|United States|47.42,-92.92
+Hickory Motor Speedway|North Carolina|US|United States|35.70,-81.27
+High Plains Raceway - Full|Colorado|US|United States|39.74,-103.90
+High Plains Raceway - North|Colorado|US|United States|39.74,-103.90
+High Plains Raceway - Short|Colorado|US|United States|39.73,-103.90
+High Plains Raceway - West|Colorado|US|United States|39.73,-103.90
+Highland Speedway|Illinois|US|United States|38.73,-89.66
+Highway 24 Raceway|North Carolina|US|United States|34.92,-77.61
+Highway 3 Raceway|Iowa|US|United States|42.75,-92.79
+Hilltop Speedway|Ohio|US|United States|40.49,-81.93
+Hiway 92|Nebraska|US|United States|41.80,-103.57
+Hobe Sound Speedway|Florida|US|United States|27.04,-80.18
+Hodgenville|Kentucky|US|United States|37.57,-85.73
+Holland International Speedway|New York|US|United States|42.63,-78.55
+Hollywood Hills Speedway|New Mexico|US|United States|35.41,-106.40
+Homestead-Miami - Oval|Florida|US|United States|25.45,-80.41
+Homestead-Miami - Roval|Florida|US|United States|25.45,-80.41
+Honda Development & Manufacturing of America|Ohio|US|United States|40.29,-83.54
+Hopper Speedway|Tennessee|US|United States|35.53,-88.38
+HorsePower Park|North Carolina|US|United States|35.83,-81.62
+Houston Motorsports Park|Texas|US|United States|29.89,-95.23
+Humboldt Speedway|Kansas|US|United States|37.81,-95.40
+Hummingbird Speedway|Pennsylvania|US|United States|41.14,-78.84
+Hunterstown Speedway|Pennsylvania|US|United States|39.89,-77.16
+Huntsville Quarter Midget Association|Alabama|US|United States|34.69,-86.60
+Huntsville Speedway|Alabama|US|United States|34.57,-86.53
+Hurricane Creek Raceway|Georgia|US|United States|31.42,-82.36
+Huset's Speedway|South Dakota|US|United States|43.57,-96.58
+Hutchinson Raceway Park|Kansas|US|United States|38.05,-98.00
+I-20 Speedway|Texas|US|United States|32.45,-95.14
+I-20 Speedway Batesburg|South Carolina|US|United States|33.83,-81.46
+I-25 Speedway|Colorado|US|United States|38.40,-104.61
+I-29 Speedway|Iowa|US|United States|41.02,-95.82
+I-29 Speedway - Full|Nebraska|US|United States|41.03,-95.82
+I-30 Speedway|Arkansas|US|United States|34.64,-92.44
+I-500 Track|Michigan|US|United States|46.49,-84.37
+I-55 Raceway - Oval|Missouri|US|United States|38.27,-90.40
+I-70 QMA Speedway|Illinois|US|United States|38.88,-89.40
+I-70 Speedway|Missouri|US|United States|39.01,-93.88
+I-76 Speedway|Colorado|US|United States|40.26,-103.84
+I-77 Raceway Park|Indiana|US|United States|39.13,-85.30
+I-77 Speedway|West Virginia|US|United States|38.76,-81.68
+I-80 Speedway|Nebraska|US|United States|40.98,-96.40
+I-81 Motorsports Park|Tennessee|US|United States|36.35,-82.72
+I-90 Speedway|South Dakota|US|United States|43.64,-97.00
+I-94 Speedway|Minnesota|US|United States|46.31,-96.10
+I-96 Speedway|Michigan|US|United States|42.87,-85.15
+I40 Raceway|Tennessee|US|United States|35.88,-84.34
+I44 Speedway OKC|Oklahoma|US|United States|35.31,-97.59
+Illiana Motor Speedway|Indiana|US|United States|41.48,-87.42
+Imperial Valley Speedway|California|US|United States|32.84,-115.57
+Inde - Full CCW|Arizona|US|United States|32.23,-110.01
+Inde - Full CW|Arizona|US|United States|32.23,-110.01
+Inde - North CCW|Arizona|US|United States|32.23,-110.01
+Inde - North CW|Arizona|US|United States|32.23,-110.01
+Inde - South CCW|Arizona|US|United States|32.23,-110.01
+Inde - South CW|Arizona|US|United States|32.23,-110.01
+Independence Motor Speedway|Iowa|US|United States|42.48,-91.89
+Indiana State Fair|Indiana|US|United States|39.83,-86.13
+Indianapolis - 500|Indiana|US|United States|39.80,-86.23
+Indianapolis - Dirt Oval|Indiana|US|United States|39.80,-86.23
+Indianapolis - Oval|Indiana|US|United States|39.80,-86.23
+Indianapolis - Roval|Indiana|US|United States|39.79,-86.24
+Indianapolis Raceway Park - Oval|Indiana|US|United States|39.81,-86.34
+Indianapolis Speedrome|Indiana|US|United States|39.76,-86.06
+Interlochen|Michigan|US|United States|44.66,-85.81
+Iowa Speedway - Oval|Iowa|US|United States|41.67,-93.01
+Iowa Speedway - Roval|Iowa|US|United States|41.67,-93.01
+Iowa State Fair Speedway|Iowa|US|United States|41.60,-93.56
+Ironwood|Michigan|US|United States|46.47,-90.18
+Irwindale Speedway - Long|California|US|United States|34.11,-117.99
+Irwindale Speedway - South|California|US|United States|34.11,-117.99
+J & M Motorsports|Kentucky|US|United States|37.27,-85.25
+Jackpine Gypsies|South Dakota|US|United States|44.41,-103.53
+Jackson County Fair|Ohio|US|United States|39.11,-82.54
+Jackson County Speedway|Ohio|US|United States|39.11,-82.71
+Jackson Motor Speedway|Mississippi|US|United States|32.19,-90.23
+Jackson Speedway - Dirt Oval|Michigan|US|United States|42.24,-84.36
+Jacksonville Speedway|Illinois|US|United States|39.74,-90.26
+Jamaica Raceway|Iowa|US|United States|41.84,-94.30
+Jamestown Speedway|North Dakota|US|United States|46.93,-98.72
+Jefferson County Fairgrounds|Iowa|US|United States|41.00,-91.99
+Jefferson Speedway|Wisconsin|US|United States|43.00,-88.94
+Jennerstown Speedway|Pennsylvania|US|United States|40.16,-79.07
+Jennings GP|Georgia|US|United States|30.58,-83.16
+Jennings GP CW|Georgia|US|United States|30.58,-83.16
+Jetmore Motorplex|Kansas|US|United States|37.99,-99.89
+JRP Speedway - Oval|Oklahoma|US|United States|36.09,-96.06
+Jug Run Speedway|Ohio|US|United States|40.28,-82.28
+Junction Motor Speedway|Nebraska|US|United States|40.74,-97.61
+Kalamazoo Speedway|Michigan|US|United States|42.37,-85.68
+Kalamazoo Speedway - Little Track|Michigan|US|United States|42.37,-85.68
+Kam Raceway|Nebraska|US|United States|40.57,-98.31
+Kamp Motor Speedway|Indiana|US|United States|40.51,-87.34
+Kankakee Speedway|Illinois|US|United States|41.07,-87.87
+Kansas Speedway - Oval|Kansas|US|United States|39.12,-94.83
+Kansas Speedway - Roval|Kansas|US|United States|39.12,-94.83
+KC Raceway|Missouri|US|United States|39.17,-94.38
+Kellogg Speedway|New York|US|United States|43.04,-75.36
+Kennedale Speedway Park|Texas|US|United States|32.62,-97.22
+Kentucky Lake Motor Speedway|Kentucky|US|United States|36.99,-88.34
+Kentucky Motor Speedway|Kentucky|US|United States|37.71,-86.90
+Kentucky Speedway|Kentucky|US|United States|38.71,-84.92
+Kentwood|Louisiana|US|United States|30.97,-90.55
+Kern Raceway - Big Oval|California|US|United States|35.29,-119.26
+Kern Raceway - Dirt Oval|California|US|United States|35.30,-119.26
+Kern Raceway - Small Oval|California|US|United States|35.29,-119.26
+Keystone Speedway|Pennsylvania|US|United States|40.66,-75.61
+Kil-Kare Speedway - Big|Ohio|US|United States|39.71,-83.97
+Kil-Kare Speedway - Small|Ohio|US|United States|39.71,-83.97
+King George Speedway|Virginia|US|United States|38.27,-77.14
+Kings Speedway|California|US|United States|36.32,-119.63
+Kingsport Speedway|Tennessee|US|United States|36.57,-82.50
+Knox County Fair Race|Illinois|US|United States|40.92,-90.30
+Knoxville Raceway|Iowa|US|United States|41.33,-93.11
+Kokomo Qtr Midget|Indiana|US|United States|40.50,-86.06
+Kokomo Speedway|Indiana|US|United States|40.51,-86.14
+Kossuth County Speedway|Iowa|US|United States|43.06,-94.23
+KRA Speedway|Minnesota|US|United States|45.13,-95.06
+La Crosse|Wisconsin|US|United States|43.90,-91.10
+La Crosse - Oval|Wisconsin|US|United States|43.90,-91.10
+La Crosse - Small Oval|Wisconsin|US|United States|43.90,-91.10
+La Junta|Colorado|US|United States|38.04,-103.52
+La Junta - Reverse|Colorado|US|United States|38.04,-103.52
+LA Raceway|Missouri|US|United States|38.71,-93.47
+Laguna Seca|California|US|United States|36.59,-121.75
+Lake Afton|Kansas|US|United States|37.61,-97.63
+Lake City Speedway|South Carolina|US|United States|33.82,-79.83
+Lake Erie Speedway|Pennsylvania|US|United States|42.15,-79.83
+Lake View Motor Speedway|South Carolina|US|United States|34.31,-79.17
+Lakeport Speedway|California|US|United States|39.04,-122.92
+Lakeside Speedway|Kansas|US|United States|39.19,-94.80
+Lancaster Motor Speedway|South Carolina|US|United States|34.78,-80.79
+Lancaster Natl Speedway - Big|New York|US|United States|42.95,-78.63
+Lancaster Natl Speedway - Small|New York|US|United States|42.95,-78.63
+Land of Legends Raceway|New York|US|United States|42.89,-77.25
+Langley Speedway|Virginia|US|United States|37.09,-76.39
+LaSalle Speedway|Illinois|US|United States|41.34,-89.05
+Lasoski Speedway|Missouri|US|United States|38.78,-93.81
+Latrobe Speedway|Pennsylvania|US|United States|40.26,-79.43
+Laughlin|Nevada|US|United States|35.16,-114.59
+Laurens County Speedway|South Carolina|US|United States|34.48,-81.99
+Lavonia Speedway|Georgia|US|United States|34.41,-83.04
+Lawrenceburg Speedway|Indiana|US|United States|39.10,-84.86
+Lawrenceburg Speedway - Moto|Indiana|US|United States|39.10,-84.85
+Layfield Racing|New York|US|United States|42.09,-78.06
+Lebanon I-44 - Oval|Missouri|US|United States|37.73,-92.60
+Lebanon I-44 - Small|Missouri|US|United States|37.73,-92.60
+Lebanon Valley Speedway|New York|US|United States|42.49,-73.49
+Lee County Speedway|Illinois|US|United States|40.65,-91.56
+Leesville 171 Speedway|Louisiana|US|United States|31.08,-93.27
+Legion Speedway|New Hampshire|US|United States|43.82,-71.89
+Legit Speedway Park|Missouri|US|United States|36.67,-91.74
+Lemoore Raceway|California|US|United States|36.27,-119.81
+Lernerville Speedway|Pennsylvania|US|United States|40.74,-79.76
+Lexington 104 Speedway|Tennessee|US|United States|35.71,-88.48
+Liberty Raceway Park|North Carolina|US|United States|35.83,-79.59
+Lil Dega Speedway|Louisiana|US|United States|30.87,-92.42
+Lil' Texas Motor Speedway|Texas|US|United States|33.04,-97.28
+Limaland Motorsports Park|Ohio|US|United States|40.76,-84.19
+Lime Rock|Connecticut|US|United States|41.93,-73.38
+Limerock Speedway|New York|US|United States|42.99,-77.90
+Limestone Valley Speedway|Ohio|US|United States|39.79,-82.16
+Lincoln Park Speedway|Indiana|US|United States|39.58,-86.87
+Lincoln Speedway|Illinois|US|United States|40.15,-89.38
+Lincoln Speedway PA|Pennsylvania|US|United States|39.87,-76.99
+Linda's Speedway|Pennsylvania|US|United States|40.43,-76.51
+Little Buckaroo|Wisconsin|US|United States|44.82,-88.44
+Little New Smyrna Speedway|Florida|US|United States|29.01,-81.07
+Little Rock Speedway|Arkansas|US|United States|34.64,-92.43
+Little Valley Speedway|New York|US|United States|42.26,-78.81
+Little Wheels Quarter Midget Association|Washington|US|United States|47.06,-122.30
+Lodi Cycle Bowl|California|US|United States|38.07,-121.24
+London|Ohio|US|United States|39.90,-83.45
+Lonesome Pine Raceway|Virginia|US|United States|36.93,-82.51
+Lonesome Pine Raceway - Dirt|Virginia|US|United States|36.93,-82.51
+Lonestar Speedway|Texas|US|United States|32.44,-94.91
+Lubbock Speedway|Texas|US|United States|33.49,-101.83
+Lucas Oil Speedway - Offroad|Missouri|US|United States|37.94,-93.39
+Lucas Oil Speedway - Oval|Missouri|US|United States|37.94,-93.40
+Lumberton|Texas|US|United States|30.33,-94.26
+LVMS - Bullring Oval|Nevada|US|United States|36.26,-115.02
+LVMS - Infield Long CW|Nevada|US|United States|36.27,-115.01
+LVMS - Infield Short CW|Nevada|US|United States|36.27,-115.01
+LVMS - Outer Full CCW|Nevada|US|United States|36.27,-115.02
+LVMS - Outer Full CW|Nevada|US|United States|36.27,-115.02
+LVMS - Outer North CCW|Nevada|US|United States|36.27,-115.02
+LVMS - Outer North CW|Nevada|US|United States|36.27,-115.02
+LVMS - Outer South CCW|Nevada|US|United States|36.27,-115.02
+LVMS - Outer South CW|Nevada|US|United States|36.27,-115.02
+LVMS - Oval|Nevada|US|United States|36.27,-115.01
+LVMS - Roval|Nevada|US|United States|36.27,-115.01
+M1 Concourse|Michigan|US|United States|42.62,-83.29
+Macon Speedway|Illinois|US|United States|39.71,-89.01
+Madera Speedway|California|US|United States|36.97,-120.08
+Madison Intl Speedway|Wisconsin|US|United States|42.91,-89.33
+Madison Speedway|Minnesota|US|United States|45.01,-96.19
+Magic Valley Speedway|Idaho|US|United States|42.49,-114.50
+Magnolia Motor Speedways|Mississippi|US|United States|33.48,-88.48
+Mahoning Valley Speedway|Pennsylvania|US|United States|40.81,-75.76
+Manchester Speedway|Tennessee|US|United States|35.46,-86.10
+Mansfield Motor Speedway|Ohio|US|United States|40.81,-82.50
+Maquoketa Speedway|Iowa|US|United States|42.07,-90.65
+Margarettsville Speedway|North Carolina|US|United States|36.53,-77.33
+Marion Center Raceway|Pennsylvania|US|United States|40.81,-79.04
+Marion County Speedway|Florida|US|United States|29.26,-82.18
+Marshall County Fairgrounds Speedway|Minnesota|US|United States|48.20,-96.76
+Marshalltown Speedway|Iowa|US|United States|42.03,-92.89
+Marshfield Motor Speedway|Wisconsin|US|United States|44.65,-90.25
+Martinsville|Virginia|US|United States|36.63,-79.85
+Marysville Raceway|California|US|United States|39.14,-121.56
+Maumee|Ohio|US|United States|41.59,-83.64
+Maxville Motor Speedway|Florida|US|United States|30.19,-82.02
+McCleary|Washington|US|United States|47.06,-123.20
+McCook Sppedway|Nebraska|US|United States|40.21,-100.64
+McKean County Raceway|Pennsylvania|US|United States|41.80,-78.42
+McLean County Speedway|North Dakota|US|United States|47.46,-101.14
+Memphis International Raceway - Layout 2|Tennessee|US|United States|35.28,-89.95
+Memphis Missouri Dirt Track|Missouri|US|United States|40.45,-92.19
+Merced Fairgrounds Speedway|California|US|United States|37.29,-120.48
+Mercer County Fairgrounds Race Track|Illinois|US|United States|41.19,-90.77
+Meridian Speedway|Idaho|US|United States|43.60,-116.39
+Merritt Speedway|Michigan|US|United States|44.33,-85.01
+Miami County Raceway|Indiana|US|United States|40.79,-86.10
+Miami Intl - Grand Prix|Florida|US|United States|25.96,-80.24
+Miami Intl - Marina Loop|Florida|US|United States|25.96,-80.24
+Miami Intl - MIA Loop|Florida|US|United States|25.96,-80.24
+Michaels Mercer Raceway|Pennsylvania|US|United States|41.23,-80.23
+Michigan Intl - Outfield Central CCW|Michigan|US|United States|42.07,-84.23
+Michigan Intl - Outfield Central CW|Michigan|US|United States|42.07,-84.23
+Michigan Intl - Oval|Michigan|US|United States|42.07,-84.24
+Michigan Intl - Roval Banked|Michigan|US|United States|42.07,-84.24
+Michigan Intl - Roval East|Michigan|US|United States|42.07,-84.24
+Michigan Intl - Roval East Banked|Michigan|US|United States|42.07,-84.24
+Michigan Intl - Roval Short|Michigan|US|United States|42.07,-84.24
+Michigan Intl - Roval+Outfield|Michigan|US|United States|42.07,-84.24
+Michigan Intl - Roval+Outfield Short|Michigan|US|United States|42.07,-84.24
+Mid Carolina Speedway|South Carolina|US|United States|33.50,-81.14
+Mid Michigan Raceway|Michigan|US|United States|43.10,-84.94
+Mid Ohio - Full|Ohio|US|United States|40.69,-82.64
+Mid Ohio - Short|Ohio|US|United States|40.69,-82.63
+Mid Ohio - South Loop CW|Ohio|US|United States|40.68,-82.64
+Mid-Nebraska Speedway|Nebraska|US|United States|40.79,-98.34
+MidPond Raceway|Alabama|US|United States|33.19,-86.69
+Midvale Speedway - Big|Ohio|US|United States|40.44,-81.39
+Midvale Speedway - Small|Ohio|US|United States|40.44,-81.39
+Midway Speedway Missouri|Missouri|US|United States|37.66,-92.56
+Midway Speedway Ohio|Ohio|US|United States|39.72,-82.12
+Midwest Open Wheel Association|Illinois|US|United States|39.72,-89.97
+Millbridge Speedway|North Carolina|US|United States|35.65,-80.61
+Miller Central Speedway|South Dakota|US|United States|44.50,-98.98
+Miller Raceway Park|Indiana|US|United States|38.62,-87.01
+Millstream Speedway|Ohio|US|United States|41.08,-83.73
+Milwaukee Mile - Infield CCW|Wisconsin|US|United States|43.02,-88.01
+Milwaukee Mile - Infield CW|Wisconsin|US|United States|43.02,-88.01
+Milwaukee Mile - Oval|Wisconsin|US|United States|43.02,-88.01
+Milwaukee Mile - Roval CCW|Wisconsin|US|United States|43.02,-88.01
+Milwaukee Mile - Roval CW|Wisconsin|US|United States|43.02,-88.01
+Mini Eldora|Ohio|US|United States|40.32,-84.63
+Mini Indy Quarter Midget Club|Indiana|US|United States|39.83,-86.13
+Minneapolis Raceway|Kansas|US|United States|39.11,-97.65
+Missouri State Fair Speedway|Missouri|US|United States|38.69,-93.26
+Mitchell Raceway|Alaska|US|United States|64.80,-147.76
+Moberly Motorsports Park|Missouri|US|United States|39.46,-92.36
+Mobile Intl Speedway|Alabama|US|United States|30.51,-88.22
+Modoc Speedway|South Carolina|US|United States|33.75,-82.20
+Mohave Valley Raceway|Arizona|US|United States|34.89,-114.55
+Moler Raceway Park|Ohio|US|United States|39.08,-83.98
+Monarch Motor Speedway|Texas|US|United States|33.97,-98.60
+Monett Motor Speedway|Missouri|US|United States|36.92,-93.90
+Montana Raceway Park|Montana|US|United States|48.29,-114.34
+Montezuma County Fairgrounds|Colorado|US|United States|37.35,-108.51
+Montgomery County Qtr Midget|Pennsylvania|US|United States|40.14,-75.53
+Montgomery Speedway|Alabama|US|United States|32.36,-86.45
+Monticello|Kentucky|US|United States|36.87,-84.78
+Monticello - 66|New York|US|United States|41.62,-74.70
+Monticello - Full|New York|US|United States|41.62,-74.70
+Monticello - Mushroom|New York|US|United States|41.62,-74.70
+Monticello - North|New York|US|United States|41.62,-74.70
+Monticello - South|New York|US|United States|41.62,-74.70
+Monticello - Southwest|New York|US|United States|41.62,-74.70
+Montpelier Motor Speedway|Indiana|US|United States|40.55,-85.28
+Moran's Motorsports Park|Kentucky|US|United States|38.65,-83.86
+Morton|North Carolina|US|United States|36.22,-79.53
+Motordrome Speedway|Pennsylvania|US|United States|40.18,-79.73
+Mottville Speedway|Michigan|US|United States|41.80,-85.73
+Moulton Speedway|Alabama|US|United States|34.43,-87.22
+Mount Vernon Raceway|Illinois|US|United States|38.29,-88.95
+Mountain Creek Speedway - Catawba|North Carolina|US|United States|35.60,-81.08
+Mountain Creek Speedway - Grand Prairie|Texas|US|United States|32.75,-96.93
+Mountain Motor Speedway|Kentucky|US|United States|37.22,-82.85
+MQMRQ Little Elko|Minnesota|US|United States|44.57,-93.33
+MSR Cresson - East CCW|Texas|US|United States|32.52,-97.61
+MSR Cresson - East CW|Texas|US|United States|32.52,-97.62
+MSR Cresson - Full CCW|Texas|US|United States|32.52,-97.62
+MSR Cresson - Full CW|Texas|US|United States|32.52,-97.62
+MSR Houston - East|Texas|US|United States|29.28,-95.42
+MSR Houston - Full CCW|Texas|US|United States|29.28,-95.42
+MSR Houston - Full CW|Texas|US|United States|29.28,-95.42
+MSR Houston - North CCW|Texas|US|United States|29.28,-95.42
+MSR Houston - North CW|Texas|US|United States|29.28,-95.42
+MSR Houston - North+East CCW|Texas|US|United States|29.28,-95.42
+MSR Houston - North+East CW|Texas|US|United States|29.28,-95.42
+MSR Houston - South CCW|Texas|US|United States|29.28,-95.42
+MSR Houston - South CW|Texas|US|United States|29.28,-95.42
+MSR Houston - South+East CCW|Texas|US|United States|29.28,-95.42
+MSR Houston - South+East CW|Texas|US|United States|29.28,-95.42
+Mt Lawn Speedway|Indiana|US|United States|39.91,-85.46
+Mt Lawn Speedway (The Lawn)|Indiana|US|United States|39.91,-85.46
+Mt Pleasant Speedway|Michigan|US|United States|43.62,-84.76
+Murray County Speedway|Minnesota|US|United States|43.98,-95.76
+Music City Grand Prix|Tennessee|US|United States|36.16,-86.77
+Music City Speedway|Tennessee|US|United States|36.18,-86.63
+Muskingum County Speedway|Ohio|US|United States|40.07,-82.06
+Myer Creek Archers|Kentucky|US|United States|37.54,-87.25
+Myrtle Beach Speedway|South Carolina|US|United States|33.75,-78.95
+Nashville Fairgrounds|Tennessee|US|United States|36.13,-86.76
+Nashville Fairgrounds - Small|Tennessee|US|United States|36.13,-86.76
+Nashville Superspeedway - Oval|Tennessee|US|United States|36.05,-86.41
+Nashville Superspeedway - Roval|Tennessee|US|United States|36.05,-86.41
+Natural Bridge Speedway|Virginia|US|United States|37.65,-79.52
+Naugle Speedway|Pennsylvania|US|United States|40.53,-80.28
+NCCAR - CCW|North Carolina|US|United States|36.48,-77.58
+NCCAR - CW|North Carolina|US|United States|36.48,-77.58
+NCM - Corvette Loop|Kentucky|US|United States|37.00,-86.37
+NCM - East|Kentucky|US|United States|37.00,-86.36
+NCM - Grand|Kentucky|US|United States|37.00,-86.37
+NCM - West|Kentucky|US|United States|37.00,-86.37
+Needmore Speedway|Georgia|US|United States|31.23,-83.56
+Nelson Ledges|Ohio|US|United States|41.31,-81.02
+Nevada Speedway|Missouri|US|United States|37.83,-94.33
+New Egypt|New Jersey|US|United States|40.07,-74.47
+New Egypt - South NJ Qtr Midget|New Jersey|US|United States|40.07,-74.47
+New Hampshire - Oval|New Hampshire|US|United States|43.36,-71.46
+New Hampshire - Roval|New Hampshire|US|United States|43.36,-71.46
+New Hollis Speedway|Alabama|US|United States|33.52,-85.63
+New London-Waterford Speedbowl|Connecticut|US|United States|41.40,-72.18
+New Mexico Speedway|New Mexico|US|United States|32.26,-106.98
+New Paris Speedway|Indiana|US|United States|41.50,-85.79
+New Smyrna Speedway|Florida|US|United States|29.01,-81.07
+New York Safety - CCW|New York|US|United States|42.49,-74.78
+New York Safety - CW|New York|US|United States|42.49,-74.78
+Newman|California|US|United States|37.35,-120.98
+Newport Speedway|Tennessee|US|United States|36.02,-83.21
+NJMP - Lightning|New Jersey|US|United States|39.36,-75.06
+NJMP - Thunderbolt|New Jersey|US|United States|39.36,-75.07
+No Problem - Long|Louisiana|US|United States|30.02,-91.08
+No Problem - Short|Louisiana|US|United States|30.02,-91.08
+NOLA|Louisiana|US|United States|29.89,-90.20
+Norman County Raceway|Minnesota|US|United States|47.29,-96.52
+North Alabama Speedway|Alabama|US|United States|34.70,-87.83
+North Carolina Qtr Midget|North Carolina|US|United States|35.62,-80.50
+North Central Arkansas Speedway|Arkansas|US|United States|36.24,-92.65
+North Central Speedway|Minnesota|US|United States|46.30,-94.26
+North Georgia Qtr Midget|Georgia|US|United States|34.20,-84.14
+North Georgia Speedway|Georgia|US|United States|34.69,-84.83
+North Mississippi Motorsports Park|Mississippi|US|United States|34.88,-88.45
+North Wilkesboro|North Carolina|US|United States|36.14,-81.07
+Northern Michigan Speedway|Michigan|US|United States|45.12,-84.81
+Norton Elmwood Park Speedway|Kansas|US|United States|39.82,-99.88
+Norton Raceway Park|Ohio|US|United States|41.04,-81.62
+Norway Speedway|Michigan|US|United States|45.77,-87.91
+Oak Grove Motorsports Park|Florida|US|United States|30.91,-86.58
+Oakland Valley - Oval|New York|US|United States|41.47,-74.62
+Oaklane Qtr Midget|Pennsylvania|US|United States|40.41,-75.36
+Oakshade Raceway|Michigan|US|United States|41.65,-84.14
+Ocean Speedway|California|US|United States|36.95,-121.73
+Ogilvie Raceway|Minnesota|US|United States|45.83,-93.40
+Oglethorpe Speedway Park|Georgia|US|United States|32.09,-81.21
+Ohio Valley Speedway|West Virginia|US|United States|39.20,-81.65
+Oklahoma Sports Park|Oklahoma|US|United States|34.87,-96.83
+Old No.1 Speedway|Arkansas|US|United States|35.61,-90.68
+Ona Speedway|West Virginia|US|United States|38.44,-82.20
+One Half Mile Track|Illinois|US|United States|39.84,-89.64
+One Mile Track|Illinois|US|United States|39.84,-89.64
+Onekama Speedway|Michigan|US|United States|44.35,-86.19
+Orange County Fair Speedway|New York|US|United States|41.45,-74.39
+Orange County Speedway|North Carolina|US|United States|36.23,-78.96
+Orange Show Speedway|California|US|United States|34.09,-117.29
+Orange Show Speedway - Oval|California|US|United States|34.09,-117.29
+Oregon Raceway - Full|Oregon|US|United States|45.37,-120.74
+Oregon Raceway - North|Oregon|US|United States|45.37,-120.75
+Oregon Raceway - South|Oregon|US|United States|45.36,-120.74
+Orland Raceway|California|US|United States|39.74,-122.18
+Orlando Speed World - Oval|Florida|US|United States|28.54,-81.09
+Orleans Raceway|Michigan|US|United States|43.10,-85.15
+Oshkosh Speedzone Raceway|Wisconsin|US|United States|44.09,-88.54
+Osseo|Michigan|US|United States|41.85,-84.60
+Oswego Speedway|New York|US|United States|43.46,-76.48
+Outback Speedway|South Carolina|US|United States|34.58,-82.18
+Outgamie Speedway|Wisconsin|US|United States|44.52,-88.33
+Outlaw Motor Speedway|Oklahoma|US|United States|35.61,-95.48
+Outlaw Speedway|New York|US|United States|42.52,-76.97
+Owosso Motorsports Park|Michigan|US|United States|43.00,-84.22
+Owosso Speedway|Michigan|US|United States|43.00,-84.31
+Owyhee Motorcycle Club|Idaho|US|United States|43.68,-116.21
+Oxford Plains Speedway|Maine|US|United States|44.15,-70.48
+Oxford Plains Speedway - Small|Maine|US|United States|44.15,-70.48
+Ozarks - Full|Missouri|US|United States|38.27,-92.89
+Ozarks - Inside|Missouri|US|United States|38.27,-92.89
+Ozarks - Outer|Missouri|US|United States|38.27,-92.89
+Pacific Raceways|Washington|US|United States|47.32,-122.15
+Paducah Intl Raceway|Kentucky|US|United States|36.97,-88.56
+Pahrump Valley Speedway|Nevada|US|United States|36.22,-115.98
+Palmer - CCW|Massachusetts|US|United States|42.24,-72.24
+Palmer - CW|Massachusetts|US|United States|42.24,-72.24
+Paradise Raceway|South Carolina|US|United States|34.30,-79.48
+Paradise Speedway|New York|US|United States|42.94,-76.99
+Paragon Speedway|Indiana|US|United States|39.39,-86.59
+Park Jefferson Speedway|South Dakota|US|United States|42.57,-96.52
+Path Valley Speedway|Pennsylvania|US|United States|40.16,-77.78
+Patriot Speedway|South Carolina|US|United States|35.13,-81.54
+Patriots Park Raceway|Georgia|US|United States|32.39,-82.94
+PBIR Moroso|Florida|US|United States|26.92,-80.31
+Pecatonica Speedway|Illinois|US|United States|42.32,-89.37
+Penn-Can Speedway|Pennsylvania|US|United States|41.95,-75.63
+Penns Creek Raceway Park|Pennsylvania|US|United States|40.86,-77.07
+Pensacola Dirt Track|Florida|US|United States|30.42,-87.27
+Peoria Speedway|Illinois|US|United States|40.70,-89.65
+Perris Speedway|California|US|United States|33.85,-117.20
+Petaluma Fairgrounds Speedway|California|US|United States|38.24,-122.63
+Phoenix Raceway|Arizona|US|United States|33.37,-112.31
+Pikes Peak Quarter Midget Association|Colorado|US|United States|38.84,-104.37
+Pine Lake Raceway|Ohio|US|United States|41.83,-80.69
+Pineview Run|New York|US|United States|42.88,-76.18
+Pipestone County|Minnesota|US|United States|44.00,-96.30
+Pittsburgh's Pa Motor Speedway|Pennsylvania|US|United States|40.42,-80.26
+Placerville Speedway|California|US|United States|38.73,-120.83
+Plaza Park Raceway|California|US|United States|36.32,-119.39
+Plessis Motor Speedway|Iowa|US|United States|43.23,-95.53
+Plymouth Dirt Track|Wisconsin|US|United States|43.75,-87.97
+Plymouth Motor Speedway|Indiana|US|United States|41.30,-86.28
+Plymouth Snow Rangers Snowmobile Club|Wisconsin|US|United States|43.75,-87.94
+Pocatello Speedway|Idaho|US|United States|42.91,-112.58
+Pocono - East|Pennsylvania|US|United States|41.06,-75.50
+Pocono - North CW|Pennsylvania|US|United States|41.06,-75.51
+Pocono - North+South CCW|Pennsylvania|US|United States|41.05,-75.51
+Pocono - North+South CW|Pennsylvania|US|United States|41.05,-75.51
+Pocono - Oval CCW|Pennsylvania|US|United States|41.06,-75.51
+Pocono - Oval CW|Pennsylvania|US|United States|41.06,-75.51
+Pocono - Roval CW|Pennsylvania|US|United States|41.06,-75.51
+Pocono - South|Pennsylvania|US|United States|41.06,-75.51
+Podium Club Attesa - East CCW|Arizona|US|United States|32.82,-111.83
+Podium Club Attesa - East CW|Arizona|US|United States|32.82,-111.83
+Podium Club Attesa - Full CCW|Arizona|US|United States|32.82,-111.83
+Podium Club Attesa - Full CW|Arizona|US|United States|32.82,-111.83
+Podium Club Attesa - West CCW|Arizona|US|United States|32.82,-111.84
+Podium Club Attesa - West CW|Arizona|US|United States|32.82,-111.84
+Polecat Training Center - Club|Tennessee|US|United States|35.30,-86.47
+Polecat Training Center - PRO|Tennessee|US|United States|35.30,-86.47
+Ponderosa Speedway|Kentucky|US|United States|37.57,-84.80
+Poplar Grove Speedway|Iowa|US|United States|42.39,-93.68
+Port City Raceway|Oklahoma|US|United States|36.18,-95.80
+Port Royal Speedway|Pennsylvania|US|United States|40.54,-77.39
+Portland Intl|Washington|US|United States|45.60,-122.69
+Portsmouth Raceway Park|Ohio|US|United States|38.73,-83.02
+Possum Kingdom Super Speedway|South Carolina|US|United States|34.56,-82.40
+Potomac Speedway|Maryland|US|United States|38.40,-76.84
+Poughkeepsie Speedway|New York|US|United States|41.69,-73.87
+Powderly|Kentucky|US|United States|37.23,-87.15
+PPIR - Oval|Colorado|US|United States|38.59,-104.68
+PPIR - Reverse Oval|Colorado|US|United States|38.59,-104.68
+PPIR - Reverse Roval|Colorado|US|United States|38.59,-104.68
+PPIR - Roval|Colorado|US|United States|38.59,-104.68
+Prairie City SVRA|California|US|United States|38.60,-121.15
+Prater|Virginia|US|United States|37.24,-82.16
+Prescott Speedway|Arkansas|US|United States|33.87,-93.50
+Princeton Speedway (MN)|Minnesota|US|United States|45.57,-93.59
+Providence Raceway|Virginia|US|United States|36.89,-79.95
+Pueblo Motorsports Park|Colorado|US|United States|38.30,-104.68
+Pueblo Qtr Midget|Colorado|US|United States|38.30,-104.67
+Pulaski County Motorsports|Virginia|US|United States|37.14,-80.61
+Putnam Park - Long|Indiana|US|United States|39.58,-86.75
+Putnam Park - Short|Indiana|US|United States|39.58,-86.74
+Putnam Speedway|Florida|US|United States|29.57,-81.64
+Qlipse - Oval|Washington|US|United States|47.66,-117.57
+Qlispe Raceway|Washington|US|United States|47.66,-117.57
+Quad City Speedway|Illinois|US|United States|41.49,-90.43
+Quincy Raceways - Big Oval|Illinois|US|United States|39.93,-91.29
+Quincy Raceways - Small Oval|Illinois|US|United States|39.93,-91.28
+Race-1 Motor Speedway|Pennsylvania|US|United States|41.08,-78.72
+Raceway 7|Ohio|US|United States|41.84,-80.57
+Rainier Sportsmans Club|Washington|US|United States|46.88,-122.69
+Ransomville Speedway|New York|US|United States|43.26,-78.93
+Rattlesnake Raceway Nevada|Nevada|US|United States|39.49,-118.75
+Reading Fairgrounds|Pennsylvania|US|United States|40.38,-76.01
+Red Cedar Speedway|Wisconsin|US|United States|44.88,-91.91
+Red Dirt Raceway|Oklahoma|US|United States|35.57,-96.89
+Red Mile|Kentucky|US|United States|38.04,-84.52
+Redline Raceway|Pennsylvania|US|United States|41.73,-76.69
+Redrock Raceway|Pennsylvania|US|United States|40.25,-78.57
+Redwood Acres Raceway|California|US|United States|40.78,-124.13
+Redwood Speedway|Minnesota|US|United States|44.54,-95.10
+Reno-Fernley|Nevada|US|United States|39.54,-119.24
+Revolution Park|Louisiana|US|United States|32.49,-92.02
+Rice Lake Speedway|Wisconsin|US|United States|45.53,-91.74
+Richland County Fairgrounds|Wisconsin|US|United States|43.36,-90.38
+Richmond Raceway|Virginia|US|United States|37.59,-77.42
+Richmond Raceway KY|Kentucky|US|United States|37.75,-84.21
+Ricky Craven Speedway|Maine|US|United States|44.78,-68.84
+Ricky Craven Speedway - Small|Maine|US|United States|44.78,-68.84
+Ridge - Road Course|Washington|US|United States|47.26,-123.19
+Ringle Brickyard Speedway|Wisconsin|US|United States|44.88,-89.43
+Ripple Ridge Raceway|Wyoming|US|United States|41.75,-107.27
+River Bottom Raceway|Iowa|US|United States|41.49,-93.48
+River Cities Speedway|North Dakota|US|United States|47.94,-97.06
+River City Quarter Midgets Associaton|Texas|US|United States|30.39,-97.67
+River City Speedway|Oregon|US|United States|45.85,-122.87
+Riverhead Raceway|New York|US|United States|40.92,-72.70
+Riverside Intl Speedway|Arkansas|US|United States|35.14,-90.14
+Riverside Raceway Park|North Carolina|US|United States|36.42,-79.96
+Riviera Raceway|Nebraska|US|United States|41.99,-97.41
+Road America|Wisconsin|US|United States|43.80,-88.00
+Road Atlanta|Georgia|US|United States|34.14,-83.81
+Roaring Knob Motorsports|Pennsylvania|US|United States|39.74,-79.43
+Rock Creek Race Track|Idaho|US|United States|42.45,-114.33
+Rockcastle Speedway|Kentucky|US|United States|37.36,-84.30
+Rockcreek Township|Indiana|US|United States|40.81,-85.26
+Rockfish Speedway|North Carolina|US|United States|35.00,-79.07
+Rockford Speedway|Illinois|US|United States|42.36,-89.02
+Rockport Raceway|Kentucky|US|United States|37.83,-87.11
+Roebling Road|Georgia|US|United States|32.17,-81.32
+Rolling Thunder Raceway|South Dakota|US|United States|36.60,-80.53
+Rolling W Ranch|Pennsylvania|US|United States|40.94,-79.86
+Rolling Wheels Raceway Park|New York|US|United States|43.02,-76.49
+Rome Intl Speedway|Georgia|US|United States|34.21,-85.11
+Rooks County Speedway|Kansas|US|United States|39.43,-99.27
+Route 44 Speedway|Indiana|US|United States|39.64,-84.99
+Route 66 Motor Speedway|Texas|US|United States|35.17,-101.74
+Route 68 Raceway|Ohio|US|United States|39.07,-83.92
+royal purple raceway|Texas|US|United States|29.79,-94.88
+RPM Speedway|Kansas|US|United States|38.91,-99.37
+RPM Speedway Texas|Texas|US|United States|32.61,-96.40
+Rte 106 Race Park|New Hampshire|US|United States|43.20,-71.48
+Rush County Speedway|Kansas|US|United States|38.54,-99.30
+Sabine Speedway|Louisiana|US|United States|31.59,-93.51
+Sacramento Cal Expo Fair Track|California|US|United States|38.59,-121.43
+Sacramento Raceway Park|California|US|United States|38.53,-121.29
+Salem Speedway - Oval|Indiana|US|United States|38.60,-86.14
+Salina Highbanks Speedway|Oklahoma|US|United States|36.30,-95.20
+Salina Speedway|Kansas|US|United States|38.79,-97.68
+Salinas Sports Complex - Oval|California|US|United States|36.69,-121.65
+Salmon Valley Speedway|Idaho|US|United States|45.23,-113.90
+San Antonio|Texas|US|United States|29.40,-98.42
+Sandhollow Raceway Park|Idaho|US|United States|43.81,-116.76
+Sandia - Big Oval|New Mexico|US|United States|35.02,-106.86
+Sandia - Dirt Oval|New Mexico|US|United States|35.02,-106.86
+Sandia - Road Course CCW|New Mexico|US|United States|35.02,-106.86
+Sandia - Road Course CW|New Mexico|US|United States|35.02,-106.86
+Sandia - Small Oval|New Mexico|US|United States|35.02,-106.86
+Sandusky Speedway|Ohio|US|United States|41.43,-82.71
+Sandy Ridge Speedway|Mississippi|US|United States|30.92,-89.39
+Sangchris Speedway|Illinois|US|United States|39.65,-89.46
+Santa Maria Spwy|California|US|United States|35.00,-120.44
+Saugus Speedway|California|US|United States|34.42,-118.53
+Sayre Speedway|Alabama|US|United States|33.72,-86.99
+Scenic Raceway|Tennessee|US|United States|36.55,-84.46
+Screven Speedway|Georgia|US|United States|32.63,-81.54
+Sebring - Full|Florida|US|United States|27.45,-81.35
+Sebring - North Club|Florida|US|United States|27.45,-81.35
+Sebring - South Short|Florida|US|United States|27.45,-81.35
+Seekonk Speedway|Massachusetts|US|United States|41.78,-71.30
+Selinsgrove Speedway - Big|Pennsylvania|US|United States|40.79,-76.87
+Selinsgrove Speedway - Small|Pennsylvania|US|United States|40.79,-76.87
+Senoia Raceway|Georgia|US|United States|33.31,-84.59
+Seven Stars Speedway|Pennsylvania|US|United States|40.62,-77.14
+Seymour Speedway|Texas|US|United States|33.59,-99.26
+Shady Oaks Speedway|Texas|US|United States|28.73,-97.35
+Shadybowl Speedway|Ohio|US|United States|40.26,-83.94
+Shadyhill Speedway|Indiana|US|United States|41.10,-86.81
+Sharon Speedway|Ohio|US|United States|41.31,-80.55
+Shawano Speedway|Wisconsin|US|United States|44.78,-88.59
+Shawnee|Oklahoma|US|United States|35.35,-96.95
+Shelby County Fairgrounds - Shelbyville|Indiana|US|United States|41.20,-84.92
+Shelby County Fairgrounds - Sidney|Ohio|US|United States|40.28,-84.17
+Shelby County Speedway|Iowa|US|United States|41.67,-95.31
+Shelby County Speedway - Wilsonville|Alabama|US|United States|33.22,-86.51
+Shellhammer Dirt Track|Pennsylvania|US|United States|40.46,-75.97
+Shenandoah Speedway|Virginia|US|United States|38.51,-78.64
+Sherman County Speedway|Kansas|US|United States|39.36,-101.71
+Sheyenne Speedway|North Dakota|US|United States|46.44,-97.69
+Shimek Speedway|Iowa|US|United States|40.62,-91.69
+Show Me Speedway|Missouri|US|United States|40.50,-92.36
+Showtime Speedway|Florida|US|United States|27.89,-82.69
+Sikeston|Missouri|US|United States|37.01,-89.54
+Silver Bullet Speedway|Michigan|US|United States|43.73,-83.21
+Silver City Qtr Midget|Connecticut|US|United States|41.53,-72.83
+Silver Dollar Speedway|California|US|United States|39.72,-121.81
+Sioux Valley Cycle Club|South Dakota|US|United States|43.64,-96.67
+Siskiyou County Motorsports Association|California|US|United States|41.70,-122.64
+Skagit Speedway|Washington|US|United States|48.58,-122.33
+Skyline Raceway NY|New York|US|United States|42.54,-76.12
+Slaton Speedway|Texas|US|United States|33.47,-101.66
+Slideways|Iowa|US|United States|41.34,-93.11
+Slinger Speedway|Wisconsin|US|United States|43.34,-88.28
+Slippery Rock Raceway|Pennsylvania|US|United States|41.07,-80.05
+Smoky Mountain Speedway|Tennessee|US|United States|35.64,-84.10
+Snydersville Raceway|Pennsylvania|US|United States|40.97,-75.28
+SoCal Nitro Raceway|California|US|United States|34.52,-117.31
+Solomon Valley Raceway|Kansas|US|United States|39.47,-98.11
+Solt Speedway|Ohio|US|United States|41.03,-83.80
+Sonoma Raceway - Carousel Full|California|US|United States|38.16,-122.46
+Sonoma Raceway - Chute|California|US|United States|38.16,-122.46
+South Alabama Speedway|Alabama|US|United States|31.24,-86.19
+South Boston Speedway|Virginia|US|United States|36.71,-78.87
+South Georgia Motorsports|Georgia|US|United States|31.06,-83.40
+South Sound Speedway|Washington|US|United States|46.82,-122.96
+South Texas Race Ranch|Texas|US|United States|27.73,-97.49
+Southern Illinois Raceway|Illinois|US|United States|37.73,-88.83
+Southern Iowa Speedway|Iowa|US|United States|41.30,-92.66
+Southern National|North Carolina|US|United States|35.61,-78.06
+Southern Ohio Speedway|Ohio|US|United States|38.80,-82.83
+Southern Oregon Speedway|Oregon|US|United States|42.42,-122.79
+Southern Outlaws Speedway|Georgia|US|United States|32.65,-83.75
+Southern Raceway|Florida|US|United States|30.60,-86.93
+Southern Tier Microd Club|New York|US|United States|42.16,-76.31
+Southside Speedway|Virginia|US|United States|37.45,-77.63
+Southtown Speedway|Iowa|US|United States|43.24,-93.63
+Southwest Speedway|North Dakota|US|United States|46.73,-102.81
+Space Coast Full Throttle Speedway|Florida|US|United States|28.44,-80.78
+Speed Creek Raceway|Indiana|US|United States|40.07,-85.86
+Speed Ranch Motorycle Club|Wisconsin|US|United States|43.50,-90.65
+SpeedVegas|Nevada|US|United States|35.93,-115.19
+SpeedVegas - Short|Nevada|US|United States|35.93,-115.19
+Speedworld Raceway|Arizona|US|United States|33.71,-112.47
+Spencer Speedway|New York|US|United States|43.23,-77.24
+Spoon River Speedway|Illinois|US|United States|40.43,-89.99
+Sports Park Raceway|Iowa|US|United States|42.46,-94.18
+Sportsdrome Speedway|Indiana|US|United States|38.31,-85.76
+Spring Creek Speedway|Illinois|US|United States|40.48,-90.74
+Spring Mountain - Center|Nevada|US|United States|36.17,-115.91
+Spring Mountain - Charleston Peak CW|Nevada|US|United States|36.18,-115.91
+Spring Mountain - Charleston Peak Full CW|Nevada|US|United States|36.18,-115.91
+Spring Mountain - East|Nevada|US|United States|36.17,-115.90
+Spring Mountain - North|Nevada|US|United States|36.18,-115.91
+Spring Mountain - South|Nevada|US|United States|36.17,-115.91
+Spring Mountain - West|Nevada|US|United States|36.17,-115.91
+Springfield Raceway|Missouri|US|United States|37.24,-93.36
+Springport Mid-Michigan Speedway|Michigan|US|United States|42.42,-84.72
+Spud Speedway|Maine|US|United States|46.92,-67.93
+Spud Speedway - Small|Maine|US|United States|46.92,-67.94
+SSR Motorsports Park|Alabama|US|United States|30.49,-88.32
+St Charles|Michigan|US|United States|43.30,-84.19
+St Petersburg|Florida|US|United States|27.77,-82.63
+Stafford - Big Oval|Connecticut|US|United States|41.96,-72.32
+Stafford - Little Oval|Connecticut|US|United States|41.96,-72.32
+Standish Asphalt Raceway|Michigan|US|United States|43.94,-83.96
+StarLite Speedway|New York|US|United States|42.53,-76.76
+State Fair MX Park - Motocross|California|US|United States|34.02,-117.37
+State Line Speedway NC|Virginia|US|United States|36.54,-80.22
+Stateline Speedway|Ohio|US|United States|41.55,-84.80
+Stateline Speedway NY|New York|US|United States|42.01,-79.33
+Stateline Speedway NY - Small|New York|US|United States|42.01,-79.33
+Statesville|North Carolina|US|United States|35.78,-80.98
+Steele County Fairgrounds Park|Minnesota|US|United States|44.07,-93.22
+Stockton Dirt Track|California|US|United States|37.94,-121.26
+Strathcona|Minnesota|US|United States|48.56,-96.17
+Stuart Intl Speedway|Iowa|US|United States|41.51,-94.33
+Stuart Raceway|Nebraska|US|United States|42.61,-99.14
+Sugar Creek Raceway|Georgia|US|United States|34.86,-84.37
+Sugar Hill Speedway|New Hampshire|US|United States|43.12,-71.68
+Sugartit Speedway|South Carolina|US|United States|34.84,-82.17
+Summit Point - Full|Virginia|US|United States|39.24,-77.97
+Summit Point - Jefferson Long|Virginia|US|United States|39.23,-77.97
+Summit Point - Jefferson Short|Virginia|US|United States|39.23,-77.97
+Summit Point - Shenandoah|Virginia|US|United States|39.24,-77.98
+Summit Point - Short|Virginia|US|United States|39.24,-77.97
+Summit Raceway|Nevada|US|United States|40.81,-115.73
+Sumter Speedway|South Carolina|US|United States|33.91,-80.42
+Sunday Creek Raceway|Ohio|US|United States|39.45,-82.06
+Sunflower River Race Track|Mississippi|US|United States|33.73,-90.59
+Sunset Raceway|Alabama|US|United States|34.25,-86.63
+Sunset Speedway|Oregon|US|United States|45.61,-123.12
+Super Bowl Speedway|Texas|US|United States|33.04,-96.12
+Swainsboro Raceway|Georgia|US|United States|32.62,-82.32
+Sweet Springs Motorsports|Missouri|US|United States|38.98,-93.42
+Sweetwater Speedway|Wyoming|US|United States|41.63,-109.24
+Switzer's Fleming County Raceway|Kentucky|US|United States|38.36,-83.61
+Sycamore Speedway|Illinois|US|United States|41.97,-88.59
+Talladega|Alabama|US|United States|33.57,-86.07
+Talladega Gran Prix - CCW|Alabama|US|United States|33.50,-86.00
+Talladega Gran Prix - CW|Alabama|US|United States|33.50,-86.00
+Talladega Short Track|Alabama|US|United States|33.58,-86.05
+Taylorsville Lions Club Fairgrounds|North Carolina|US|United States|35.89,-81.19
+Tazewell Speedway|Tennessee|US|United States|36.51,-83.57
+Tehama District Fairgrounds|California|US|United States|40.19,-122.20
+Ten Mile Speedway|Louisiana|US|United States|30.96,-92.80
+Tennessee National Raceway|Tennessee|US|United States|35.55,-87.61
+Terre Haute Action Track|Indiana|US|United States|39.42,-87.42
+Texarkana 67 Speedway|Arkansas|US|United States|33.53,-93.91
+Texas Motor Speedway - Infield Full CW|Texas|US|United States|33.04,-97.28
+Texas Motor Speedway - Infield North CW|Texas|US|United States|33.04,-97.28
+Texas Motor Speedway - Infield South CW|Texas|US|United States|33.04,-97.28
+Texas Motor Speedway - Legends Oval|Texas|US|United States|33.04,-97.28
+Texas Motor Speedway - Oval|Texas|US|United States|33.04,-97.28
+Texas Motor Speedway - Roval|Texas|US|United States|33.04,-97.28
+Texoma Motor Speedway - Full|Texas|US|United States|33.86,-98.62
+Texoma Motor Speedway - MSK|Texas|US|United States|33.86,-98.62
+Thayer County Speedway|Nebraska|US|United States|40.13,-97.72
+The 'Burg Speedway|Wisconsin|US|United States|44.54,-87.71
+The Dirt Track at Texas|Texas|US|United States|33.03,-97.27
+The Grand Rapids Speedway|Minnesota|US|United States|47.25,-93.52
+The Great Darke County Fair|Ohio|US|United States|40.09,-84.64
+The Hill|Wisconsin|US|United States|44.84,-87.36
+The Hill - Infield Course|Wisconsin|US|United States|44.84,-87.36
+The Hill Speedway|Pennsylvania|US|United States|41.72,-76.52
+The Original Speedway Park|Florida|US|United States|28.86,-81.94
+The Painesville Speedway|Ohio|US|United States|41.75,-81.23
+The Rock - Allegany Speedway|Maryland|US|United States|39.61,-78.80
+The Rock - Infield CCW|North Carolina|US|United States|34.97,-79.61
+The Rock - Infield CW|North Carolina|US|United States|34.97,-79.61
+The Rock - Oval|North Carolina|US|United States|34.97,-79.61
+The Rock - Roval|North Carolina|US|United States|34.97,-79.61
+The Skyline Speedway|West Virginia|US|United States|39.29,-81.87
+Thermal Club - Desert|California|US|United States|33.61,-116.15
+Thermal Club - GT|California|US|United States|33.61,-116.15
+Thermal Club - North|California|US|United States|33.60,-116.15
+Thermal Club - North+Desert|California|US|United States|33.61,-116.15
+Thermal Club - North+South|California|US|United States|33.60,-116.15
+Thermal Club - North+South Alt SF|California|US|United States|33.60,-116.15
+Thermal Club - South|California|US|United States|33.60,-116.15
+Thomas County Speedway|Kansas|US|United States|39.39,-101.06
+Thompson Speedway - CCW|Connecticut|US|United States|41.98,-71.83
+Thompson Speedway - CW|Connecticut|US|United States|41.98,-71.83
+Thompson Speedway - Oval|Connecticut|US|United States|41.98,-71.82
+Thunder Hill Raceway|Texas|US|United States|29.95,-97.87
+Thunder Hill Speedway|Wisconsin|US|United States|44.79,-91.81
+Thunder Hill Speedway - Mayetta|Kansas|US|United States|39.30,-95.76
+Thunder Mountain|Colorado|US|United States|38.67,-107.98
+Thunder Mountain Speedway NY|New York|US|United States|42.36,-76.07
+Thunder Mountain Speedway PA|Pennsylvania|US|United States|41.08,-79.06
+Thunder Mountain Super Speedway|Arkansas|US|United States|34.37,-93.62
+Thunder Raceway|Arizona|US|United States|34.26,-109.99
+Thunder Ridge Racing Complex|Kentucky|US|United States|37.74,-82.74
+Thunder Road|Vermont|US|United States|44.18,-72.49
+Thunder Valley Mudplex|South Carolina|US|United States|33.50,-81.11
+Thunder Valley Raceway - Central City|Pennsylvania|US|United States|40.10,-78.83
+Thunder Valley Raceway - Glendale|Indiana|US|United States|38.56,-87.07
+Thunderbowl|California|US|United States|36.20,-119.34
+Thunderhill - East CCW|California|US|United States|39.54,-122.33
+Thunderhill - East CW|California|US|United States|39.54,-122.33
+Thunderhill - Full CCW|California|US|United States|39.54,-122.33
+Thunderhill - Full CW|California|US|United States|39.54,-122.33
+Thunderhill - Middle Hill CCW|California|US|United States|39.54,-122.34
+Thunderhill - Middle Hill CW|California|US|United States|39.54,-122.34
+Thunderhill - West CCW|California|US|United States|39.54,-122.34
+Thunderhill - West CW|California|US|United States|39.54,-122.34
+ThunderHill Tennessee|Tennessee|US|United States|35.39,-87.26
+TNT Speedway|Wisconsin|US|United States|45.72,-89.14
+Toccoa Raceway|Georgia|US|United States|34.56,-83.28
+Toledo Speedway - Big|Ohio|US|United States|41.72,-83.51
+Toledo Speedway - Small|Ohio|US|United States|41.72,-83.51
+Tomahawk Speedway|Wisconsin|US|United States|45.52,-89.71
+Tonopah Speedway|Nevada|US|United States|38.07,-117.09
+Topeka Quarter Midget Association|Kansas|US|United States|38.95,-95.70
+Trail-Way Speedway|Pennsylvania|US|United States|39.78,-77.06
+Travelers Rest Speedway|South Carolina|US|United States|35.02,-82.41
+Trezevant|Tennessee|US|United States|36.05,-88.66
+Tri-City Motor Speedway|Michigan|US|United States|43.63,-84.05
+Tri-City Raceway PA|Pennsylvania|US|United States|41.50,-79.78
+Tri-City Speedway|Illinois|US|United States|38.75,-90.10
+Tri-County Race Track|North Carolina|US|United States|35.03,-83.95
+Tri-County Speedway Alabama|Alabama|US|United States|31.05,-87.17
+Tri-County Speedway NC|North Carolina|US|United States|35.81,-81.53
+Tri-County Speedway ND|North Dakota|US|United States|46.25,-99.58
+Tri-State Speedway|Texas|US|United States|35.15,-101.84
+Tri-State Speedway Indiana|Indiana|US|United States|38.21,-87.55
+Tri-Valley Quarter Midget Club|California|US|United States|37.72,-121.71
+Triangle Motorcycle Club|Ohio|US|United States|40.73,-83.27
+Triple T Raceway|North Carolina|US|United States|34.81,-78.93
+Troutman|North Carolina|US|United States|35.72,-80.90
+Trumbull County Fairgrounds|Ohio|US|United States|41.33,-80.79
+Tucson Quarter Midget Association|Arizona|US|United States|32.39,-111.12
+Tucson Speedway|Arizona|US|United States|32.04,-110.79
+Tulsa Quarter Midget Association|Oklahoma|US|United States|36.18,-95.92
+Tumbleweed Speedway|Texas|US|United States|31.76,-102.54
+Turkey Trot Raceway|New York|US|United States|43.28,-73.51
+Twin Cities Raceway Park|Indiana|US|United States|38.99,-85.61
+Twister Alley Raceway|Missouri|US|United States|36.74,-93.90
+Tyler County Speedway|West Virginia|US|United States|39.47,-80.86
+Ukiah Speedway|California|US|United States|39.16,-123.21
+Unity Raceway|Maine|US|United States|44.61,-69.35
+University Plains Speedway|South Dakota|US|United States|44.33,-96.79
+Urbana Speedway|Missouri|US|United States|37.81,-93.16
+US-24 Speedway|Indiana|US|United States|40.76,-86.50
+US-30 Speedway|Nebraska|US|United States|41.41,-97.43
+US-36 Raceway|Missouri|US|United States|39.76,-94.35
+US-41 Speedway|Indiana|US|United States|41.11,-87.45
+USA International Speedway|Louisiana|US|United States|32.70,-92.09
+USA Raceway|Arizona|US|United States|32.12,-110.90
+Utah Motorsports|Utah|US|United States|40.58,-112.38
+Utah Motorsports - East|Utah|US|United States|40.58,-112.37
+Utah Motorsports - Full|Utah|US|United States|40.58,-112.38
+Utah Motorsports - Outer|Utah|US|United States|40.58,-112.38
+Utah Motorsports - West|Utah|US|United States|40.58,-112.38
+Utica-Rome Speedway|New York|US|United States|43.08,-75.52
+Vado Speedway|New Mexico|US|United States|32.13,-106.64
+Valley Speedway|Missouri|US|United States|39.02,-94.19
+Ventura Raceway|California|US|United States|34.28,-119.30
+Veteran's Motorplex at the Rim|Tennessee|US|United States|36.42,-86.76
+Victory Speedway|Florida|US|United States|26.70,-81.77
+Viking Speedway|Minnesota|US|United States|45.89,-95.39
+VIR - Full|Virginia|US|United States|36.56,-79.21
+VIR - North|Virginia|US|United States|36.56,-79.21
+VIR - Patriot|Virginia|US|United States|36.56,-79.21
+VIR - South|Virginia|US|United States|36.56,-79.21
+Virginia Motor Speedway|Virginia|US|United States|37.70,-76.69
+Volunteer Speedway|Tennessee|US|United States|36.22,-83.05
+Volusia Speedway|Florida|US|United States|29.22,-81.34
+Wagner Speedway|South Dakota|US|United States|43.07,-98.29
+Wagoners Speedway|Kentucky|US|United States|36.93,-86.93
+Wake County Speedway|North Carolina|US|United States|35.70,-78.68
+WaKeeney Mini Speedway|Kansas|US|United States|39.02,-99.87
+WaKeeney Speedway|Kansas|US|United States|39.02,-99.87
+Wall Stadium|New Jersey|US|United States|40.18,-74.12
+Warren County|Kentucky|US|United States|36.95,-86.21
+Warren County Speedway|Iowa|US|United States|41.36,-93.58
+Warrior Creek Speedway|South Carolina|US|United States|34.63,-82.03
+Warsaw Motorsports Complex|Indiana|US|United States|41.23,-85.84
+Wartburg Speedway|Tennessee|US|United States|36.09,-84.60
+Washington Speedway|Kansas|US|United States|39.81,-97.06
+Waterford Hills - Full|Michigan|US|United States|42.71,-83.39
+Waterford Hills - North|Michigan|US|United States|42.71,-83.39
+Waterford Hills - Short|Michigan|US|United States|42.71,-83.39
+Waterford Hills - South|Michigan|US|United States|42.71,-83.39
+Watkins Glen - Full|New York|US|United States|42.34,-76.92
+Watkins Glen - Short|New York|US|United States|42.34,-76.92
+Wausau 525 Racetrack|Wisconsin|US|United States|44.94,-89.74
+Waycross Motor Speedway|Georgia|US|United States|31.21,-82.32
+Wayne County Speedway IL|Illinois|US|United States|38.31,-88.59
+Wayne County Speedway Ohio|Ohio|US|United States|40.81,-81.78
+Waynesfield Raceway Park|Ohio|US|United States|40.58,-83.98
+Weedsport Speedway|New York|US|United States|43.06,-76.55
+Wenatchee Valley Oval|Washington|US|United States|47.45,-120.28
+West Alabama Speedway|Alabama|US|United States|33.86,-87.78
+West End Quarter Midget Racing|Pennsylvania|US|United States|40.91,-75.43
+West Georgia Speedway|Georgia|US|United States|33.51,-84.91
+West Liberty|Ohio|US|United States|40.25,-83.75
+West Liberty Raceway|Iowa|US|United States|41.57,-91.27
+Western Kentucky Speedway|Kentucky|US|United States|37.36,-87.62
+Western Raceway|Arizona|US|United States|35.71,-114.43
+Westminster Speedway|South Carolina|US|United States|34.69,-83.12
+Weston County Fairgrounds Raceway|Wyoming|US|United States|43.84,-104.22
+Wheelersburg Raceway|Ohio|US|United States|38.69,-82.87
+Whittemore Speedway|Michigan|US|United States|44.23,-83.80
+Whynot Motorsports Park|Mississippi|US|United States|32.28,-88.47
+Willamette Speedway|Oregon|US|United States|44.52,-122.93
+Willard Speedway|Kentucky|US|United States|38.21,-82.88
+Williams Grove Speedway|Pennsylvania|US|United States|40.16,-77.03
+Williston Basin Speedway|North Dakota|US|United States|48.19,-103.61
+Willow Springs - Big|California|US|United States|34.87,-118.26
+Willow Springs - Horsethief Mile|California|US|United States|34.88,-118.26
+Willow Springs - Speedway Oval|California|US|United States|34.88,-118.26
+Willow Springs - Streets CCW|California|US|United States|34.88,-118.26
+Willow Springs - Streets CW|California|US|United States|34.88,-118.26
+Willow Springs - Walt James|California|US|United States|34.88,-118.26
+Wilmington|Ohio|US|United States|39.53,-83.97
+Wilmot Raceway|Wisconsin|US|United States|42.52,-88.19
+Wilson's Motorsport Track|Alabama|US|United States|32.62,-86.13
+Winchester Raceway|Tennessee|US|United States|35.18,-86.12
+Winchester Speedway Indiana|Indiana|US|United States|40.18,-85.03
+Winchester Speedway Virginia|Virginia|US|United States|39.13,-78.13
+Winder Barrow Speedway|Georgia|US|United States|34.01,-83.68
+Winfield Speedway|Kansas|US|United States|37.24,-97.01
+Winneshiek Raceway|Iowa|US|United States|43.30,-91.77
+Winston Speedway|Michigan|US|United States|43.50,-86.38
+Wiscasset Speedway|Maine|US|United States|44.04,-69.66
+Wisconsin Intl|Wisconsin|US|United States|44.25,-88.26
+Woodhull Raceway|Pennsylvania|US|United States|42.10,-77.40
+Woodleaf Speedway|North Carolina|US|United States|35.77,-80.57
+Woodsfield|Ohio|US|United States|39.86,-81.20
+World Championship Derby Complex|Wisconsin|US|United States|45.93,-89.26
+Worthington Speedway|Minnesota|US|United States|43.64,-95.61
+WW Tech - 1.6 Roval|Illinois|US|United States|38.65,-90.14
+WW Tech - 2.0 Roval|Illinois|US|United States|38.65,-90.14
+WW Tech - Oval|Illinois|US|United States|38.65,-90.14
+Wyoming County Intl Speedway|New York|US|United States|42.72,-78.06
+Wythe Raceway|Virginia|US|United States|36.92,-81.24
+Yakima Speedway - Full|Washington|US|United States|46.59,-120.48
+Yakima Speedway - Short|Washington|US|United States|46.59,-120.48
+Yuba City|California|US|United States|39.01,-121.61
+Eduardo P Cabrera - Full|Rivera|UY|Uruguay|-30.86,-55.61
+El Pinar|Canelones|UY|Uruguay|-34.78,-55.92
+Mercedes|Soriano|UY|Uruguay|-33.25,-58.08
+Turagua|Aragua|VE|Venezuela|10.14,-67.51
+Donnybrook Raceway|Harare|ZW|Zimbabwe|-17.83,31.18

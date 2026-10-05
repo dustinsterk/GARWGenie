@@ -81,7 +81,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.6.2"
+APP_VERSION = "5.7.0"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -5271,8 +5271,9 @@ def run_gui(initial_zip: Optional[str] = None):
     ctl_tick()
 
     # ---------- Tab: Lap Timer (RaceBox MAC + track database editor) ----------
-    LOCAL_TRACKS = CONFIG_DIR / "tracks.txt"
-    lap = {"db": _lt.TrackDB() if _lt else None, "path": str(LOCAL_TRACKS), "dirty": False, "server": None, "present": None}
+    LOCAL_USER_TRACKS = CONFIG_DIR / "UserTracks.txt"
+    lap = {"db": _lt.UserTrackDB() if _lt else None, "lib": _lt.TrackLibrary() if _lt else None,
+           "path": str(LOCAL_USER_TRACKS), "server": None, "present": None}
 
     # -- RaceBox --
     mac_box = ttk.LabelFrame(tab_lap, text="  RaceBox  ", padding=(10, 4, 10, 8))
@@ -5364,8 +5365,8 @@ def run_gui(initial_zip: Optional[str] = None):
     mac_read_btn.configure(command=do_mac_read)
     mac_save_btn.configure(command=do_mac_save)
 
-    # -- Tracks --
-    trk_box = ttk.LabelFrame(tab_lap, text="  Track database  ", padding=(10, 4, 10, 8))
+    # -- Tracks: GARW library (read-only TrackList.txt) + the user's UserTracks.txt --
+    trk_box = ttk.LabelFrame(tab_lap, text="  Tracks  ", padding=(10, 4, 10, 8))
     trk_box.grid(row=1, column=0, columnspan=2, sticky="nsew", pady=(8, 0))
     tab_lap.rowconfigure(1, weight=1)
     tab_lap.columnconfigure(0, weight=1)
@@ -5375,14 +5376,16 @@ def run_gui(initial_zip: Optional[str] = None):
     trk_file_lbl.pack(side="left")
     ttk.Label(trow0, text="   Search:", style="Muted.TLabel").pack(side="left", padx=(12, 4))
     trk_q = tk.StringVar()
-    trk_q_ent = ttk.Entry(trow0, textvariable=trk_q, width=28)
+    trk_q_ent = ttk.Entry(trow0, textvariable=trk_q, width=22)
     trk_q_ent.pack(side="left")
-    tcols = ("name", "type", "region", "country", "sf", "sectors", "pits", "radius")
+    trk_show_lib = tk.BooleanVar(value=True)
+    ttk.Checkbutton(trow0, text="Show GARW library", variable=trk_show_lib, command=lambda: fill_trk_tree()).pack(side="left", padx=(12, 0))
+    tcols = ("name", "source", "type", "region", "country", "sf", "sectors", "radius")
     trk_tree = ttk.Treeview(trk_box, columns=tcols, show="headings", selectmode="extended", height=10)
-    for c, txt, w in (("name", "Track", 240), ("type", "Type", 110), ("region", "Region", 130), ("country", "Country", 140), ("sf", "Start", 170),
-                      ("sectors", "Sectors", 60), ("pits", "Pits", 60), ("radius", "Radius m", 70)):
+    for c, txt, w in (("name", "Track", 240), ("source", "Source", 150), ("type", "Type", 120), ("region", "Region", 130),
+                      ("country", "Country", 140), ("sf", "Start", 170), ("sectors", "Sectors", 60), ("radius", "Radius m", 70)):
         trk_tree.heading(c, text=txt)
-        trk_tree.column(c, width=w, anchor="w" if c in ("name", "region", "country") else "center", stretch=(c == "name"))
+        trk_tree.column(c, width=w, anchor="w" if c in ("name", "region", "country", "source") else "center", stretch=(c == "name"))
     trk_tree.grid(row=1, column=0, columnspan=2, sticky="nsew", pady=(6, 0))
     trk_sb = ttk.Scrollbar(trk_box, command=trk_tree.yview)
     trk_sb.grid(row=1, column=2, sticky="ns", pady=(6, 0))
@@ -5399,28 +5402,37 @@ def run_gui(initial_zip: Optional[str] = None):
     trk_dup_btn.pack(side="left", padx=(6, 0))
     trk_del_btn = ttk.Button(trow, text="Delete", style="Danger.TButton")
     trk_del_btn.pack(side="left", padx=(6, 0))
-    trk_gmaps_btn = ttk.Button(trow, text="Open in Google Maps")
+    trk_gmaps_btn = ttk.Button(trow, text="Google Maps")
     trk_gmaps_btn.pack(side="left", padx=(18, 0))
-    trk_upload_btn = ttk.Button(trow, text="Upload to device", style="Accent.TButton")
+    trk_upload_btn = ttk.Button(trow, text="Upload UserTracks.txt to device", style="Accent.TButton")
     trk_upload_btn.pack(side="right")
     trk_download_btn = ttk.Button(trow, text="Download from device")
     trk_download_btn.pack(side="right", padx=(0, 6))
-    trk_open_btn = ttk.Button(trow, text="Open tracks.txt…")
-    trk_open_btn.pack(side="right", padx=(0, 18))
-    trk_saveas_btn = ttk.Button(trow, text="Save copy as…")
-    trk_saveas_btn.pack(side="right", padx=(0, 6))
+    trk_saveas_btn = ttk.Button(trow0, text="Save copy as…")
+    trk_saveas_btn.pack(side="right")
+    trk_open_btn = ttk.Button(trow0, text="Open file…")
+    trk_open_btn.pack(side="right", padx=(0, 6))
     trk_status = ttk.Label(trk_box, style="Muted.TLabel", wraplength=1100, justify="left", text="")
     trk_status.grid(row=3, column=0, columnspan=3, sticky="w", pady=(6, 0))
 
+    # row ids: "u:<index>" = user track, "l:<name>" = library entry
     def trk_save_local():
         if not lap["db"]:
             return
         try:
-            LOCAL_TRACKS.parent.mkdir(parents=True, exist_ok=True)
+            Path(lap["path"]).parent.mkdir(parents=True, exist_ok=True)
             Path(lap["path"]).write_bytes(lap["db"].serialize())
-            lap["dirty"] = False
         except OSError as e:
             log(f"ERROR: could not save {lap['path']}: {e}")
+
+    def trk_load_library():
+        for c in (app_dir() / "TrackList.txt", Path(getattr(sys, "_MEIPASS", "") or "") / "TrackList.txt",
+                  Path(__file__).resolve().parent / "TrackList.txt"):
+            if c.is_file():
+                lap["lib"] = _lt.TrackLibrary.parse(c.read_bytes())
+                log(f"GARW track library: {len(lap['lib'].entries)} tracks from {c.name}")
+                return
+        log("TrackList.txt not found next to the app — the GARW library list is empty (custom tracks still work).")
 
     def trk_load_local(path: Optional[str] = None):
         if not _lt:
@@ -5428,47 +5440,57 @@ def run_gui(initial_zip: Optional[str] = None):
         p = Path(path or lap["path"])
         if p.is_file():
             try:
-                lap["db"] = _lt.TrackDB.parse(p.read_bytes())
+                lap["db"] = _lt.UserTrackDB.parse(p.read_bytes())
                 lap["path"] = str(p)
-                log(f"Loaded {len(lap['db'].tracks)} track(s) from {p}")
+                log(f"Loaded {len(lap['db'].tracks)} custom track(s) from {p}")
             except Exception as e:
                 messagebox.showerror(APP_NAME, f"Couldn't read {p}:\n{e}", parent=root)
                 return
         else:
-            # first run: start from the track database shipped with the app, if there is one
-            seed = next((c for c in [app_dir() / "tracks.txt",
-                                     Path(getattr(sys, "_MEIPASS", "") or "") / "tracks.txt",
-                                     Path(__file__).resolve().parent / "tracks.txt"] if c.is_file()), None)
-            lap["db"] = _lt.TrackDB.parse(seed.read_bytes()) if seed else _lt.TrackDB()
+            lap["db"] = _lt.UserTrackDB()      # empty, with the standard comment header on first save
             lap["path"] = str(p)
-            if seed:
-                log(f"Track database started from the bundled {seed.name} ({len(lap['db'].tracks)} tracks) → {p}")
-                trk_save_local()
         fill_trk_tree()
 
     def fill_trk_tree(*_):
-        db = lap["db"]
+        db, lib = lap["db"], lap["lib"]
         trk_tree.delete(*trk_tree.get_children())
         if not db:
             return
-        for i in db.sorted_view(trk_q.get()):
-            t = db.tracks[i]
-            pits = "".join(x for x, ok in (("E", t.pit_entry), ("S", t.pit_sf), ("X", t.pit_exit)) if ok)
+        q = trk_q.get().strip().lower()
+        user_names = {t.name for t in db.tracks}
+        rows = []
+        for i, t in enumerate(db.tracks):
             kind = ("Point-to-point" + (f" {t.start_hdg}°" if t.start_hdg is not None else "")) if t.point_to_point else "Circuit"
-            trk_tree.insert("", "end", iid=str(i), values=(t.name, kind, t.region, f"{t.country} ({t.cc})" if t.cc else t.country,
-                                                            _lt.fmt_pt(t.sf), len(t.sectors), ("—" if t.point_to_point else pits or "—"), t.radius))
-        trk_file_lbl.configure(text=f"{len(db.tracks)} tracks in {lap['path']}")
+            src = "Custom (replaces library)" if lib and t.name in lib.by_name else "Custom"
+            rows.append((f"u:{i}", t.country, t.name, (t.name, src, kind, t.region, f"{t.country} ({t.cc})" if t.cc else t.country,
+                                                       _lt.fmt_pt(t.sf), len(t.sectors), t.radius), "user"))
+        if lib and trk_show_lib.get():
+            for e in lib.entries:
+                if e.name in user_names:
+                    continue   # the custom one replaces it on the device
+                rows.append((f"l:{e.name}", e.country, e.name, (e.name, "GARW library", "—", e.region, f"{e.country} ({e.cc})" if e.cc else e.country,
+                                                                 "(not editable here)", "", ""), "lib"))
+        for iid, country, name, vals, tag in sorted(rows, key=lambda r: (r[4] != "user", r[1].lower(), r[2].lower())):
+            if q and not any(q in str(v).lower() for v in vals[:5]):
+                continue
+            trk_tree.insert("", "end", iid=iid, values=vals, tags=(tag,))
+        trk_tree.tag_configure("user", foreground=P["ok"])
+        trk_tree.tag_configure("lib", foreground=P["muted"])
+        n_lib = len(lib.entries) if lib else 0
+        shown = lap["path"].replace(str(Path.home()), "~")
+        trk_file_lbl.configure(text=f"{len(db.tracks)} custom track(s) in {shown}   ·   {n_lib} in the GARW library")
         if db.tracks:
-            trk_status.configure(text=f"Edits are saved to {lap['path']} immediately; nothing reaches the device until you press 'Upload to device'. "
-                                      "The map editor opens in your web browser (needs internet for the satellite imagery).")
+            trk_status.configure(text=f"Custom tracks (green) are saved to {shown} as you edit them; nothing reaches the device until you "
+                                      "press 'Upload UserTracks.txt to device'. A custom track with the same name as a library track replaces it on the device. "
+                                      "The map editor opens in your browser (needs internet for the imagery).")
         else:
-            trk_status.configure(text=f"No tracks yet. Your working copy lives at {lap['path']}. Get a database with 'Download from device' "
-                                      "(copies the device's tracks.txt there), or 'Open tracks.txt…' to work on a file you already have — "
-                                      "or just press 'New track…' to start one from scratch.")
+            trk_status.configure(text=f"No custom tracks yet. Grey rows are the GARW library (built into the dash, not editable); select one and "
+                                      "'Edit on map…' to make your own version, or 'New track…' for somewhere new. Your custom tracks are kept in "
+                                      f"{shown} and go to the device with 'Upload UserTracks.txt to device'.")
     trk_q.trace_add("write", fill_trk_tree)
 
-    def trk_selected() -> List[int]:
-        return [int(i) for i in trk_tree.selection()]
+    def trk_selected() -> List[str]:
+        return list(trk_tree.selection())
 
     def editor() -> "_lt.EditorServer":
         if lap["server"] is None:
@@ -5477,45 +5499,54 @@ def run_gui(initial_zip: Optional[str] = None):
                 dup = db.find(t.name)
                 if index < 0:
                     if dup is not None:
-                        raise ValueError(f"a track called '{t.name}' already exists")
+                        raise ValueError(f"a custom track called '{t.name}' already exists")
                     db.tracks.append(t)
                     index = len(db.tracks) - 1
                 else:
                     if dup is not None and dup != index:
-                        raise ValueError(f"another track is already called '{t.name}'")
+                        raise ValueError(f"another custom track is already called '{t.name}'")
                     db.tracks[index] = t
                 trk_save_local()
-                log(f"Track saved: {t.name}  (S/F {_lt.fmt_pt(t.sf)}, {len(t.sectors)} sectors)")
+                log(f"Custom track saved: {t.name}  (start {_lt.fmt_pt(t.sf)}, {len(t.sectors)} sectors"
+                    + (", point-to-point" if t.point_to_point else "") + ")")
                 ui(fill_trk_tree)
                 return index
-            lap["server"] = _lt.EditorServer(lambda: lap["db"], on_save)
+            lap["server"] = _lt.EditorServer(lambda: lap["db"], on_save, library=lap["lib"])
         return lap["server"]
 
-    def do_trk_edit(index: Optional[int] = None):
-        if index is None:
-            sel = trk_selected()
-            if len(sel) != 1:
-                messagebox.showinfo(APP_NAME, "Select one track to edit.", parent=root)
+    def do_trk_edit():
+        sel = trk_selected()
+        if len(sel) != 1:
+            messagebox.showinfo(APP_NAME, "Select one track to edit.", parent=root)
+            return
+        iid = sel[0]
+        if iid.startswith("u:"):
+            url = editor().open(int(iid[2:]))
+        else:
+            name = iid[2:]
+            if not messagebox.askyesno(APP_NAME, f"'{name}' is a GARW library track; its points aren't available here.\n\n"
+                                       "Open the map at its location and draw your own version? Saving it creates a custom track "
+                                       "with the same name, which replaces the library one on the device.", parent=root):
                 return
-            index = sel[0]
-        url = editor().open(index)
+            url = editor().open(-1, name)
         log(f"Track editor opened in your browser: {url}")
         trk_status.configure(text=f"Editor open in your browser ({url}). Save there; the list here updates by itself.")
 
     def do_trk_new():
-        do_trk_edit(-1)
+        url = editor().open(-1)
+        log(f"Track editor opened in your browser: {url}")
 
     def do_trk_dup():
         sel = trk_selected()
-        if len(sel) != 1:
-            messagebox.showinfo(APP_NAME, "Select one track to duplicate.", parent=root)
+        if len(sel) != 1 or not sel[0].startswith("u:"):
+            messagebox.showinfo(APP_NAME, "Select one custom track to duplicate (library tracks have no points to copy — use 'Edit on map…').", parent=root)
             return
-        src = lap["db"].tracks[sel[0]]
+        src = lap["db"].tracks[int(sel[0][2:])]
         name = ask_string(root, tk, ttk, "Duplicate track", "Name for the copy:", src.name + " - Copy")
         if not name:
             return
         if lap["db"].find(name) is not None:
-            messagebox.showerror(APP_NAME, f"A track called '{name}' already exists.", parent=root)
+            messagebox.showerror(APP_NAME, f"A custom track called '{name}' already exists.", parent=root)
             return
         t = _lt.Track.from_line(src.to_line())
         t.name = name
@@ -5525,41 +5556,49 @@ def run_gui(initial_zip: Optional[str] = None):
         log(f"Track duplicated: {src.name} → {name}")
 
     def do_trk_del():
-        sel = trk_selected()
-        if not sel:
-            messagebox.showinfo(APP_NAME, "Select the track(s) to delete.", parent=root)
+        idx = sorted((int(i[2:]) for i in trk_selected() if i.startswith("u:")), reverse=True)
+        if not idx:
+            messagebox.showinfo(APP_NAME, "Select the custom track(s) to delete. Library tracks can't be deleted — they're built into the dash.", parent=root)
             return
-        names = [lap["db"].tracks[i].name for i in sel]
-        if not messagebox.askyesno("Delete tracks?", f"Remove {len(names)} track(s) from the local database?\n\n  " + "\n  ".join(names[:15])
-                                   + ("\n  …" if len(names) > 15 else "") + "\n\n(The device is unchanged until you upload.)", icon="warning", parent=root):
+        names = [lap["db"].tracks[i].name for i in idx]
+        restored = [n for n in names if lap["lib"] and n in lap["lib"].by_name]
+        if not messagebox.askyesno("Delete custom tracks?", f"Remove {len(names)} custom track(s) from UserTracks.txt?\n\n  " + "\n  ".join(names[:15])
+                                   + ("\n  …" if len(names) > 15 else "")
+                                   + (f"\n\nThe GARW library version of: {', '.join(restored)} will be used again." if restored else "")
+                                   + "\n\n(The device is unchanged until you upload.)", icon="warning", parent=root):
             return
-        for i in sorted(sel, reverse=True):
+        for i in idx:
             del lap["db"].tracks[i]
         trk_save_local()
         fill_trk_tree()
-        log(f"Deleted {len(names)} track(s): " + ", ".join(names))
+        log(f"Deleted {len(names)} custom track(s): " + ", ".join(names))
 
     def do_trk_gmaps():
         sel = trk_selected()
         if len(sel) != 1:
             return
-        t = lap["db"].tracks[sel[0]]
-        p = t.sf or t.centre
+        iid = sel[0]
+        if iid.startswith("u:"):
+            t = lap["db"].tracks[int(iid[2:])]
+            p = t.sf or t.centre
+        else:
+            e = lap["lib"].by_name.get(iid[2:])
+            p = e.centre if e else None
         if p:
             import webbrowser
-            webbrowser.open(_lt.google_maps_url(p))
+            webbrowser.open(_lt.google_maps_url(p, 15))
 
     def do_trk_open():
-        path = filedialog.askopenfilename(title="Open a tracks.txt", filetypes=[("Tracks database", "*.txt"), ("All files", "*.*")], parent=root)
+        path = filedialog.askopenfilename(title="Open a UserTracks.txt", filetypes=[("UserTracks", "*.txt"), ("All files", "*.*")], parent=root)
         if path:
             trk_load_local(path)
 
     def do_trk_saveas():
-        dest = filedialog.asksaveasfilename(title="Save tracks.txt copy as…", initialfile="tracks.txt", defaultextension=".txt",
-                                            filetypes=[("Tracks database", "*.txt")], parent=root)
+        dest = filedialog.asksaveasfilename(title="Save UserTracks.txt copy as…", initialfile="UserTracks.txt", defaultextension=".txt",
+                                            filetypes=[("UserTracks", "*.txt")], parent=root)
         if dest:
             Path(dest).write_bytes(lap["db"].serialize())
-            log(f"Saved a copy of the track database → {dest}")
+            log(f"Saved a copy of UserTracks.txt → {dest}")
 
     def do_trk_download():
         def worker():
@@ -5567,60 +5606,61 @@ def run_gui(initial_zip: Optional[str] = None):
                 raise RuntimeError(f"GARW device not reachable at {HOST}.")
             with IC7Device(log, confirm) as dev:
                 dev.require_laptimer()
-                data = dev.read_text_file(_lt.TRACKS_FILE)
-            if not data:
-                raise RuntimeError(f"{_lt.TRACKS_FILE} is not on the device.")
-            db = _lt.TrackDB.parse(data)
-            if lap["db"].tracks and not confirm("Replace local tracks?", f"The device has {len(db.tracks)} tracks. Replace the {len(lap['db'].tracks)} "
-                                                 f"in your local tracks.txt with them?"):
-                log("Download cancelled — local tracks unchanged.")
+                data = dev.read_text_file(_lt.USER_TRACKS_FILE)
+            if data is None:
+                raise RuntimeError(f"{_lt.USER_TRACKS_FILE} is not on the device yet — there are no custom tracks to download.")
+            db = _lt.UserTrackDB.parse(data)
+            if lap["db"].tracks and not confirm("Replace local custom tracks?", f"The device has {len(db.tracks)} custom track(s). Replace the "
+                                                 f"{len(lap['db'].tracks)} in your local UserTracks.txt with them?"):
+                log("Download cancelled — local custom tracks unchanged.")
                 return
             lap["db"] = db
-            lap["path"] = str(LOCAL_TRACKS)
+            lap["path"] = str(LOCAL_USER_TRACKS)
             trk_save_local()
             ui(fill_trk_tree)
-            log(f"Downloaded {len(db.tracks)} track(s) from the device → {LOCAL_TRACKS}")
+            log(f"Downloaded {len(db.tracks)} custom track(s) from the device → {LOCAL_USER_TRACKS}")
         start(worker)
 
     def do_trk_upload():
         db = lap["db"]
-        if not db or not db.tracks:
-            messagebox.showinfo(APP_NAME, "The local track database is empty.", parent=root)
+        if db is None:
             return
         bad = [(t.name, p) for t in db.tracks for p in t.problems()]
         if bad:
             messagebox.showerror(APP_NAME, "Fix these before uploading:\n\n" + "\n".join(f"{n}: {p}" for n, p in bad[:12]), parent=root)
             return
-        if not messagebox.askyesno("Replace track database on device?",
-                                   f"Upload {len(db.tracks)} tracks to {_lt.TRACKS_FILE}, replacing the database on the device?\n\n"
-                                   "The GARW binary restarts afterwards so the lap timer reloads it.", icon="warning", parent=root):
+        replaces = [t.name for t in db.tracks if lap["lib"] and t.name in lap["lib"].by_name]
+        if not messagebox.askyesno("Upload UserTracks.txt?",
+                                   f"Send {len(db.tracks)} custom track(s) to {_lt.USER_TRACKS_FILE}, replacing the UserTracks.txt on the device?"
+                                   + (f"\n\nThese replace GARW library tracks of the same name: {', '.join(replaces[:8])}" + (" …" if len(replaces) > 8 else "") if replaces else "")
+                                   + "\n\nThe GARW binary restarts afterwards so the lap timer reloads them.", icon="warning", parent=root):
             return
 
         def worker():
             if not gui_preflight():
                 raise RuntimeError(f"GARW device not reachable at {HOST}.")
             log("=" * 60)
-            log(f"TRACK DATABASE: {len(db.tracks)} tracks → {_lt.TRACKS_FILE}")
+            log(f"USER TRACKS: {len(db.tracks)} custom track(s) → {_lt.USER_TRACKS_FILE}")
             with IC7Device(log, confirm) as dev:
                 dev.require_laptimer()
-                old = dev.read_text_file(_lt.TRACKS_FILE)
+                old = dev.read_text_file(_lt.USER_TRACKS_FILE)
                 if old:
-                    bak = CONFIG_DIR / "tracks_backups" / f"tracks_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+                    bak = CONFIG_DIR / "tracks_backups" / f"UserTracks_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
                     bak.parent.mkdir(parents=True, exist_ok=True)
                     bak.write_bytes(old)
-                    log(f"  previous device database backed up → {bak}")
-                dev.write_text_file(_lt.TRACKS_FILE, db.serialize(), "track database")
+                    log(f"  previous UserTracks.txt from the device backed up → {bak}")
+                dev.write_text_file(_lt.USER_TRACKS_FILE, db.serialize(), "UserTracks.txt")
                 log("Restarting the GARW binary so the lap timer reloads the tracks …")
                 try:
                     dev.restart_dash_app()
                 except Exception as e:
                     log(f"WARNING: could not restart the GARW binary ({e}) — reboot the device to apply.")
             log("Done.")
-            ui(lambda: messagebox.showinfo(APP_NAME, f"{len(db.tracks)} tracks uploaded to the device.", parent=root))
+            ui(lambda: messagebox.showinfo(APP_NAME, f"{len(db.tracks)} custom track(s) uploaded to the device.", parent=root))
         start(worker)
 
     trk_new_btn.configure(command=do_trk_new)
-    trk_edit_btn.configure(command=lambda: do_trk_edit())
+    trk_edit_btn.configure(command=do_trk_edit)
     trk_dup_btn.configure(command=do_trk_dup)
     trk_del_btn.configure(command=do_trk_del)
     trk_gmaps_btn.configure(command=do_trk_gmaps)
@@ -5630,6 +5670,7 @@ def run_gui(initial_zip: Optional[str] = None):
     trk_upload_btn.configure(command=do_trk_upload)
     trk_tree.bind("<Double-1>", lambda e: do_trk_edit())
     if _lt:
+        trk_load_library()
         trk_load_local()
     else:
         trk_status.configure(text="laptimer.py is missing next to garw_genie.py — the Lap Timer tab is unavailable.")
