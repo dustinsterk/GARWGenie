@@ -25,7 +25,7 @@ pyinstaller --noconfirm --clean \
   --name "GARW Genie" \
   --windowed \
   --onedir \
-  --osx-bundle-identifier com.turnautomotive.garwgenie \
+  --osx-bundle-identifier com.thesterk.garwgenie \
   --add-data "assets:assets" \
   --add-data "default_repos.txt:." \
   --add-data "TrackList.txt:." \
