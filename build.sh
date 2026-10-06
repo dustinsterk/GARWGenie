@@ -32,8 +32,13 @@ pyinstaller --noconfirm --clean \
   --hidden-import certifi \
   --hidden-import PIL._tkinter_finder \
   --collect-all imageio_ffmpeg \
+  --collect-all bleak \
   ${ICON_ICNS:+--icon "$ICON_ICNS"} \
   garw_genie.py
+
+# macOS asks the user for Bluetooth permission (the RaceBox scan) and refuses the app without this key
+/usr/libexec/PlistBuddy -c "Add :NSBluetoothAlwaysUsageDescription string 'GARW Genie scans for your RaceBox GPS to find its Bluetooth address.'" \
+  "dist/GARW Genie.app/Contents/Info.plist" 2>/dev/null || true
 
 cp default_repos.txt dist/ 2>/dev/null || true   # editable list of default dash repos, shipped beside the app
 rm -rf "dist/GARW Genie"                         # PyInstaller's raw onedir output; the .app already contains it

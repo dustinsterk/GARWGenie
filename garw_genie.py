@@ -81,7 +81,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.7.0"
+APP_VERSION = "5.7.3"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -1488,6 +1488,135 @@ class AuthFailed(RuntimeError):
 def _sq(s: str) -> str:
     """Single-quote for a POSIX shell."""
     return "'" + s.replace("'", "'\\''") + "'"
+
+
+# ---------------------------------------------------------------------------
+# Bluetooth LE scan on this computer (bleak) — used to find the RaceBox's MAC.
+# macOS hides peripheral MAC addresses from apps (CoreBluetooth hands out a per-Mac UUID), so there
+# the scanner also connects to each RaceBox and reads the Device Information "System ID" (0x2A23):
+# Nordic-based devices (the RaceBox is one) derive it from the MAC as an EUI-64 — MAC with FF:FE in
+# the middle — which gets the real address back. Windows and Linux report the MAC directly.
+# ---------------------------------------------------------------------------
+SYSTEM_ID_UUID = "00002a23-0000-1000-8000-00805f9b34fb"
+
+
+def _mac_from_system_id(raw: bytes) -> Optional[str]:
+    if len(raw) != 8:
+        return None
+    b = raw[::-1]                      # little-endian on the wire → big-endian EUI-64
+    if b[3:5] not in (b"\xff\xfe", b"\xfe\xff"):
+        return None
+    mac = b[:3] + b[5:]
+    return ":".join(f"{x:02X}" for x in mac)
+
+
+def _macos_bt_addresses() -> Dict[str, str]:
+    """macOS: {device name: MAC} for every Bluetooth device the OS lists (connected or remembered), via
+    system_profiler — the one place macOS does expose real addresses to a normal app."""
+    if sys.platform != "darwin":
+        return {}
+    try:
+        out = subprocess.run(["system_profiler", "-json", "SPBluetoothDataType"], capture_output=True, text=True, timeout=25).stdout
+        data = json.loads(out or "{}")
+    except Exception as e:
+        FILE_LOG.debug("system_profiler failed: %s", e)
+        return {}
+    found: Dict[str, str] = {}
+    mac_re = re.compile(r"^(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$")
+
+    def walk(node, name=None):
+        if isinstance(node, dict):
+            addr = node.get("device_address") or node.get("device_addr")
+            if name and isinstance(addr, str) and mac_re.match(addr.strip()):
+                found[name] = addr.strip().upper().replace("-", ":")
+            for k, v in node.items():
+                walk(v, k if isinstance(v, dict) else name)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v, name)
+    walk(data)
+    return found
+
+
+def ble_scan(seconds: float, log) -> List[Tuple[str, str, Optional[int], bool]]:
+    """Scan with bleak. Returns [(address, name, rssi, address_is_real_mac)] sorted by signal.
+    Raises RuntimeError with a human message when bleak is missing or the adapter is off."""
+    try:
+        import asyncio
+        from bleak import BleakScanner, BleakClient
+    except ImportError:
+        raise RuntimeError("The 'bleak' package isn't installed, so GARW Genie can't scan for Bluetooth devices.\n\n"
+                           "Run:  pip install bleak   (it's in requirements.txt) and start the app again.")
+
+    def lookup_profiler(name: str) -> Optional[str]:
+        table = _macos_bt_addresses()
+        for k, v in table.items():
+            if k.strip().lower() == name.lower() or name.lower() in k.lower():
+                return v
+        return None
+
+    async def recover_mac(dev, name: str, adv) -> Optional[str]:
+        """macOS only: get the real MAC of a RaceBox that CoreBluetooth shows as a UUID."""
+        mfg = {k: bytes(v).hex() for k, v in (adv.manufacturer_data or {}).items()}
+        svc = {k: bytes(v).hex() for k, v in (adv.service_data or {}).items()}
+        log(f"  {name}: advertisement — manufacturer data {mfg or '{}'}, service data {svc or '{}'}, services {list(adv.service_uuids or [])}")
+        mac = lookup_profiler(name)                      # remembered by macOS from an earlier connection?
+        if mac:
+            log(f"  {name}: macOS already knows this device — MAC {mac}")
+            return mac
+        try:
+            log(f"  {name}: connecting to ask macOS for its address …")
+            async with BleakClient(dev, timeout=15) as cl:
+                mac = lookup_profiler(name)              # while connected, system_profiler lists it with the address
+                if mac:
+                    log(f"  {name}: MAC {mac} (from macOS while connected)")
+                    return mac
+                log(f"  {name}: macOS didn't list it while connected; reading Device Information …")
+                for svc_ in cl.services:
+                    if not svc_.uuid.lower().startswith("0000180a"):
+                        continue
+                    for ch in svc_.characteristics:
+                        if "read" not in ch.properties:
+                            continue
+                        try:
+                            raw = bytes(await cl.read_gatt_char(ch))
+                        except Exception as e:
+                            log(f"    {ch.description or ch.uuid}: unreadable ({e})")
+                            continue
+                        txt = raw.decode("ascii", "replace") if all(32 <= b < 127 for b in raw) else raw.hex()
+                        log(f"    {ch.description or ch.uuid}: {txt}")
+                        if ch.uuid.lower().startswith("00002a23"):
+                            m = _mac_from_system_id(raw)
+                            if m:
+                                log(f"  {name}: MAC {m} (from System ID)")
+                                return m
+        except Exception as e:
+            log(f"  {name}: couldn't connect ({e}).")
+        return None
+
+    async def run():
+        log(f"Scanning for Bluetooth LE devices for {seconds:g} s …")
+        try:
+            found = await BleakScanner.discover(timeout=seconds, return_adv=True)
+        except Exception as e:   # adapter off / no permission / no adapter
+            raise RuntimeError(f"Bluetooth scan failed: {e}\n\nIs Bluetooth switched on? "
+                               + ("On macOS, also allow Bluetooth for GARW Genie in System Settings → Privacy & Security → Bluetooth."
+                                  if sys.platform == "darwin" else ""))
+        out = []
+        for dev, adv in found.values():
+            name = (adv.local_name or dev.name or "").strip()
+            addr = dev.address.upper()
+            real = bool(_lt and _lt.MAC_RE.match(addr)) if _lt else bool(re.fullmatch(r"(?:[0-9A-F]{2}:){5}[0-9A-F]{2}", addr))
+            rssi = adv.rssi if adv.rssi is not None else None
+            if not real and "racebox" in name.lower():
+                mac = await recover_mac(dev, name, adv)
+                if mac:
+                    addr, real = mac, True
+            out.append((addr, name, rssi, real))
+        out.sort(key=lambda t: (-(t[2] if t[2] is not None else -999), t[1].lower(), t[0]))
+        log(f"Scan finished: {len(out)} device(s) seen, {sum('racebox' in n.lower() for _, n, _, _ in out)} RaceBox.")
+        return out
+    return asyncio.run(run())
 
 
 class IC7Device:
@@ -5281,7 +5410,7 @@ def run_gui(initial_zip: Optional[str] = None):
     ttk.Label(mac_box, style="Muted.TLabel",
               text=f"Bluetooth MAC of your RaceBox GPS, stored on the device in {_lt.RACEBOX_MAC_FILE if _lt else ''} "
                    "(AA:BB:CC:DD:EE:FF — printed on the RaceBox label / shown in its app). The dash re-reads it whenever a dash loads; "
-                   "without the file it uses the default built into LapTimer.qml.").grid(row=0, column=0, columnspan=5, sticky="w")
+                   "without the file it uses the default built into LapTimer.qml.", wraplength=1100, justify="left").grid(row=0, column=0, columnspan=6, sticky="w")
     mac_var = tk.StringVar()
     mac_ent = ttk.Entry(mac_box, textvariable=mac_var, width=24)
     mac_ent.grid(row=1, column=0, sticky="w", pady=(6, 0))
@@ -5290,12 +5419,14 @@ def run_gui(initial_zip: Optional[str] = None):
     def mac_off_toggle():
         mac_ent.configure(state="disabled" if mac_off_var.get() else "normal")
     ttk.Checkbutton(mac_box, text="No RaceBox (off)", variable=mac_off_var, command=mac_off_toggle).grid(row=1, column=1, padx=(10, 0), pady=(6, 0))
+    mac_scan_btn = ttk.Button(mac_box, text="Scan for RaceBox…")
+    mac_scan_btn.grid(row=1, column=2, padx=(12, 0), pady=(6, 0))
     mac_read_btn = ttk.Button(mac_box, text="Read from device")
-    mac_read_btn.grid(row=1, column=2, padx=(12, 0), pady=(6, 0))
+    mac_read_btn.grid(row=1, column=3, padx=(6, 0), pady=(6, 0))
     mac_save_btn = ttk.Button(mac_box, text="Save to device", style="Accent.TButton")
-    mac_save_btn.grid(row=1, column=3, padx=(6, 0), pady=(6, 0))
+    mac_save_btn.grid(row=1, column=4, padx=(6, 0), pady=(6, 0))
     mac_info = ttk.Label(mac_box, style="Muted.TLabel", text="")
-    mac_info.grid(row=1, column=4, sticky="w", padx=(12, 0), pady=(6, 0))
+    mac_info.grid(row=2, column=0, columnspan=6, sticky="w", pady=(4, 0))
     lap_presence = ttk.Label(tab_lap, style="Muted.TLabel", wraplength=1100, justify="left",
                              text=f"LapTimer dash on device: (not checked — connect to the GARW device)")
     lap_presence.grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 0))
@@ -5362,6 +5493,81 @@ def run_gui(initial_zip: Optional[str] = None):
             reload_dash_settings()
             log("Done." + ("" if value == "off" else " A different MAC connects right away; the same MAC reconnects on the next power cycle."))
         start(worker)
+    def show_scan_results(devs: List[Tuple[str, str, Optional[int], bool]]):
+        """Pick a device from the scan. RaceBoxes first; everything else behind a checkbox."""
+        rb = [d for d in devs if "racebox" in d[1].lower()]
+        dlg = tk.Toplevel(root)
+        dlg.title("Bluetooth devices near this computer")
+        dlg.configure(bg=P["bg"])
+        dlg.transient(root)
+        dlg.geometry(f"+{root.winfo_rootx() + 220}+{root.winfo_rooty() + 160}")
+        frm = ttk.Frame(dlg, padding=14)
+        frm.pack(fill="both", expand=True)
+        head = (f"{len(rb)} RaceBox device(s) found." if rb else
+                "No RaceBox found. A RaceBox only advertises while it's on and NOT connected to anything — close the RaceBox app on "
+                "your phone, and if the GARW dash is already connected to it, it won't show up here either.")
+        if rb and not all(d[3] for d in rb):
+            head += ("\n\nmacOS hides Bluetooth MAC addresses from apps and none of the workarounds got it for this RaceBox, "
+                     "so only a UUID is known — the log shows what was tried. Read the MAC off the RaceBox label / its app, "
+                     "or scan from a Windows or Linux machine.")
+        ttk.Label(frm, text=head, wraplength=560, justify="left").grid(row=0, column=0, columnspan=2, sticky="w")
+        show_all = tk.BooleanVar(value=not rb)
+        cols = ("name", "mac", "rssi")
+        tv = ttk.Treeview(frm, columns=cols, show="headings", height=min(12, max(4, len(devs))), selectmode="browse")
+        for c, t, w in (("name", "Name", 240), ("mac", "MAC address", 300), ("rssi", "Signal", 70)):
+            tv.heading(c, text=t)
+            tv.column(c, width=w, anchor="w" if c != "rssi" else "center")
+        tv.grid(row=2, column=0, columnspan=2, sticky="nsew", pady=(8, 0))
+        frm.rowconfigure(2, weight=1)
+        frm.columnconfigure(0, weight=1)
+        by_addr = {a: (n, real) for a, n, _, real in devs}
+
+        def fill(*_):
+            tv.delete(*tv.get_children())
+            for addr, name, rssi, real in (devs if show_all.get() else rb):
+                tv.insert("", "end", iid=addr, values=(name or "(no name)", addr if real else f"{addr}  (UUID — MAC hidden by macOS)",
+                                                       f"{rssi} dBm" if rssi is not None else "—"),
+                          tags=("rb",) if "racebox" in name.lower() and real else ("uuid",) if not real else ())
+            tv.tag_configure("rb", foreground=P["ok"])
+            tv.tag_configure("uuid", foreground=P["muted"])
+            kids = tv.get_children()
+            if kids:
+                tv.selection_set(kids[0])
+        ttk.Checkbutton(frm, text=f"Show all {len(devs)} device(s) seen", variable=show_all, command=fill).grid(row=1, column=0, sticky="w", pady=(8, 0))
+        fill()
+        btns = ttk.Frame(frm)
+        btns.grid(row=3, column=0, columnspan=2, sticky="e", pady=(10, 0))
+
+        def use():
+            sel = tv.selection()
+            if not sel:
+                return
+            name, real = by_addr.get(sel[0], ("", False))
+            if not real:
+                messagebox.showinfo(APP_NAME, "That's a macOS UUID, not a MAC address — the dash needs the real MAC "
+                                              "(printed on the RaceBox label and shown in the RaceBox app).", parent=dlg)
+                return
+            mac_off_var.set(False)
+            mac_off_toggle()
+            mac_var.set(sel[0])
+            log(f"RaceBox selected from scan: {name} {sel[0]} — press 'Save to device' to store it.")
+            dlg.destroy()
+        ttk.Button(btns, text="Cancel", command=dlg.destroy).pack(side="right")
+        ttk.Button(btns, text="Use selected MAC", style="Accent.TButton", command=use).pack(side="right", padx=(0, 6))
+        tv.bind("<Double-1>", lambda e: use())
+        dlg.grab_set()
+
+    def do_mac_scan():
+        def worker():
+            log("=" * 60)
+            log("BLUETOOTH SCAN from this computer (bleak)")
+            devs = ble_scan(8, log)
+            for addr, name, rssi, real in devs:
+                if "racebox" in name.lower():
+                    log(f"  RaceBox: {name}  {addr}" + ("" if real else " (UUID)") + (f"  ({rssi} dBm)" if rssi is not None else ""))
+            ui(show_scan_results, devs)
+        start(worker)
+    mac_scan_btn.configure(command=do_mac_scan)
     mac_read_btn.configure(command=do_mac_read)
     mac_save_btn.configure(command=do_mac_save)
 

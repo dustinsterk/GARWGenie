@@ -25,6 +25,7 @@ pyinstaller --noconfirm --clean ^
   --hidden-import certifi ^
   --hidden-import PIL._tkinter_finder ^
   --collect-all imageio_ffmpeg ^
+  --collect-all bleak ^
   %ICON_ARG% ^
   garw_genie.py || goto :fail
 
