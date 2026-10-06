@@ -83,7 +83,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.8.5"
+APP_VERSION = "5.9.4"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -108,17 +108,26 @@ MIN_VERSION = 5.0
 
 SCREEN_CONFIGS_DIR = "/opt/IC7/screen_configs"   # per-dash settings files, named inside each .qml
 SCREEN_ENABLED_FILE = "/opt/IC7/screen_enabled.txt"   # active screens: one 0-based screen index per line
-# Screen index model (v5): 0-4 are the screens built into the GARW binary, in this order; 5 onwards are
-# the entries in /opt/IC7/library — dash folders and encrypted add-ons (Name.enc), by name — in alphabetical
-# order (case-insensitive, as QDir lists them).
+# Screen index model (v5): 0-4 are the screens built into the GARW binary, in this order. From 5 onwards the
+# firmware takes the dash FOLDERS in /opt/IC7/library sorted by name, then the encrypted add-ons (Name.enc)
+# sorted by name, appended after the folders. Both sorts are plain code-point order (QDir::Name on Linux is
+# case-sensitive: every capital sorts before every lowercase letter, so "LFA" < "LapTimer" < "LeMansGT").
 BUILTIN_SCREENS = ("Lotus Elise S2 (05)", "Lotus Elise S2 (08)", "Lotus Elise S3", "Race", "111st")
 MAX_ACTIVE_SCREENS = 6
 
 
-def screen_index_table(library_names: List[str]) -> List[Tuple[int, str, bool]]:
+def library_order(entries) -> List[str]:
+    """Names in the firmware's screen order: sorted folders, then sorted .enc add-ons.
+    entries: dicts with name/enc (from list_dashes) or plain names (treated as folders)."""
+    folders = sorted(e["name"] if isinstance(e, dict) else e for e in entries if not (isinstance(e, dict) and e.get("enc")))
+    encs = sorted(e["name"] for e in entries if isinstance(e, dict) and e.get("enc"))
+    return folders + encs
+
+
+def screen_index_table(entries) -> List[Tuple[int, str, bool]]:
     """[(index, label, is_builtin)] — the list screen_enabled.txt indexes into."""
     table = [(i, n, True) for i, n in enumerate(BUILTIN_SCREENS)]
-    for j, n in enumerate(sorted(library_names, key=lambda x: x.lower())):
+    for j, n in enumerate(library_order(entries)):
         table.append((len(BUILTIN_SCREENS) + j, n, False))
     return table
 
@@ -2146,6 +2155,68 @@ class IC7Device:
         FILE_LOG.debug("wrote %s: %s", SCREEN_ENABLED_FILE, indices)
         self.log(f"Active screens written: {', '.join(map(str, indices))} → {SCREEN_ENABLED_FILE}")
 
+    def list_laptimer_data(self) -> List[Tuple[str, int, float]]:
+        """[(path relative to laptimerdata, size, mtime)] for every file in the lap timer's data folder."""
+        self.require_laptimer()
+        import stat as _stat
+        sftp = self.client.open_sftp()
+        out: List[Tuple[str, int, float]] = []
+
+        def walk(remote_dir: str, rel: str):
+            for a in sftp.listdir_attr(remote_dir):
+                p = f"{remote_dir}/{a.filename}"
+                r = f"{rel}/{a.filename}" if rel else a.filename
+                if _stat.S_ISDIR(a.st_mode or 0):
+                    walk(p, r)
+                elif _stat.S_ISREG(a.st_mode or 0):
+                    out.append((r, a.st_size or 0, float(a.st_mtime or 0)))
+        try:
+            walk(_lt.LAPTIMER_DATA_DIR, "")
+        finally:
+            sftp.close()
+        out.sort(key=lambda t: t[0].lower())
+        return out
+
+    def download_laptimer_data(self, rels: List[str], dest_dir: str, delete_after: bool = False) -> int:
+        """Copy the chosen files out of laptimerdata into dest_dir (subfolders kept), verifying sizes.
+        With delete_after, each file is removed from the device only after its copy verified."""
+        sftp = self.client.open_sftp()
+        done = 0
+        try:
+            sizes = {}
+            for r in rels:
+                sizes[r] = sftp.stat(f"{_lt.LAPTIMER_DATA_DIR}/{r}").st_size or 0
+            total = sum(sizes.values()) or 1
+            got = 0
+            for r in rels:
+                remote = f"{_lt.LAPTIMER_DATA_DIR}/{r}"
+                local = Path(dest_dir) / Path(*r.split("/"))
+                local.parent.mkdir(parents=True, exist_ok=True)
+                tmp = local.with_name(local.name + ".part")
+                with sftp.file(remote, "rb") as fh, open(tmp, "wb") as out:
+                    fh.set_pipelined(True)
+                    while True:
+                        chunk = fh.read(256 * 1024)
+                        if not chunk:
+                            break
+                        out.write(chunk)
+                        got += len(chunk)
+                        self.progress(got, total)
+                if tmp.stat().st_size != sizes[r]:
+                    tmp.unlink(missing_ok=True)
+                    raise RuntimeError(f"{r}: size mismatch after download — stopped, nothing deleted on the device.")
+                os.replace(tmp, local)
+                FILE_LOG.debug("SFTP get %s (%d bytes) -> %s", remote, sizes[r], local)
+                done += 1
+                if delete_after:
+                    sftp.remove(remote)
+                    self.log(f"  {r}  ({sizes[r]:,} bytes) — downloaded and removed from the device")
+                else:
+                    self.log(f"  {r}  ({sizes[r]:,} bytes)")
+        finally:
+            sftp.close()
+        return done
+
     def download_dashes_zip(self, names: List[str], zip_path: str) -> Tuple[int, int]:
         """Copy whole dash folders off the unit into a zip laid out exactly as 'Install from .zip'
         expects (<Name>/<Name>.qml, <Name>/<Name>.qml.png, assets …). Hidden files such as the
@@ -3558,7 +3629,7 @@ def run_gui(initial_zip: Optional[str] = None):
     log_wrap = ttk.Frame(bottom, style="Bg.TFrame")
     log_wrap.pack(fill="x")
     _sp = {"spacing1": 3, "spacing3": 3} if fonts["retro"] else {}
-    log_box = tk.Text(log_wrap, height=10, wrap="word", state="disabled", font=mono,
+    log_box = tk.Text(log_wrap, height=8, wrap="word", state="disabled", font=mono,
                       bg=P["field"], fg=P["text"], insertbackground=P["text"],
                       relief="flat", bd=0, padx=10, pady=8, highlightthickness=0, **_sp)
     log_box.pack(side="left", fill="both", expand=True)
@@ -3911,6 +3982,9 @@ def run_gui(initial_zip: Optional[str] = None):
     def refresh_installed(dev: IC7Device):
         """Refresh the device inventory (called from worker threads)."""
         rows = dev.list_dashes()
+        # same order the screen indices use: sorted folders, then sorted .enc add-ons (case-sensitive)
+        order = {n: i for i, n in enumerate(library_order(rows))}
+        rows.sort(key=lambda r: order[r["name"]])
         device_rows[:] = rows
         installed.clear()
         installed.update({r["name"]: r["source"] for r in rows})
@@ -4463,7 +4537,7 @@ def run_gui(initial_zip: Optional[str] = None):
     active_state = {"indices": [], "lines": 0}   # from screen_enabled.txt at the last device refresh
 
     def screen_table():
-        return screen_index_table([r["name"] for r in device_rows])
+        return screen_index_table(device_rows)
 
     def active_slots_for(name: str) -> str:
         """'1' / '1, 4' — which active slot(s) show this dash."""
@@ -4471,7 +4545,7 @@ def run_gui(initial_zip: Optional[str] = None):
         if idx is None:
             return ""
         slots = [str(k + 1) for k, v in enumerate(active_state["indices"]) if v == idx]
-        return ("● " + ", ".join(slots)) if slots else ""
+        return (f"● {', '.join(slots)}  (#{idx})") if slots else f"#{idx}"
 
     def fill_device_tree():
         dev_tree.delete(*dev_tree.get_children())
@@ -5630,12 +5704,11 @@ def run_gui(initial_zip: Optional[str] = None):
            "path": str(LOCAL_USER_TRACKS), "server": None, "present": None}
 
     # -- RaceBox --
-    mac_box = ttk.LabelFrame(tab_lap, text="  RaceBox  ", padding=(10, 4, 10, 8))
+    mac_box = ttk.LabelFrame(tab_lap, text="  RaceBox  ", padding=(10, 2, 10, 6))
     mac_box.grid(row=0, column=0, columnspan=2, sticky="ew")
-    ttk.Label(mac_box, style="Muted.TLabel",
-              text=f"Bluetooth MAC of your RaceBox GPS, stored on the device in {_lt.RACEBOX_MAC_FILE if _lt else ''} "
-                   "(AA:BB:CC:DD:EE:FF — printed on the RaceBox label / shown in its app). The dash re-reads it whenever a dash loads; "
-                   "without the file it uses the default built into LapTimer.qml.", wraplength=1100, justify="left").grid(row=0, column=0, columnspan=6, sticky="w")
+    ttk.Label(mac_box, style="Muted.TLabel", wraplength=1150, justify="left",
+              text=f"Bluetooth MAC of your RaceBox GPS (on its label / in its app), kept on the device in {_lt.RACEBOX_MAC_FILE if _lt else ''}; "
+                   "the dash re-reads it whenever a dash loads.").grid(row=0, column=0, columnspan=6, sticky="w")
     mac_var = tk.StringVar()
     mac_ent = ttk.Entry(mac_box, textvariable=mac_var, width=24)
     mac_ent.grid(row=1, column=0, sticky="w", pady=(6, 0))
@@ -5651,15 +5724,17 @@ def run_gui(initial_zip: Optional[str] = None):
     mac_save_btn = ttk.Button(mac_box, text="Save to device", style="Accent.TButton")
     mac_save_btn.grid(row=1, column=4, padx=(6, 0), pady=(6, 0))
     mac_info = ttk.Label(mac_box, style="Muted.TLabel", text="")
-    mac_info.grid(row=2, column=0, columnspan=6, sticky="w", pady=(4, 0))
+    mac_info.grid(row=1, column=5, sticky="w", padx=(12, 0), pady=(6, 0))
     # -- USB stick --
-    usb_box = ttk.LabelFrame(tab_lap, text="  USB stick for lap data  ", padding=(10, 4, 10, 8))
-    usb_box.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+    usb_box = ttk.LabelFrame(tab_lap, text="  Lap data  ", padding=(10, 2, 10, 6))
+    usb_box.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(4, 0))
     ttk.Label(usb_box, style="Muted.TLabel", wraplength=900, justify="left",
-              text=f"The lap timer logs to a USB stick in the GARW: FAT32 with a top-level '{USB_FOLDER}' folder. "
-                   "This erases a removable drive on this computer and sets it up that way.").grid(row=0, column=0, sticky="w")
+              text=f"Sessions log to a USB stick ({USB_FOLDER} folder, FAT32) when one is in the GARW, otherwise to {_lt.LAPTIMER_DATA_DIR if _lt else ''}. "
+                   "Download copies those files here (settings/MAC files left out); Prepare erases a removable drive and sets it up for the GARW.").grid(row=0, column=0, sticky="w")
+    lapdata_btn = ttk.Button(usb_box, text="Download lap data…")
+    lapdata_btn.grid(row=0, column=1, sticky="e", padx=(12, 0))
     usb_btn = ttk.Button(usb_box, text="Prepare USB stick…")
-    usb_btn.grid(row=0, column=1, sticky="e", padx=(12, 0))
+    usb_btn.grid(row=0, column=2, sticky="e", padx=(6, 0))
     usb_box.columnconfigure(0, weight=1)
 
     def do_usb_prepare():
@@ -5740,11 +5815,114 @@ def run_gui(initial_zip: Optional[str] = None):
         ttk.Button(btns, text="Erase & prepare", style="Danger.TButton", command=go).pack(side="right", padx=(0, 6))
         ttk.Button(btns, text="Refresh", command=refresh).pack(side="right", padx=(0, 12))
         dlg.grab_set()
+    LAPDATA_KEEP = re.compile(r"(^racebox_mac_address\.txt$|^usertracks\.txt$|config|settings|\.cfg$|\.ini$|\.conf$|^\.)", re.I)
+
+    def do_lapdata_download():
+        """List the lap timer's data folder on the device, let the user pick, copy to a folder here."""
+        def lister():
+            if not gui_preflight():
+                raise RuntimeError(f"GARW device not reachable at {HOST}.")
+            with IC7Device(log, confirm) as dev:
+                files = dev.list_laptimer_data()
+            ui(show_lapdata, files)
+        start(lister)
+
+    def show_lapdata(files: List[Tuple[str, int, float]]):
+        dlg = tk.Toplevel(root)
+        dlg.title(f"Lap data on the device — {_lt.LAPTIMER_DATA_DIR}")
+        dlg.configure(bg=P["bg"])
+        dlg.transient(root)
+        dlg.geometry(f"+{root.winfo_rootx() + 160}+{root.winfo_rooty() + 120}")
+        frm = ttk.Frame(dlg, padding=14)
+        frm.pack(fill="both", expand=True)
+        data_files = [f for f in files if not LAPDATA_KEEP.search(f[0].rsplit("/", 1)[-1])]
+        other = [f for f in files if f not in data_files]
+        ttk.Label(frm, wraplength=640, justify="left",
+                  text=(f"{len(data_files)} session/track file(s) on the device ({sum(f[1] for f in data_files) / 1e6:.1f} MB). "
+                        f"Settings and MAC files ({len(other)}) are greyed out and unticked — tick them if you want them too. "
+                        "Click a row to tick/untick it.")).grid(row=0, column=0, columnspan=3, sticky="w")
+        tv = ttk.Treeview(frm, columns=("sel", "path", "size", "date"), show="headings", height=min(18, max(6, len(files))), selectmode="none")
+        for c, t, w, an in (("sel", "", 36, "center"), ("path", "File", 420, "w"), ("size", "Size", 90, "e"), ("date", "Modified", 150, "w")):
+            tv.heading(c, text=t)
+            tv.column(c, width=w, anchor=an, stretch=(c == "path"))
+        tv.grid(row=1, column=0, columnspan=3, sticky="nsew", pady=(8, 0))
+        sb = ttk.Scrollbar(frm, command=tv.yview)
+        sb.grid(row=1, column=3, sticky="ns", pady=(8, 0))
+        tv.configure(yscrollcommand=sb.set)
+        frm.rowconfigure(1, weight=1)
+        frm.columnconfigure(0, weight=1)
+        checked: Dict[str, bool] = {}
+        for rel, size, mtime in files:
+            is_data = (rel, size, mtime) in data_files
+            checked[rel] = is_data
+            tv.insert("", "end", iid=rel, values=("☑" if is_data else "☐", rel,
+                                                   f"{size / 1024:.0f} KB" if size >= 1024 else f"{size} B",
+                                                   datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M") if mtime else ""),
+                      tags=("data",) if is_data else ("other",))
+        tv.tag_configure("data", foreground=P["text"])
+        tv.tag_configure("other", foreground=P["muted"])
+        if not files:
+            tv.insert("", "end", iid="none", values=("", "(the folder is empty)", "", ""))
+
+        def toggle(e):
+            iid = tv.identify_row(e.y)
+            if not iid or iid == "none":
+                return
+            checked[iid] = not checked[iid]
+            tv.set(iid, "sel", "☑" if checked[iid] else "☐")
+        tv.bind("<Button-1>", toggle)
+
+        def set_all(val: bool, only_data: bool = False):
+            for rel in checked:
+                if only_data and not any(f[0] == rel for f in data_files):
+                    continue
+                checked[rel] = val
+                tv.set(rel, "sel", "☑" if val else "☐")
+        row = ttk.Frame(frm)
+        row.grid(row=2, column=0, columnspan=4, sticky="ew", pady=(8, 0))
+        ttk.Button(row, text="Tick data files", command=lambda: (set_all(False), set_all(True, True))).pack(side="left")
+        ttk.Button(row, text="Tick all", command=lambda: set_all(True)).pack(side="left", padx=(6, 0))
+        ttk.Button(row, text="Untick all", command=lambda: set_all(False)).pack(side="left", padx=(6, 0))
+        delete_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(row, text="Remove from device after a verified download", variable=delete_var).pack(side="left", padx=(24, 0))
+
+        def go():
+            rels = [r for r, v in checked.items() if v]
+            if not rels:
+                messagebox.showinfo(APP_NAME, "Nothing is ticked.", parent=dlg)
+                return
+            dest = filedialog.askdirectory(title="Download the lap data into which folder?", parent=dlg)
+            if not dest:
+                return
+            delete_after = delete_var.get()
+            if delete_after and not messagebox.askyesno("Remove from device?", f"After each of the {len(rels)} file(s) is downloaded and its size "
+                                                          "verified, delete it from the device?\n\nThe lap timer won't see those sessions any more.",
+                                                          icon="warning", parent=dlg):
+                return
+            dlg.destroy()
+
+            def worker():
+                if not gui_preflight():
+                    raise RuntimeError(f"GARW device not reachable at {HOST}.")
+                log("=" * 60)
+                log(f"LAP DATA: {len(rels)} file(s) from {_lt.LAPTIMER_DATA_DIR} → {dest}" + ("  (removing from device)" if delete_after else ""))
+                with IC7Device(log, confirm, set_progress) as dev:
+                    dev.require_laptimer()
+                    n = dev.download_laptimer_data(rels, dest, delete_after)
+                log(f"Done — {n} file(s) in {dest}")
+                ui(lambda: messagebox.showinfo(APP_NAME, f"{n} file(s) downloaded to\n{dest}" + ("\n\nand removed from the device." if delete_after else ""), parent=root))
+            start(worker)
+        btns = ttk.Frame(frm)
+        btns.grid(row=3, column=0, columnspan=4, sticky="e", pady=(10, 0))
+        ttk.Button(btns, text="Cancel", command=dlg.destroy).pack(side="right")
+        ttk.Button(btns, text="Download to folder…", style="Accent.TButton", command=go).pack(side="right", padx=(0, 6))
+        dlg.grab_set()
+    lapdata_btn.configure(command=do_lapdata_download)
     usb_btn.configure(command=do_usb_prepare)
 
-    lap_presence = ttk.Label(tab_lap, style="Muted.TLabel", wraplength=1100, justify="left",
+    lap_presence = ttk.Label(usb_box, style="Muted.TLabel", wraplength=1150, justify="left",
                              text=f"LapTimer dash on device: (not checked — connect to the GARW device)")
-    lap_presence.grid(row=3, column=0, columnspan=2, sticky="w", pady=(6, 0))
+    lap_presence.grid(row=1, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
     def lap_refresh_presence(dev: IC7Device):
         """Called on every device refresh: is the LapTimer add-on installed?"""
@@ -5889,8 +6067,8 @@ def run_gui(initial_zip: Optional[str] = None):
     mac_save_btn.configure(command=do_mac_save)
 
     # -- Tracks: GARW library (read-only TrackList.txt) + the user's UserTracks.txt --
-    trk_box = ttk.LabelFrame(tab_lap, text="  Tracks  ", padding=(10, 4, 10, 8))
-    trk_box.grid(row=1, column=0, columnspan=2, sticky="nsew", pady=(8, 0))
+    trk_box = ttk.LabelFrame(tab_lap, text="  Tracks  ", padding=(10, 2, 10, 6))
+    trk_box.grid(row=1, column=0, columnspan=2, sticky="nsew", pady=(4, 0))
     tab_lap.rowconfigure(1, weight=1)
     tab_lap.columnconfigure(0, weight=1)
     trow0 = ttk.Frame(trk_box)
@@ -5909,14 +6087,14 @@ def run_gui(initial_zip: Optional[str] = None):
                       ("country", "Country", 140), ("sf", "Start", 170), ("sectors", "Sectors", 60), ("radius", "Radius m", 70)):
         trk_tree.heading(c, text=txt)
         trk_tree.column(c, width=w, anchor="w" if c in ("name", "region", "country", "source") else "center", stretch=(c == "name"))
-    trk_tree.grid(row=1, column=0, columnspan=2, sticky="nsew", pady=(6, 0))
+    trk_tree.grid(row=1, column=0, columnspan=2, sticky="nsew", pady=(4, 0))
     trk_sb = ttk.Scrollbar(trk_box, command=trk_tree.yview)
-    trk_sb.grid(row=1, column=2, sticky="ns", pady=(6, 0))
+    trk_sb.grid(row=1, column=2, sticky="ns", pady=(4, 0))
     trk_tree.configure(yscrollcommand=trk_sb.set)
-    trk_box.rowconfigure(1, weight=1)
+    trk_box.rowconfigure(1, weight=1, minsize=120)   # the table never collapses when the window is short
     trk_box.columnconfigure(0, weight=1)
     trow = ttk.Frame(trk_box)
-    trow.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(8, 0))
+    trow.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(6, 0))
     trk_new_btn = ttk.Button(trow, text="New track…", style="Accent.TButton")
     trk_new_btn.pack(side="left")
     trk_edit_btn = ttk.Button(trow, text="Edit on map…")
@@ -5935,8 +6113,7 @@ def run_gui(initial_zip: Optional[str] = None):
     trk_saveas_btn.pack(side="right")
     trk_open_btn = ttk.Button(trow0, text="Open file…")
     trk_open_btn.pack(side="right", padx=(0, 6))
-    trk_status = ttk.Label(trk_box, style="Muted.TLabel", wraplength=1100, justify="left", text="")
-    trk_status.grid(row=3, column=0, columnspan=3, sticky="w", pady=(6, 0))
+    trk_status = ttk.Label(trk_box, style="Muted.TLabel", text="")   # not shown: the hints live in the log and the file line
 
     # row ids: "u:<index>" = user track, "l:<name>" = library entry
     def trk_save_local():
@@ -6003,13 +6180,11 @@ def run_gui(initial_zip: Optional[str] = None):
         shown = lap["path"].replace(str(Path.home()), "~")
         trk_file_lbl.configure(text=f"{len(db.tracks)} custom track(s) in {shown}   ·   {n_lib} in the GARW library")
         if db.tracks:
-            trk_status.configure(text=f"Custom tracks (green) are saved to {shown} as you edit them; nothing reaches the device until you "
-                                      "press 'Upload UserTracks.txt to device'. A custom track with the same name as a library track replaces it on the device. "
-                                      "The map editor opens in your browser (needs internet for the imagery).")
+            trk_status.configure(text=f"Custom tracks (green) save to {shown} as you edit; nothing reaches the device until 'Upload UserTracks.txt to device'. "
+                                      "A custom track named like a library track replaces it. The map editor opens in your browser (needs internet).")
         else:
-            trk_status.configure(text=f"No custom tracks yet. Grey rows are the GARW library (built into the dash, not editable); select one and "
-                                      "'Edit on map…' to make your own version, or 'New track…' for somewhere new. Your custom tracks are kept in "
-                                      f"{shown} and go to the device with 'Upload UserTracks.txt to device'.")
+            trk_status.configure(text=f"No custom tracks yet. Grey rows are the GARW library (built in, not editable): select one and 'Edit on map…' to make "
+                                      f"your own version, or 'New track…'. Custom tracks are kept in {shown} and go to the device with 'Upload UserTracks.txt to device'.")
     trk_q.trace_add("write", fill_trk_tree)
 
     def trk_selected() -> List[str]:
@@ -6201,7 +6376,7 @@ def run_gui(initial_zip: Optional[str] = None):
     # ---------- wiring ----------
     all_buttons = [add_btn, rm_btn, token_btn, join_btn, check_btn, install_sel_btn,
                    install_all_btn, refresh_btn, install_zip_btn, active_btn, dl_sel_btn, dl_all_btn, delete_btn, reboot_btn, restart_btn,
-                   mac_read_btn, mac_save_btn, trk_download_btn, trk_upload_btn,
+                   mac_read_btn, mac_save_btn, lapdata_btn, trk_download_btn, trk_upload_btn,
                    cfg_refresh_btn, cfg_dl_btn, cfg_dl_all_btn, cfg_backup_btn, cfg_restore_btn, cfg_up_btn, sys_btn, fw_browse_btn]
 
     def set_buttons():
