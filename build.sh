@@ -36,9 +36,13 @@ pyinstaller --noconfirm --clean \
   ${ICON_ICNS:+--icon "$ICON_ICNS"} \
   garw_genie.py
 
-# macOS asks the user for Bluetooth permission (the RaceBox scan) and refuses the app without this key
+# macOS asks the user for Bluetooth permission (the RaceBox scan) and refuses the app without this key.
+# Editing Info.plist invalidates PyInstaller's ad-hoc signature, and a bundle with a broken signature
+# is reported as "damaged" by Gatekeeper (fatal on Apple Silicon) — so re-sign ad-hoc afterwards.
 /usr/libexec/PlistBuddy -c "Add :NSBluetoothAlwaysUsageDescription string 'GARW Genie scans for your RaceBox GPS to find its Bluetooth address.'" \
   "dist/GARW Genie.app/Contents/Info.plist" 2>/dev/null || true
+codesign --force --deep --sign - "dist/GARW Genie.app"
+codesign --verify --deep --strict "dist/GARW Genie.app" && echo "ad-hoc signature OK"
 
 cp default_repos.txt dist/ 2>/dev/null || true   # editable list of default dash repos, shipped beside the app
 rm -rf "dist/GARW Genie"                         # PyInstaller's raw onedir output; the .app already contains it
@@ -52,6 +56,7 @@ rm -rf "dist/GARW Genie"                         # PyInstaller's raw onedir outp
 echo
 echo "Built: dist/GARW Genie.app   (zipped: dist/GARW-Genie-macOS.zip)"
 echo
-echo "NOTE: the app is unsigned. First launch on another Mac: right-click > Open,"
-echo "or run:  xattr -dr com.apple.quarantine 'GARW Genie.app'"
+echo "NOTE: the app is only ad-hoc signed. A downloaded copy is quarantined, so on another Mac"
+echo "either right-click > Open (then Open again), or allow it under System Settings > Privacy &"
+echo "Security, or run:  xattr -dr com.apple.quarantine 'GARW Genie.app'"
 echo "To sign/notarize:  codesign --deep --force --options runtime -s 'Developer ID Application: ...' 'dist/GARW Genie.app'"
