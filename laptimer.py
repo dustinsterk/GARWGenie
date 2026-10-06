@@ -60,9 +60,10 @@ def racebox_render(value: str, existing: Optional[bytes]) -> bytes:
     if not rest:
         return RACEBOX_TEMPLATE.format(mac=value).encode("utf-8")
     return (value + "\n" + rest.rstrip("\n") + "\n").encode("utf-8")
-LAPTIMER_DIR = "/opt/IC7/library/LapTimer"       # the LapTimer dash — an optional add-on, not on every device
-RACEBOX_MAC_FILE = LAPTIMER_DIR + "/racebox_mac.txt"
-USER_TRACKS_FILE = LAPTIMER_DIR + "/UserTracks.txt"   # the only track file the tool reads or writes on the device
+LAPTIMER_FILE = "/opt/IC7/library/LapTimer.enc"  # the LapTimer dash (encrypted) — an optional add-on, not on every device
+LAPTIMER_DATA_DIR = "/opt/IC7/laptimerdata"      # its data folder; made by the dash, never by this tool
+RACEBOX_MAC_FILE = LAPTIMER_DATA_DIR + "/Racebox_MAC_Address.txt"
+USER_TRACKS_FILE = LAPTIMER_DATA_DIR + "/UserTracks.txt"   # the only track file the tool reads or writes on the device
 USER_TRACKS_TEMPLATE = """# UserTracks.txt - your own tracks, added to the LapTimer's track library.
 # One track per line, same format as the library:
 #   name|state|cc|country|startLat,startLon|width|splits|pitIn|pitSF|pitOut|ctrLat,ctrLon[|finLat,finLon|startHdg]

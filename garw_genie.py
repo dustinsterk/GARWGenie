@@ -83,7 +83,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.8.2"
+APP_VERSION = "5.8.5"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -109,7 +109,8 @@ MIN_VERSION = 5.0
 SCREEN_CONFIGS_DIR = "/opt/IC7/screen_configs"   # per-dash settings files, named inside each .qml
 SCREEN_ENABLED_FILE = "/opt/IC7/screen_enabled.txt"   # active screens: one 0-based screen index per line
 # Screen index model (v5): 0-4 are the screens built into the GARW binary, in this order; 5 onwards are
-# the folders in /opt/IC7/library in alphabetical order (case-insensitive, as QDir lists them).
+# the entries in /opt/IC7/library — dash folders and encrypted add-ons (Name.enc), by name — in alphabetical
+# order (case-insensitive, as QDir lists them).
 BUILTIN_SCREENS = ("Lotus Elise S2 (05)", "Lotus Elise S2 (08)", "Lotus Elise S3", "Race", "111st")
 MAX_ACTIVE_SCREENS = 6
 
@@ -1959,7 +1960,9 @@ class IC7Device:
             "q=0; p=0; [ -f \"$d/$d.qml\" ] && q=1; [ -f \"$d/$d.qml.png\" ] && p=1; "
             "n=$(find \"$d\" -type f | wc -l); "
             f"m=''; [ -f \"$d/{SOURCE_MARKER}\" ] && m=$(od -An -tx1 -v \"$d/{SOURCE_MARKER}\" | tr -d ' \\n'); "
-            "echo \"$d|$q|$p|$n|$m\"; done"
+            "echo \"$d|$q|$p|$n|$m\"; done; "
+            # encrypted add-on dashes (e.g. LapTimer.enc) sit beside the folders and take a screen index like them
+            "for f in *.enc; do [ -f \"$f\" ] && echo \"${f%.enc}|enc|enc|1|\"; done"
         )
         rc, out, err = self._run(script, timeout=60)
         dashes = []
@@ -1968,6 +1971,9 @@ class IC7Device:
             if len(parts) != 5 or parts[0].startswith("."):
                 continue
             name, q, p, n, m = parts
+            if q == "enc":
+                dashes.append({"name": name, "has_qml": True, "has_png": False, "files": 1, "source": {}, "enc": True})
+                continue
             source = {}
             if m:
                 try:
@@ -1975,7 +1981,7 @@ class IC7Device:
                 except Exception:
                     source = {"error": "unreadable marker"}
             dashes.append({"name": name, "has_qml": q == "1", "has_png": p == "1",
-                           "files": int(n.strip() or 0), "source": source})
+                           "files": int(n.strip() or 0), "source": source, "enc": False})
         return dashes
 
     # -- upload --------------------------------------------------------------
@@ -2063,11 +2069,15 @@ class IC7Device:
     def require_laptimer(self) -> None:
         """The LapTimer dash is an optional add-on. Refuse clearly when its folder isn't on the device
         rather than creating files the (absent) dash would never read."""
-        if not self._remote_exists(_lt.LAPTIMER_DIR) or not self._remote_exists(f"{_lt.LAPTIMER_DIR}/LapTimer.qml"):
+        if not self._remote_exists(_lt.LAPTIMER_FILE):
             raise RuntimeError(
-                f"The LapTimer dash isn't installed on this device ({_lt.LAPTIMER_DIR} not found).\n\n"
-                "Install the LapTimer dash first (GitHub repos or Install from .zip on the Device Dashes tab); "
-                "the RaceBox and track files live inside its folder.")
+                f"The LapTimer dash isn't installed on this device ({_lt.LAPTIMER_FILE} not found).\n\n"
+                "Install the LapTimer add-on first.")
+        if not self._remote_exists(_lt.LAPTIMER_DATA_DIR):
+            raise RuntimeError(
+                f"The lap timer's data folder {_lt.LAPTIMER_DATA_DIR} isn't on the device yet.\n\n"
+                "The LapTimer dash creates it the first time it runs — open the LapTimer screen on the GARW once, "
+                "then try again. (GARW Genie never creates it itself.)")
 
     def read_text_file(self, remote: str, max_bytes: int = 4 * 1024 * 1024) -> Optional[bytes]:
         sftp = self.client.open_sftp()
@@ -2194,6 +2204,8 @@ class IC7Device:
         removed = []
         for n in names:
             path = f"{LIBRARY_DIR}/{n}"
+            if not self._remote_exists(path) and self._remote_exists(path + ".enc"):
+                path += ".enc"      # encrypted add-on
             self.log(f"Deleting {path} ...")
             rc, _, err = self._run(f"rm -rf {_sq(path)} && sync")
             if rc != 0 or self._remote_exists(path):
@@ -4426,6 +4438,9 @@ def run_gui(initial_zip: Optional[str] = None):
             set_dev_preview(None, "", None if not names else f"{len(names)} dashes selected")
             return
         name = names[0]
+        if any(r["name"] == name and r.get("enc") for r in device_rows):
+            set_dev_preview(None, name, "Encrypted GARW add-on — no preview available.")
+            return
         if name in dev_png_cache:
             set_dev_preview(dev_png_cache[name], name, "This dash has no .qml.png preview.")
             return
@@ -4462,14 +4477,17 @@ def run_gui(initial_zip: Optional[str] = None):
         dev_tree.delete(*dev_tree.get_children())
         for r in device_rows:
             s = r["source"] or {}
-            valid = "✓" if (r["has_qml"] and r["has_png"]) else "✗ " + (
-                "no .qml" if not r["has_qml"] else "no .png")
-            src = f"{s.get('owner')}/{s.get('repo')} [{s.get('branch')}]" if s.get("repo") else (
-                "manual upload" if not s else "?")
+            if r.get("enc"):
+                valid, src = "✓ encrypted", "GARW add-on (.enc)"
+            else:
+                valid = "✓" if (r["has_qml"] and r["has_png"]) else "✗ " + (
+                    "no .qml" if not r["has_qml"] else "no .png")
+                src = f"{s.get('owner')}/{s.get('repo')} [{s.get('branch')}]" if s.get("repo") else (
+                    "manual upload" if not s else "?")
             act = active_slots_for(r["name"])
             iid = dev_tree.insert("", "end", values=(
                 r["name"], act, valid, r["files"], src, (s.get("sha") or "")[:7], _fmt_date(s.get("installed"))))
-            if not (r["has_qml"] and r["has_png"]):
+            if not r.get("enc") and not (r["has_qml"] and r["has_png"]):
                 dev_tree.item(iid, tags=("bad",))
             elif act:
                 dev_tree.item(iid, tags=("active",))
@@ -4574,7 +4592,15 @@ def run_gui(initial_zip: Optional[str] = None):
     def do_download_dashes(all_dashes: bool):
         names = ([r["name"] for r in device_rows] if all_dashes
                  else [dev_tree.item(i, "values")[0] for i in dev_tree.selection()])
+        enc_names = {r["name"] for r in device_rows if r.get("enc")}
+        skipped = [n for n in names if n in enc_names]
+        names = [n for n in names if n not in enc_names]
+        if skipped:
+            log("Encrypted add-on(s) can't be backed up as dash zips, skipped: " + ", ".join(skipped))
         if not names:
+            if skipped:
+                messagebox.showinfo(APP_NAME, "Encrypted GARW add-ons (" + ", ".join(skipped) + ") can't be downloaded as a dash zip.", parent=root)
+                return
             messagebox.showinfo(APP_NAME, "Nothing to download — refresh first" + ("" if all_dashes else ", then select dashes") + ".", parent=root)
             return
         stamp = datetime.now().strftime("%Y-%m-%d_%H%M")
@@ -5722,12 +5748,14 @@ def run_gui(initial_zip: Optional[str] = None):
 
     def lap_refresh_presence(dev: IC7Device):
         """Called on every device refresh: is the LapTimer add-on installed?"""
-        present = dev._remote_exists(f"{_lt.LAPTIMER_DIR}/LapTimer.qml")
+        present = dev._remote_exists(_lt.LAPTIMER_FILE)
+        data_dir = present and dev._remote_exists(_lt.LAPTIMER_DATA_DIR)
         lap["present"] = present
-        txt = (f"LapTimer dash on device: ✓ installed ({_lt.LAPTIMER_DIR})" if present else
-               f"LapTimer dash on device: ✗ not installed — {_lt.LAPTIMER_DIR} is missing. The RaceBox and track buttons "
-               "that touch the device will refuse until the LapTimer dash is installed (Device Dashes tab). Local track editing still works.")
-        ui(lap_presence.configure, {"text": txt, "style": "Ok.TLabel" if present else "Warn.TLabel"})
+        txt = ((f"LapTimer dash on device: ✓ installed ({_lt.LAPTIMER_FILE}); data folder {_lt.LAPTIMER_DATA_DIR} "
+                + ("✓ present" if data_dir else "✗ missing — open the LapTimer screen on the GARW once to create it")) if present else
+               f"LapTimer dash on device: ✗ not installed — {_lt.LAPTIMER_FILE} is missing. The RaceBox and track buttons "
+               "that touch the device will refuse until the LapTimer add-on is installed. Local track editing still works.")
+        ui(lap_presence.configure, {"text": txt, "style": "Ok.TLabel" if (present and data_dir) else "Warn.TLabel"})
 
     def mac_normalise(v: str) -> Optional[str]:
         v = v.strip().upper().replace("-", ":")
