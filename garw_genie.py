@@ -31,7 +31,9 @@ import platform
 import queue
 import re
 import socket
+import shutil
 import subprocess
+import tempfile
 import sys
 import threading
 import time
@@ -81,7 +83,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.7.3"
+APP_VERSION = "5.8.2"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -1619,6 +1621,201 @@ def ble_scan(seconds: float, log) -> List[Tuple[str, str, Optional[int], bool]]:
     return asyncio.run(run())
 
 
+# ---------------------------------------------------------------------------
+# USB stick preparation for the LapTimer dash: FAT32 + a top-level "laptimerdata" folder.
+# Only removable / external disks are ever listed, and the GUI makes the user type ERASE.
+# ---------------------------------------------------------------------------
+USB_LABEL = "LAPTIMER"
+USB_FOLDER = "laptimerdata"
+
+
+@dataclass
+class UsbDisk:
+    device: str          # /dev/disk4, \\.\PHYSICALDRIVE2, /dev/sdb
+    name: str
+    size: int            # bytes
+    detail: str = ""     # bus / volumes, for the dialog
+
+    @property
+    def size_text(self) -> str:
+        return f"{self.size / 1e9:.1f} GB" if self.size >= 1e9 else f"{self.size / 1e6:.0f} MB"
+
+
+def usb_list_disks() -> List[UsbDisk]:
+    """External / removable physical disks only — never the system disk."""
+    disks: List[UsbDisk] = []
+    if sys.platform == "darwin":
+        import plistlib
+        out = subprocess.run(["diskutil", "list", "-plist", "external", "physical"], capture_output=True, timeout=30).stdout
+        for dev in plistlib.loads(out or b"<plist/>").get("WholeDisks", []):
+            info = plistlib.loads(subprocess.run(["diskutil", "info", "-plist", dev], capture_output=True, timeout=30).stdout or b"<plist/>")
+            if info.get("Internal") and not info.get("RemovableMediaOrExternalDevice"):
+                continue
+            disks.append(UsbDisk(f"/dev/{dev}", info.get("MediaName") or info.get("IORegistryEntryName") or dev,
+                                 int(info.get("TotalSize") or info.get("Size") or 0),
+                                 f"{info.get('BusProtocol', '')}  {'removable' if info.get('RemovableMedia') else 'external'}".strip()))
+    elif sys.platform == "win32":
+        ps = ("Get-CimInstance Win32_DiskDrive | Where-Object { $_.InterfaceType -eq 'USB' -or $_.MediaType -like '*Removable*' } | "
+              "Select-Object DeviceID, Index, Model, Size, InterfaceType, MediaType | ConvertTo-Json -Compress")
+        out = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps], capture_output=True, text=True, timeout=60).stdout.strip()
+        if out:
+            items = json.loads(out)
+            for it in (items if isinstance(items, list) else [items]):
+                disks.append(UsbDisk(f"PHYSICALDRIVE{it['Index']}", str(it.get("Model") or "USB disk"), int(it.get("Size") or 0),
+                                     f"{it.get('InterfaceType', '')}  {it.get('MediaType', '')}".strip()))
+    else:
+        out = subprocess.run(["lsblk", "-J", "-b", "-d", "-o", "NAME,SIZE,MODEL,TRAN,RM,TYPE,HOTPLUG"], capture_output=True, text=True, timeout=30).stdout
+        for d in json.loads(out or "{}").get("blockdevices", []):
+            if d.get("type") != "disk":
+                continue
+            if not (d.get("tran") == "usb" or d.get("rm") in (True, "1", 1) or d.get("hotplug") in (True, "1", 1)):
+                continue
+            disks.append(UsbDisk(f"/dev/{d['name']}", (d.get("model") or "USB disk").strip(), int(d.get("size") or 0),
+                                 f"{d.get('tran') or ''}  {'removable' if d.get('rm') in (True, '1', 1) else ''}".strip()))
+    return [d for d in disks if d.size > 0]
+
+
+def usb_prepare(disk: UsbDisk, log, progress=None) -> str:
+    """Erase the whole stick: MBR partition table, one FAT32 volume labelled LAPTIMER, then create the
+    laptimerdata folder. Returns the mount point / drive. Raises RuntimeError with a readable message."""
+    log(f"Erasing {disk.device} ({disk.name}, {disk.size_text}) → FAT32 '{USB_LABEL}' …")
+    if sys.platform == "darwin":
+        import plistlib
+        r = subprocess.run(["diskutil", "eraseDisk", "FAT32", USB_LABEL, "MBRFormat", disk.device], capture_output=True, text=True, timeout=600)
+        if r.returncode != 0:
+            raise RuntimeError(f"diskutil could not format the stick:\n{(r.stderr or r.stdout).strip()}")
+        log((r.stdout or "").strip().splitlines()[-1] if r.stdout.strip() else "Formatted.")
+        mount = ""
+        for _ in range(20):
+            info = plistlib.loads(subprocess.run(["diskutil", "info", "-plist", disk.device + "s1"], capture_output=True, timeout=30).stdout or b"<plist/>")
+            mount = info.get("MountPoint") or ""
+            if mount:
+                break
+            time.sleep(0.5)
+        if not mount:
+            subprocess.run(["diskutil", "mount", disk.device + "s1"], capture_output=True, timeout=60)
+            info = plistlib.loads(subprocess.run(["diskutil", "info", "-plist", disk.device + "s1"], capture_output=True, timeout=30).stdout or b"<plist/>")
+            mount = info.get("MountPoint") or ""
+        if not mount:
+            raise RuntimeError("The stick was formatted but macOS didn't mount it — unplug it, plug it back in and create "
+                               f"a folder called {USB_FOLDER} on it by hand.")
+    elif sys.platform == "win32":
+        num = disk.device.replace("PHYSICALDRIVE", "")
+        # FAT32 on Windows caps a volume at 32 GB, so bigger sticks get a 32 GB partition (the GARW doesn't need more).
+        size_clause = "-Size 32GB" if disk.size > 32 * 1024 ** 3 else "-UseMaximumSize"
+        logf = Path(tempfile.gettempdir()) / "garw_genie_usb.log"
+        script = Path(tempfile.gettempdir()) / "garw_genie_usb.ps1"
+        script.write_text(f"""$ErrorActionPreference = 'Stop'
+try {{
+  Get-Disk -Number {num} | Out-Null
+  Clear-Disk -Number {num} -RemoveData -RemoveOEM -Confirm:$false
+  Initialize-Disk -Number {num} -PartitionStyle MBR
+  $p = New-Partition -DiskNumber {num} {size_clause} -IsActive -AssignDriveLetter
+  Format-Volume -Partition $p -FileSystem FAT32 -NewFileSystemLabel {USB_LABEL} -Confirm:$false | Out-Null
+  Start-Sleep -Seconds 2
+  $letter = (Get-Partition -DiskNumber {num} | Where-Object DriveLetter).DriveLetter | Select-Object -First 1
+  New-Item -ItemType Directory -Path "$($letter):\\{USB_FOLDER}" -Force | Out-Null
+  "OK $($letter):" | Out-File -FilePath '{logf}' -Encoding ascii
+}} catch {{
+  "ERR $($_.Exception.Message)" | Out-File -FilePath '{logf}' -Encoding ascii
+}}
+""")
+        if logf.exists():
+            logf.unlink()
+        log("Windows asks for administrator permission to format a disk — approve the prompt …")
+        subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command",
+                        f"Start-Process powershell -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','\"{script}\"'"],
+                       capture_output=True, text=True, timeout=900)
+        result = logf.read_text().strip() if logf.exists() else ""
+        if not result.startswith("OK"):
+            raise RuntimeError("Formatting failed" + (f": {result[4:]}" if result.startswith("ERR") else
+                               " — the administrator prompt was declined or didn't appear."))
+        mount = result[3:].strip() + "\\"
+    else:
+        part = disk.device + ("p1" if disk.device[-1].isdigit() else "1")
+        cmd = (f"umount {disk.device}* 2>/dev/null; parted -s {disk.device} mklabel msdos mkpart primary fat32 1MiB 100% set 1 boot on "
+               f"&& partprobe {disk.device} && sleep 1 && mkfs.vfat -F 32 -n {USB_LABEL} {part}")
+        r = subprocess.run(["pkexec", "sh", "-c", cmd], capture_output=True, text=True, timeout=600)
+        if r.returncode != 0:
+            raise RuntimeError(f"Formatting failed (needs parted + dosfstools and admin rights):\n{(r.stderr or r.stdout).strip()}")
+        r = subprocess.run(["udisksctl", "mount", "-b", part], capture_output=True, text=True, timeout=60)
+        m = re.search(r" at (\S+)", r.stdout or "")
+        if not m:
+            raise RuntimeError(f"Formatted, but couldn't mount {part} to create the folder — mount it and create {USB_FOLDER} by hand.")
+        mount = m.group(1).rstrip(".")
+    folder = Path(mount) / USB_FOLDER
+    folder.mkdir(exist_ok=True)
+    if not folder.is_dir():
+        raise RuntimeError(f"Formatted, but the {USB_FOLDER} folder couldn't be created on {mount}.")
+    usb_tidy(mount, log)
+    usb_eject(disk, mount, log)
+    log(f"Stick ready: FAT32 '{USB_LABEL}' with the {USB_FOLDER} folder.")
+    return mount
+
+
+def usb_tidy(mount: str, log) -> None:
+    """Strip the junk the host OS drops on a freshly mounted FAT32 volume and stop it coming back:
+    macOS .DS_Store / ._* / .Spotlight-V100 / .fseventsd / .Trashes / .TemporaryItems, Windows
+    System Volume Information. Spotlight and fsevents are told to leave the stick alone."""
+    m = Path(mount)
+    removed = []
+    if sys.platform == "darwin":
+        subprocess.run(["mdutil", "-i", "off", mount], capture_output=True, timeout=60)        # no Spotlight index
+        subprocess.run(["mdutil", "-E", mount], capture_output=True, timeout=60)               # erase any index already made
+    for name in (".Spotlight-V100", ".fseventsd", ".Trashes", ".TemporaryItems", ".DS_Store", "System Volume Information", ".DocumentRevisions-V100"):
+        pth = m / name
+        if pth.is_dir() and not pth.is_symlink():
+            shutil.rmtree(pth, ignore_errors=True)
+            removed.append(name)
+        elif pth.exists():
+            try:
+                pth.unlink()
+                removed.append(name)
+            except OSError:
+                pass
+    for pth in list(m.rglob("._*")) + list(m.rglob(".DS_Store")):
+        try:
+            pth.unlink()
+            removed.append(pth.name)
+        except OSError:
+            pass
+    if sys.platform == "darwin":
+        # The standard "keep macOS off this stick" markers: an empty .metadata_never_index file stops Spotlight,
+        # .fseventsd/no_log stops the fsevents journal, and a FILE called .Trashes keeps Finder from making the folder.
+        try:
+            (m / ".metadata_never_index").touch()
+            (m / ".fseventsd").mkdir(exist_ok=True)
+            (m / ".fseventsd" / "no_log").touch()
+            (m / ".Trashes").touch()
+        except OSError as e:
+            log(f"  (couldn't write the macOS keep-off markers: {e})")
+    if removed:
+        log("  removed OS files: " + ", ".join(sorted(set(removed))))
+
+
+def usb_eject(disk: UsbDisk, mount: str, log) -> None:
+    """Flush and unmount so nothing else gets written (Finder/Explorer love to re-add their files)."""
+    try:
+        if sys.platform == "darwin":
+            r = subprocess.run(["diskutil", "eject", disk.device], capture_output=True, text=True, timeout=120)
+        elif sys.platform == "win32":
+            letter = mount.rstrip("\\/")
+            r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command",
+                                f"(New-Object -ComObject Shell.Application).NameSpace(17).ParseName('{letter}').InvokeVerb('Eject')"],
+                               capture_output=True, text=True, timeout=120)
+        else:
+            subprocess.run(["sync"], timeout=120)
+            r = subprocess.run(["udisksctl", "unmount", "-b", disk.device + ("p1" if disk.device[-1].isdigit() else "1")],
+                               capture_output=True, text=True, timeout=120)
+            subprocess.run(["udisksctl", "power-off", "-b", disk.device], capture_output=True, timeout=120)
+        if r.returncode == 0:
+            log("  stick ejected — safe to unplug.")
+        else:
+            log(f"  (eject didn't work: {(r.stderr or r.stdout).strip()[:200]} — eject it yourself before unplugging)")
+    except Exception as e:
+        log(f"  (eject didn't work: {e} — eject it yourself before unplugging)")
+
+
 class IC7Device:
     """One SSH session to the cluster. Callbacks keep it GUI-agnostic."""
 
@@ -2950,6 +3147,8 @@ def apply_theme(root, tk, ttk, retro: bool = True) -> dict:
     s.map("Danger.TButton", background=[("active", "#3a2326"), ("disabled", P["panel"])],
           foreground=[("disabled", P["muted"])])
 
+    s.configure("Erase.TEntry", fieldbackground="#3a2326", foreground=P["err"], insertcolor=P["err"], bordercolor=P["err"],
+                lightcolor=P["err"], darkcolor=P["err"], font=("TkDefaultFont", 12, "bold"), padding=6)
     s.configure("TEntry", fieldbackground=P["field"], foreground=P["text"], insertcolor=P["text"],
                 bordercolor=P["line"], lightcolor=P["line"], darkcolor=P["line"], padding=6)
     s.map("TEntry", bordercolor=[("focus", P["accent"])], lightcolor=[("focus", P["accent"])],
@@ -5427,9 +5626,99 @@ def run_gui(initial_zip: Optional[str] = None):
     mac_save_btn.grid(row=1, column=4, padx=(6, 0), pady=(6, 0))
     mac_info = ttk.Label(mac_box, style="Muted.TLabel", text="")
     mac_info.grid(row=2, column=0, columnspan=6, sticky="w", pady=(4, 0))
+    # -- USB stick --
+    usb_box = ttk.LabelFrame(tab_lap, text="  USB stick for lap data  ", padding=(10, 4, 10, 8))
+    usb_box.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+    ttk.Label(usb_box, style="Muted.TLabel", wraplength=900, justify="left",
+              text=f"The lap timer logs to a USB stick in the GARW: FAT32 with a top-level '{USB_FOLDER}' folder. "
+                   "This erases a removable drive on this computer and sets it up that way.").grid(row=0, column=0, sticky="w")
+    usb_btn = ttk.Button(usb_box, text="Prepare USB stick…")
+    usb_btn.grid(row=0, column=1, sticky="e", padx=(12, 0))
+    usb_box.columnconfigure(0, weight=1)
+
+    def do_usb_prepare():
+        try:
+            disks = usb_list_disks()
+        except Exception as e:
+            messagebox.showerror(APP_NAME, f"Couldn't list the removable drives:\n{e}", parent=root)
+            return
+        dlg = tk.Toplevel(root)
+        dlg.title("Prepare a USB stick for the lap timer")
+        dlg.configure(bg=P["bg"])
+        dlg.transient(root)
+        dlg.geometry(f"+{root.winfo_rootx() + 220}+{root.winfo_rooty() + 160}")
+        frm = ttk.Frame(dlg, padding=14)
+        frm.pack(fill="both", expand=True)
+        ttk.Label(frm, text="Removable drives on this computer (internal disks are never shown):").grid(row=0, column=0, columnspan=3, sticky="w")
+        tv = ttk.Treeview(frm, columns=("name", "size", "dev", "detail"), show="headings", height=6, selectmode="browse")
+        for c, t, w in (("name", "Drive", 260), ("size", "Size", 90), ("dev", "Device", 150), ("detail", "", 170)):
+            tv.heading(c, text=t)
+            tv.column(c, width=w, anchor="w")
+        tv.grid(row=1, column=0, columnspan=3, sticky="nsew", pady=(6, 0))
+        frm.columnconfigure(0, weight=1)
+        state = {"disks": disks}
+
+        def fill():
+            tv.delete(*tv.get_children())
+            for i, d in enumerate(state["disks"]):
+                tv.insert("", "end", iid=str(i), values=(d.name, d.size_text, d.device, d.detail))
+            if not state["disks"]:
+                tv.insert("", "end", iid="none", values=("(no removable drive found — plug the stick in and press Refresh)", "", "", ""))
+        fill()
+
+        def refresh():
+            try:
+                state["disks"] = usb_list_disks()
+            except Exception as e:
+                messagebox.showerror(APP_NAME, f"Couldn't list the removable drives:\n{e}", parent=dlg)
+                return
+            fill()
+        ttk.Label(frm, style="Warn.TLabel", wraplength=640, justify="left",
+                  text=f"EVERYTHING on the selected drive is erased. It becomes one FAT32 volume named {USB_LABEL} with an empty "
+                       f"'{USB_FOLDER}' folder. Type ERASE to confirm:").grid(row=2, column=0, columnspan=3, sticky="w", pady=(10, 0))
+        confirm_var = tk.StringVar()
+        erase_row = ttk.Frame(frm)
+        erase_row.grid(row=3, column=0, sticky="w", pady=(6, 0))
+        ttk.Label(erase_row, text="Type ERASE here:", style="Warn.TLabel").pack(side="left", padx=(0, 8))
+        confirm_ent = ttk.Entry(erase_row, textvariable=confirm_var, width=9, style="Erase.TEntry", justify="center")
+        confirm_ent.pack(side="left")
+        confirm_ent.focus_set()
+        btns = ttk.Frame(frm)
+        btns.grid(row=3, column=1, columnspan=2, sticky="e", pady=(4, 0))
+
+        def go():
+            sel = tv.selection()
+            if not sel or sel[0] == "none":
+                messagebox.showinfo(APP_NAME, "Select the USB stick first.", parent=dlg)
+                return
+            if confirm_var.get().strip().upper() != "ERASE":
+                messagebox.showinfo(APP_NAME, "Type ERASE in the red box to confirm — this wipes the drive.", parent=dlg)
+                confirm_ent.focus_set()
+                confirm_ent.selection_range(0, "end")
+                return
+            disk = state["disks"][int(sel[0])]
+            if not messagebox.askyesno("Erase this drive?", f"Erase {disk.name} ({disk.size_text}, {disk.device}) and set it up for the lap timer?\n\n"
+                                       "This cannot be undone.", icon="warning", parent=dlg):
+                return
+            dlg.destroy()
+
+            def worker():
+                log("=" * 60)
+                log(f"USB STICK: {disk.name} ({disk.size_text}, {disk.device})")
+                mount = usb_prepare(disk, log)
+                ui(lambda: messagebox.showinfo(APP_NAME, f"USB stick ready: FAT32 '{USB_LABEL}' with the {USB_FOLDER} folder.\n\n"
+                                                           "It has been ejected so your computer can't add its hidden files — "
+                                                           "unplug it and put it in the GARW.", parent=root))
+            start(worker)
+        ttk.Button(btns, text="Cancel", command=dlg.destroy).pack(side="right")
+        ttk.Button(btns, text="Erase & prepare", style="Danger.TButton", command=go).pack(side="right", padx=(0, 6))
+        ttk.Button(btns, text="Refresh", command=refresh).pack(side="right", padx=(0, 12))
+        dlg.grab_set()
+    usb_btn.configure(command=do_usb_prepare)
+
     lap_presence = ttk.Label(tab_lap, style="Muted.TLabel", wraplength=1100, justify="left",
                              text=f"LapTimer dash on device: (not checked — connect to the GARW device)")
-    lap_presence.grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 0))
+    lap_presence.grid(row=3, column=0, columnspan=2, sticky="w", pady=(6, 0))
 
     def lap_refresh_presence(dev: IC7Device):
         """Called on every device refresh: is the LapTimer add-on installed?"""
