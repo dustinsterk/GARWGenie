@@ -83,7 +83,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.9.4"
+APP_VERSION = "5.9.5"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -110,8 +110,9 @@ SCREEN_CONFIGS_DIR = "/opt/IC7/screen_configs"   # per-dash settings files, name
 SCREEN_ENABLED_FILE = "/opt/IC7/screen_enabled.txt"   # active screens: one 0-based screen index per line
 # Screen index model (v5): 0-4 are the screens built into the GARW binary, in this order. From 5 onwards the
 # firmware takes the dash FOLDERS in /opt/IC7/library sorted by name, then the encrypted add-ons (Name.enc)
-# sorted by name, appended after the folders. Both sorts are plain code-point order (QDir::Name on Linux is
-# case-sensitive: every capital sorts before every lowercase letter, so "LFA" < "LapTimer" < "LeMansGT").
+# sorted by name, appended after the folders. Both sorts are case-INSENSITIVE — QDir's default sort is
+# Name | IgnoreCase — so "LapTimer" < "LeMansGT" < "LFA" and "Danver" < "DDUDash" (confirmed on a unit:
+# index 10 showed LapTimer with AgeSolo, Danver, DDUDash, GTDash, Kamata ahead of it).
 BUILTIN_SCREENS = ("Lotus Elise S2 (05)", "Lotus Elise S2 (08)", "Lotus Elise S3", "Race", "111st")
 MAX_ACTIVE_SCREENS = 6
 
@@ -119,8 +120,9 @@ MAX_ACTIVE_SCREENS = 6
 def library_order(entries) -> List[str]:
     """Names in the firmware's screen order: sorted folders, then sorted .enc add-ons.
     entries: dicts with name/enc (from list_dashes) or plain names (treated as folders)."""
-    folders = sorted(e["name"] if isinstance(e, dict) else e for e in entries if not (isinstance(e, dict) and e.get("enc")))
-    encs = sorted(e["name"] for e in entries if isinstance(e, dict) and e.get("enc"))
+    key = str.lower
+    folders = sorted((e["name"] if isinstance(e, dict) else e for e in entries if not (isinstance(e, dict) and e.get("enc"))), key=key)
+    encs = sorted((e["name"] for e in entries if isinstance(e, dict) and e.get("enc")), key=key)
     return folders + encs
 
 
@@ -3982,7 +3984,7 @@ def run_gui(initial_zip: Optional[str] = None):
     def refresh_installed(dev: IC7Device):
         """Refresh the device inventory (called from worker threads)."""
         rows = dev.list_dashes()
-        # same order the screen indices use: sorted folders, then sorted .enc add-ons (case-sensitive)
+        # same order the screen indices use: sorted folders, then sorted .enc add-ons (case-insensitive)
         order = {n: i for i, n in enumerate(library_order(rows))}
         rows.sort(key=lambda r: order[r["name"]])
         device_rows[:] = rows
