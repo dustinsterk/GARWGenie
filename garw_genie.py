@@ -83,7 +83,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.9.5"
+APP_VERSION = "5.9.6"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -1609,26 +1609,57 @@ def ble_scan(seconds: float, log) -> List[Tuple[str, str, Optional[int], bool]]:
         return None
 
     async def run():
-        log(f"Scanning for Bluetooth LE devices for {seconds:g} s …")
+        # Callback scan rather than BleakScanner.discover(): discover() keeps only the LAST advertisement per
+        # device, and a device's name usually travels in the scan response, not every packet — so a RaceBox
+        # whose final packet happened to lack the name came back nameless. Here the name sticks once seen,
+        # and the scan ends ~2 s after the first RaceBox shows up (or after `seconds` at most).
+        seen: Dict[str, dict] = {}
+        first_rb = {"t": None}
+        loop = asyncio.get_running_loop()
+
+        def on_adv(dev, adv):
+            key = dev.address.upper()
+            e = seen.setdefault(key, {"dev": dev, "adv": adv, "name": "", "rssi": None})
+            e["dev"], e["adv"] = dev, adv
+            nm = (adv.local_name or dev.name or "").strip()
+            if nm and not (e["name"] and nm.replace("-", ":").upper() == key):
+                e["name"] = nm                                    # sticky: a nameless packet never erases it
+            if adv.rssi is not None:
+                e["rssi"] = adv.rssi
+            if "racebox" in e["name"].lower() and first_rb["t"] is None:
+                first_rb["t"] = loop.time()
+
+        log(f"Scanning for Bluetooth LE devices (up to {seconds:g} s) …")
         try:
-            found = await BleakScanner.discover(timeout=seconds, return_adv=True)
+            scanner = BleakScanner(detection_callback=on_adv)
+            await scanner.start()
+            t0 = loop.time()
+            while loop.time() - t0 < seconds:
+                if first_rb["t"] is not None and loop.time() - first_rb["t"] > 2.0:
+                    break
+                await asyncio.sleep(0.25)
+            await scanner.stop()
         except Exception as e:   # adapter off / no permission / no adapter
             raise RuntimeError(f"Bluetooth scan failed: {e}\n\nIs Bluetooth switched on? "
                                + ("On macOS, also allow Bluetooth for GARW Genie in System Settings → Privacy & Security → Bluetooth."
                                   if sys.platform == "darwin" else ""))
         out = []
-        for dev, adv in found.values():
-            name = (adv.local_name or dev.name or "").strip()
+        for e in seen.values():
+            dev, adv, name, rssi = e["dev"], e["adv"], e["name"], e["rssi"]
             addr = dev.address.upper()
             real = bool(_lt and _lt.MAC_RE.match(addr)) if _lt else bool(re.fullmatch(r"(?:[0-9A-F]{2}:){5}[0-9A-F]{2}", addr))
-            rssi = adv.rssi if adv.rssi is not None else None
             if not real and "racebox" in name.lower():
                 mac = await recover_mac(dev, name, adv)
                 if mac:
                     addr, real = mac, True
             out.append((addr, name, rssi, real))
         out.sort(key=lambda t: (-(t[2] if t[2] is not None else -999), t[1].lower(), t[0]))
-        log(f"Scan finished: {len(out)} device(s) seen, {sum('racebox' in n.lower() for _, n, _, _ in out)} RaceBox.")
+        n_rb = sum('racebox' in n.lower() for _, n, _, _ in out)
+        log(f"Scan finished: {len(out)} device(s) seen, {n_rb} RaceBox.")
+        if not n_rb:
+            log("  No RaceBox advertising. It goes silent while anything is connected to it: a GARW that's switched on with "
+                "this RaceBox's MAC set grabs it within seconds, as does the RaceBox phone app. Switch the GARW off (or save "
+                "'No RaceBox' to it) and close the phone app, then scan again.")
         return out
     return asyncio.run(run())
 
@@ -6001,8 +6032,9 @@ def run_gui(initial_zip: Optional[str] = None):
         frm = ttk.Frame(dlg, padding=14)
         frm.pack(fill="both", expand=True)
         head = (f"{len(rb)} RaceBox device(s) found." if rb else
-                "No RaceBox found. A RaceBox only advertises while it's on and NOT connected to anything — close the RaceBox app on "
-                "your phone, and if the GARW dash is already connected to it, it won't show up here either.")
+                "No RaceBox found. A RaceBox stops advertising while anything is connected to it. The usual culprit is the GARW "
+                "itself: switched on with this RaceBox's MAC set, the lap timer grabs it within seconds. Switch the GARW off "
+                "(or save 'No RaceBox' to it), close the RaceBox phone app, then scan again.")
         if rb and not all(d[3] for d in rb):
             head += ("\n\nmacOS hides Bluetooth MAC addresses from apps and none of the workarounds got it for this RaceBox, "
                      "so only a UUID is known — the log shows what was tried. Read the MAC off the RaceBox label / its app, "
@@ -6058,7 +6090,7 @@ def run_gui(initial_zip: Optional[str] = None):
         def worker():
             log("=" * 60)
             log("BLUETOOTH SCAN from this computer (bleak)")
-            devs = ble_scan(8, log)
+            devs = ble_scan(12, log)
             for addr, name, rssi, real in devs:
                 if "racebox" in name.lower():
                     log(f"  RaceBox: {name}  {addr}" + ("" if real else " (UUID)") + (f"  ({rssi} dBm)" if rssi is not None else ""))
