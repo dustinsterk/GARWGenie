@@ -9,8 +9,10 @@ controller — all from your laptop, over the device's own Wi-Fi.
 ## Getting it running
 
 Download the build for your machine (`GARW Genie.app` on Mac, `GARW Genie.exe` on Windows) and open
-it. The first launch shows a security warning because the app isn't signed: on Mac, right-click →
-Open; on Windows, More info → Run anyway.
+it. The first launch shows a security warning because the app isn't signed with a developer certificate:
+on Mac, right-click → Open (and Open again in the dialog), or if macOS calls a downloaded copy "damaged",
+open Terminal and run `xattr -dr com.apple.quarantine "/path/to/GARW Genie.app"`; on Windows, More info →
+Run anyway.
 
 If you'd rather run it from source, you need Python 3.8 or newer:
 
@@ -53,9 +55,12 @@ for whatever is installed. Statuses are:
 (or just double-click it). **Install all updates** does the lot. Right-click a row to copy its URL or
 commit, open it on GitHub, or check, install or remove just that repo.
 
-**Device Dashes** — what's on the device right now, where each came from, and when. The **Active**
-column shows which dashes the cluster actually cycles through and in what position, and a line under
-the table lists all the active slots including the built-in screens. **Active screens…** lets you change
+**Device Dashes** — what's on the device right now, where each came from, and when. The list is in the
+device's own screen order — dash folders sorted by name, then the encrypted add-ons sorted by name, both case-insensitive (so `LapTimer` sits before `LFA`, as Qt lists them) — which is the order the screen indices follow, and the **Active**
+column shows each dash's screen index plus, for the ones the cluster actually cycles through, their slot position, and a line under
+the table lists all the active slots including the built-in screens. Encrypted GARW add-ons such as the LapTimer
+(`LapTimer.enc` beside the dash folders) appear in the list too, marked *✓ encrypted*, and can be made active like
+any dash; they just have no preview and can't be backed up as a zip. **Active screens…** lets you change
 what's in each slot (the number of slots is what the device has now, up to six) and restarts the GARW
 binary so it takes effect. **Install from
 .zip…** is the manual route for a dash you didn't get from GitHub: pick a zip holding one or more
@@ -136,7 +141,8 @@ menu, **Esc** lets go of everything. It only listens while this tab is showing.
 
 ### For developers
 
-Everything is one Python file, `garw_genie.py`; the dependencies are `paramiko` (SSH), `certifi`
+The app is `garw_genie.py` plus `laptimer.py` (the TrackList/UserTracks formats and the local web server behind the
+map editor; Leaflet is bundled under `assets/leaflet/`, BSD-2); the dependencies are `paramiko` (SSH), `certifi`
 (CA bundle, so HTTPS to GitHub verifies inside the frozen app — `SSL_CERT_FILE` overrides it behind a
 corporate proxy) `pillow` (image conversion for the Boot & Logo Screens tab and smooth preview scaling;
 without it images must already be exact-size PNGs) and `imageio-ffmpeg` (a bundled ffmpeg for the welcome

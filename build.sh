@@ -33,6 +33,33 @@ pyinstaller --noconfirm --clean \
   --hidden-import PIL._tkinter_finder \
   --collect-all imageio_ffmpeg \
   --collect-all bleak \
+  --collect-submodules lapanalysis \
+  --collect-submodules pyqtgraph \
+  --hidden-import PySide6.QtMultimedia \
+  --hidden-import PySide6.QtMultimediaWidgets \
+  --hidden-import PySide6.QtOpenGLWidgets \
+  --hidden-import pyqtgraph.opengl \
+  --hidden-import OpenGL.platform.darwin \
+  --exclude-module PySide6.QtWebEngineCore \
+  --exclude-module PySide6.QtWebEngineWidgets \
+  --exclude-module PySide6.QtQuick \
+  --exclude-module PySide6.QtQml \
+  --exclude-module PySide6.Qt3DCore \
+  --exclude-module PySide6.QtCharts \
+  --exclude-module PySide6.QtDataVisualization \
+  --exclude-module PySide6.QtBluetooth \
+  --exclude-module PySide6.QtNfc \
+  --exclude-module PySide6.QtSerialPort \
+  --exclude-module PySide6.QtPositioning \
+  --exclude-module PySide6.QtWebSockets \
+  --exclude-module PySide6.QtDesigner \
+  --exclude-module PySide6.QtHelp \
+  --exclude-module PySide6.QtTest \
+  --exclude-module PySide6.QtSql \
+  --exclude-module matplotlib \
+  --exclude-module scipy \
+  --exclude-module pandas \
+  --exclude-module IPython \
   ${ICON_ICNS:+--icon "$ICON_ICNS"} \
   garw_genie.py
 

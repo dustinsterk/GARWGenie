@@ -47,6 +47,12 @@ try:
     import laptimer as _lt
 except ImportError:  # pragma: no cover
     _lt = None
+try:                     # Lap Analysis: the analysis core needs numpy; the full window also needs PySide6 + pyqtgraph
+    import lapanalysis as _la
+    _LA_ERROR = ""
+except Exception as _e:  # pragma: no cover
+    _la = None
+    _LA_ERROR = f"{type(_e).__name__}: {_e}"
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -83,7 +89,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.9.6"
+APP_VERSION = "5.10.0"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -3643,6 +3649,7 @@ def run_gui(initial_zip: Optional[str] = None):
     tab_assets = ttk.Frame(nb, padding=(14, 8, 14, 8))
     tab_ctl = ttk.Frame(nb, padding=14)
     tab_lap = ttk.Frame(nb, padding=14)
+    tab_la = ttk.Frame(nb, padding=14)
     nb.add(tab_repo, text="GitHub repos")
     nb.add(tab_dev, text="Device Dashes")
     nb.add(tab_cfg, text="Dash Settings")
@@ -3807,8 +3814,9 @@ def run_gui(initial_zip: Optional[str] = None):
             nb.select(tab_lap)
             return "break"
         nb.add(tab_lap, text="Lap Timer")
+        nb.add(tab_la, text="Lap Analysis")
         nb.select(tab_lap)
-        log("Lap Timer tab revealed (Shift + double-click on the logo).")
+        log("Lap Timer and Lap Analysis tabs revealed (Shift + double-click on the logo).")
         debug["clicks"] = []   # don't let the double-click also count towards the 4-click debug toggle
         return "break"
     logo_lbl.bind("<Shift-Double-Button-1>", reveal_lap_tab)
@@ -5943,6 +5951,8 @@ def run_gui(initial_zip: Optional[str] = None):
                     dev.require_laptimer()
                     n = dev.download_laptimer_data(rels, dest, delete_after)
                 log(f"Done — {n} file(s) in {dest}")
+                cfg["lapdata_dir"] = dest
+                save_config(cfg)
                 ui(lambda: messagebox.showinfo(APP_NAME, f"{n} file(s) downloaded to\n{dest}" + ("\n\nand removed from the device." if delete_after else ""), parent=root))
             start(worker)
         btns = ttk.Frame(frm)
@@ -6407,6 +6417,217 @@ def run_gui(initial_zip: Optional[str] = None):
     else:
         trk_status.configure(text="laptimer.py is missing next to garw_genie.py — the Lap Timer tab is unavailable.")
 
+    # ---------- Tab: Lap Analysis (lapanalysis package; the full window is its Qt UI in a second process) ----------
+    la = {"session": None, "path": None, "result": None}
+
+    def la_full_available() -> Tuple[bool, str]:
+        import importlib.util
+        missing = [m for m in ("PySide6", "pyqtgraph") if importlib.util.find_spec(m) is None]
+        return (not missing, ("missing " + ", ".join(missing)) if missing else "")
+
+    la_top = ttk.Frame(tab_la)
+    la_top.grid(row=0, column=0, columnspan=2, sticky="ew")
+    la_open_btn = ttk.Button(la_top, text="Open log…", style="Accent.TButton")
+    la_open_btn.pack(side="left")
+    la_file_lbl = ttk.Label(la_top, style="Muted.TLabel", text="No log open — a .vbo, Garmin .fit or CSV data log.")
+    la_file_lbl.pack(side="left", padx=(12, 0))
+    la_full_btn = ttk.Button(la_top, text="Open full analysis window")
+    la_full_btn.pack(side="right")
+    la_units = tk.StringVar(value=cfg.get("la_units", "Imperial (mph, ft)"))
+    la_units_cb = ttk.Combobox(la_top, textvariable=la_units, state="readonly", width=16,
+                               values=("Imperial (mph, ft)", "Metric (km/h, m)"))
+    la_units_cb.pack(side="right", padx=(0, 18))
+    ttk.Label(la_top, text="Units:", style="Muted.TLabel").pack(side="right", padx=(0, 4))
+
+    la_left = ttk.Frame(tab_la)
+    la_left.grid(row=1, column=0, sticky="nsew", pady=(10, 0))
+    la_tree = ttk.Treeview(la_left, columns=("lap", "time", "delta", "status"), show="headings", height=14, selectmode="browse")
+    for c, t, w, an in (("lap", "Lap", 50, "center"), ("time", "Time", 90, "e"), ("delta", "Δ best", 80, "e"), ("status", "", 150, "w")):
+        la_tree.heading(c, text=t)
+        la_tree.column(c, width=w, anchor=an, stretch=(c == "status"))
+    la_tree.grid(row=0, column=0, sticky="nsew")
+    la_sb1 = ttk.Scrollbar(la_left, command=la_tree.yview)
+    la_sb1.grid(row=0, column=1, sticky="ns")
+    la_tree.configure(yscrollcommand=la_sb1.set)
+    la_left.rowconfigure(0, weight=1)
+    la_left.columnconfigure(0, weight=1)
+    la_ref_row = ttk.Frame(la_left)
+    la_ref_row.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+    ttk.Label(la_ref_row, text="Compare against:", style="Muted.TLabel").pack(side="left")
+    la_ref = tk.StringVar(value="Fastest clean lap")
+    la_ref_cb = ttk.Combobox(la_ref_row, textvariable=la_ref, state="readonly", width=18, values=("Fastest clean lap",))
+    la_ref_cb.pack(side="left", padx=(6, 0))
+
+    la_right = ttk.Frame(tab_la)
+    la_right.grid(row=1, column=1, sticky="nsew", pady=(10, 0), padx=(12, 0))
+    la_text = tk.Text(la_right, wrap="none", state="disabled", font=mono, bg=P["field"], fg=P["text"],
+                      relief="flat", bd=0, padx=10, pady=8, highlightthickness=0)
+    la_text.grid(row=0, column=0, sticky="nsew")
+    la_sb2 = ttk.Scrollbar(la_right, command=la_text.yview)
+    la_sb2.grid(row=0, column=1, sticky="ns")
+    la_sb3 = ttk.Scrollbar(la_right, orient="horizontal", command=la_text.xview)
+    la_sb3.grid(row=1, column=0, sticky="ew")
+    la_text.configure(yscrollcommand=la_sb2.set, xscrollcommand=la_sb3.set)
+    la_right.rowconfigure(0, weight=1)
+    la_right.columnconfigure(0, weight=1)
+    tab_la.rowconfigure(1, weight=1)
+    tab_la.columnconfigure(0, weight=0)
+    tab_la.columnconfigure(1, weight=1)
+
+    la_bot = ttk.Frame(tab_la)
+    la_bot.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+    la_html_btn = ttk.Button(la_bot, text="Export HTML report…")
+    la_html_btn.pack(side="left")
+    la_csv_btn = ttk.Button(la_bot, text="Export corner CSV…")
+    la_csv_btn.pack(side="left", padx=(6, 0))
+    la_status = ttk.Label(la_bot, style="Muted.TLabel", text="")
+    la_status.pack(side="left", padx=(14, 0))
+
+    def la_set_text(txt: str):
+        la_text.configure(state="normal")
+        la_text.delete("1.0", "end")
+        la_text.insert("1.0", txt)
+        la_text.configure(state="disabled")
+
+    def la_unit_system():
+        from lapanalysis.units import IMPERIAL, METRIC
+        return IMPERIAL if la_units.get().startswith("Imperial") else METRIC
+
+    def la_open(path: Optional[str] = None):
+        if _la is None:
+            messagebox.showerror(APP_NAME, "Lap Analysis needs numpy:  pip install numpy\n\n" + _LA_ERROR, parent=root)
+            return
+        if not path:
+            start_dir = cfg.get("la_last_dir") or cfg.get("lapdata_dir") or str(Path.home())
+            path = filedialog.askopenfilename(title="Open a data log", initialdir=start_dir, parent=root,
+                                              filetypes=[("Data logs", "*.vbo *.fit *.csv *.tsv *.txt"), ("All files", "*.*")])
+            if not path:
+                return
+        cfg["la_last_dir"] = str(Path(path).parent)
+        save_config(cfg)
+
+        def worker():
+            from lapanalysis.parser import open_log
+            from lapanalysis.laps import build_session
+            log(f"Lap Analysis: reading {path} …")
+            vbo = open_log(path)
+            session = build_session(vbo)
+            la.update(session=session, path=path, result=None)
+            log(f"Lap Analysis: {len(session.laps)} lap(s), {len(session.valid_laps)} clean.")
+            ui(la_fill)
+        start(worker)
+
+    def la_fill():
+        from lapanalysis.report import fmt_time, fmt_delta, session_summary
+        s = la["session"]
+        la_tree.delete(*la_tree.get_children())
+        la_file_lbl.configure(text=os.path.basename(la["path"] or ""))
+        if not s or not s.laps:
+            la_set_text("No laps found in this log. The start/finish line may be missing — open the full analysis window to set one.")
+            return
+        best = s.best_lap()
+        for lap in s.laps:
+            d = (lap.lap_time - best.lap_time) if best else 0.0
+            status = ("★ fastest" if best is lap else "") if lap.valid else ("excluded" + (f" — {lap.note}" if lap.note else ""))
+            la_tree.insert("", "end", iid=str(lap.number), values=(lap.number, fmt_time(lap.lap_time),
+                                                                     "" if best is lap else fmt_delta(d), status),
+                           tags=("best",) if best is lap else ("bad",) if not lap.valid else ())
+        la_tree.tag_configure("best", foreground=P["ok"])
+        la_tree.tag_configure("bad", foreground=P["muted"])
+        la_ref_cb.configure(values=["Fastest clean lap"] + [f"Lap {l.number}" for l in s.laps])
+        la_ref.set("Fastest clean lap")
+        la_set_text(session_summary(s) + "\n\nSelect a lap on the left to analyse it against the reference lap.")
+        if best:
+            la_tree.selection_set(str(best.number))
+            la_tree.see(str(best.number))
+
+    def la_analyse(*_):
+        s = la["session"]
+        sel = la_tree.selection()
+        if not s or not sel:
+            return
+        lap_n = int(sel[0])
+        ref_n = None if la_ref.get().startswith("Fastest") else int(la_ref.get().split()[-1])
+        units = la_unit_system()
+        cfg["la_units"] = la_units.get()
+        la_status.configure(text=f"Analysing lap {lap_n} …")
+
+        def worker():
+            from lapanalysis.insights import analyse
+            from lapanalysis.report import insight_report, quality_block, session_summary
+            result = analyse(s, lap_number=lap_n, reference_number=ref_n, units=units)
+            txt = (session_summary(s) + "\n\n" + quality_block(s, result.corners, units) + "\n\n"
+                   + insight_report(result, s, units=units))
+            la["result"] = result
+
+            def show():
+                la_set_text(txt)
+                ref = result.reference
+                la_status.configure(text=f"Lap {result.lap.number}" + (f" vs lap {ref.number}" if ref and ref is not result.lap else "")
+                                         + f" — {len(result.corners)} corners")
+            ui(show)
+        start(worker, reset_progress=False)
+
+    def la_export_html():
+        if not la["result"]:
+            messagebox.showinfo(APP_NAME, "Open a log and pick a lap first.", parent=root)
+            return
+        base = os.path.splitext(os.path.basename(la["path"]))[0]
+        dest = filedialog.asksaveasfilename(title="Save HTML report", initialfile=f"{base}_lap{la['result'].lap.number}.html",
+                                            defaultextension=".html", filetypes=[("HTML", "*.html")], parent=root)
+        if not dest:
+            return
+        from lapanalysis.export import session_html
+        with open(dest, "w", encoding="utf-8") as fh:
+            fh.write(session_html(la["result"], la["session"], la_unit_system()))
+        log(f"Lap Analysis: HTML report → {dest}")
+        open_folder(str(Path(dest).parent))
+
+    def la_export_csv():
+        if not la["result"]:
+            messagebox.showinfo(APP_NAME, "Open a log and pick a lap first.", parent=root)
+            return
+        base = os.path.splitext(os.path.basename(la["path"]))[0]
+        dest = filedialog.asksaveasfilename(title="Save per-corner metrics", initialfile=f"{base}_corners.csv",
+                                            defaultextension=".csv", filetypes=[("CSV", "*.csv")], parent=root)
+        if not dest:
+            return
+        import csv as _csv
+        rows = [m.as_row() for m in la["result"].metrics]
+        with open(dest, "w", newline="", encoding="utf-8") as fh:
+            if rows:
+                w = _csv.DictWriter(fh, fieldnames=list(rows[0]))
+                w.writeheader()
+                w.writerows(rows)
+        log(f"Lap Analysis: {len(rows)} corner(s) → {dest}")
+
+    def la_open_full():
+        ok, why = la_full_available()
+        if not ok:
+            messagebox.showerror(APP_NAME, f"The full analysis window needs PySide6 and pyqtgraph ({why}).\n\n"
+                                           "pip install PySide6 pyqtgraph   (they're in requirements.txt and bundled in the builds)", parent=root)
+            return
+        cmd = [sys.executable] + ([] if getattr(sys, "frozen", False) else [os.path.abspath(__file__)]) + ["--lap-analysis"]
+        if la["path"]:
+            cmd.append(la["path"])
+        subprocess.Popen(cmd)
+        log("Lap Analysis: full analysis window opening" + (f" with {os.path.basename(la['path'])}" if la["path"] else "") + " …")
+
+    la_open_btn.configure(command=la_open)
+    la_full_btn.configure(command=la_open_full)
+    la_html_btn.configure(command=la_export_html)
+    la_csv_btn.configure(command=la_export_csv)
+    la_tree.bind("<<TreeviewSelect>>", la_analyse)
+    la_ref_cb.bind("<<ComboboxSelected>>", la_analyse)
+    la_units_cb.bind("<<ComboboxSelected>>", la_analyse)
+    if _la is None:
+        la_set_text("Lap Analysis isn't available: " + _LA_ERROR + "\n\nInstall the requirements:  pip install -r requirements.txt")
+    else:
+        la_set_text("Open a .vbo, Garmin .fit or CSV data log to see its laps.\n\n"
+                    "Pick a lap for a corner-by-corner report against the fastest clean lap (or any lap you choose), "
+                    "export it as an HTML report or a CSV, or open the full analysis window for plots, the track map, "
+                    "3D view, video sync and overlays.")
+
     # ---------- wiring ----------
     all_buttons = [add_btn, rm_btn, token_btn, join_btn, check_btn, install_sel_btn,
                    install_all_btn, refresh_btn, install_zip_btn, active_btn, dl_sel_btn, dl_all_btn, delete_btn, reboot_btn, restart_btn,
@@ -6620,6 +6841,11 @@ def run_cli(args) -> int:
 
 
 def main(argv=None):
+    a = list(sys.argv[1:] if argv is None else argv)
+    if "--lap-analysis" in a:                       # second process started by the Lap Analysis tab
+        rest = a[a.index("--lap-analysis") + 1:]
+        from lapanalysis.ui.app import launch
+        return launch(rest[0] if rest and not rest[0].startswith("-") else None)
     import argparse
     ap = argparse.ArgumentParser(prog="garw_genie", description=f"{APP_NAME} v{APP_VERSION}")
     ap.add_argument("zip", nargs="?", help="dash .zip to upload (optional; pre-fills the GUI)")
