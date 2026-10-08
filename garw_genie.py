@@ -89,7 +89,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.10.0"
+APP_VERSION = "5.10.1"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -3257,6 +3257,11 @@ def apply_theme(root, tk, ttk, retro: bool = True) -> dict:
           foreground=[("disabled", P["muted"])])
     s.configure("Accent.TButton", background=P["accent"], foreground="#111318", font=(ui_font[0], ui_font[1]) + (() if retro_on else ("bold",)))
     s.map("Accent.TButton",
+          background=[("disabled", P["line"]), ("pressed", P["accent"]), ("active", P["accent_hi"])],
+          foreground=[("disabled", P["muted"])])
+    s.configure("Big.Accent.TButton", background=P["accent"], foreground="#111318", padding=(18, 9),
+                font=(ui_font[0], ui_font[1] + (0 if retro_on else 2)) + (() if retro_on else ("bold",)))
+    s.map("Big.Accent.TButton",
           background=[("disabled", P["line"]), ("pressed", P["accent"]), ("active", P["accent_hi"])],
           foreground=[("disabled", P["muted"])])
     s.configure("Pad.TButton", background=P["field"], foreground=P["text"], padding=(0, 0),
@@ -6431,7 +6436,7 @@ def run_gui(initial_zip: Optional[str] = None):
     la_open_btn.pack(side="left")
     la_file_lbl = ttk.Label(la_top, style="Muted.TLabel", text="No log open — a .vbo, Garmin .fit or CSV data log.")
     la_file_lbl.pack(side="left", padx=(12, 0))
-    la_full_btn = ttk.Button(la_top, text="Open full analysis window")
+    la_full_btn = ttk.Button(la_top, text="▶  Open full analysis window", style="Big.Accent.TButton")
     la_full_btn.pack(side="right")
     la_units = tk.StringVar(value=cfg.get("la_units", "Imperial (mph, ft)"))
     la_units_cb = ttk.Combobox(la_top, textvariable=la_units, state="readonly", width=16,
@@ -6601,20 +6606,83 @@ def run_gui(initial_zip: Optional[str] = None):
                 w.writerows(rows)
         log(f"Lap Analysis: {len(rows)} corner(s) → {dest}")
 
-    def la_open_full():
+    LA_LOG = LOG_DIR / "lap_analysis.log"
+    la_proc = {"p": None}
+
+    def la_open_full(safe_gl: bool = False):
         ok, why = la_full_available()
         if not ok:
             messagebox.showerror(APP_NAME, f"The full analysis window needs PySide6 and pyqtgraph ({why}).\n\n"
                                            "pip install PySide6 pyqtgraph   (they're in requirements.txt and bundled in the builds)", parent=root)
             return
+        if la_proc["p"] is not None and la_proc["p"].poll() is None and not safe_gl:
+            log("Lap Analysis: the full analysis window is already starting/open.")
+            return
         cmd = [sys.executable] + ([] if getattr(sys, "frozen", False) else [os.path.abspath(__file__)]) + ["--lap-analysis"]
         if la["path"]:
             cmd.append(la["path"])
-        subprocess.Popen(cmd)
-        log("Lap Analysis: full analysis window opening" + (f" with {os.path.basename(la['path'])}" if la["path"] else "") + " …")
+        env = dict(os.environ)
+        # A one-file build must start a fresh, independent copy of itself: without this the child reuses this
+        # process's unpacked temp folder, which is deleted when GARW Genie closes (PyInstaller >= 6.9).
+        env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+        if safe_gl:
+            env["QT_OPENGL"] = "software"            # Qt's bundled software renderer (Windows) — no GPU driver needed
+            env["LAPANALYSIS_SAFE_GL"] = "1"
+        try:
+            LA_LOG.parent.mkdir(parents=True, exist_ok=True)
+            out = open(LA_LOG, "w", encoding="utf-8", errors="replace")
+            out.write(f"{datetime.now():%Y-%m-%d %H:%M:%S}  launching: {cmd}{'  (software OpenGL)' if safe_gl else ''}\n")
+            out.flush()
+            p = subprocess.Popen(cmd, env=env, stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+        except Exception as e:
+            messagebox.showerror(APP_NAME, f"Couldn't start the full analysis window:\n{e}", parent=root)
+            return
+        la_proc["p"] = p
+        la_full_btn.configure(state="disabled", text="Opening…")
+        la_status.configure(text="Opening the full analysis window — the first launch can take up to a minute.")
+        log("Lap Analysis: full analysis window opening" + (f" with {os.path.basename(la['path'])}" if la["path"] else "")
+            + (" (software graphics)" if safe_gl else "") + " …")
+
+        def watch():
+            t0 = time.time()
+            ready = False
+            while time.time() - t0 < 180:
+                rc = p.poll()
+                try:
+                    txt = LA_LOG.read_text(encoding="utf-8", errors="replace")
+                except OSError:
+                    txt = ""
+                if "LAPANALYSIS_READY" in txt:
+                    ready = True
+                    break
+                if rc is not None:
+                    break
+                time.sleep(0.5)
+            ui(la_full_btn.configure, {"state": "normal", "text": "▶  Open full analysis window"})
+            if ready:
+                ui(la_status.configure, {"text": "Full analysis window open."})
+                log("Lap Analysis: full analysis window is open.")
+                return
+            rc = p.poll()
+            if rc is None:          # still starting after 3 minutes — leave it, just stop waiting
+                ui(la_status.configure, {"text": "Still starting… (see Logs → lap_analysis.log)"})
+                return
+            tail = "\n".join([ln for ln in txt.splitlines() if ln.strip()][-12:])
+            log(f"Lap Analysis: the full analysis window exited (code {rc}). Last output:\n{tail}")
+            if not safe_gl:
+                log("Lap Analysis: retrying with software graphics …")
+                ui(la_open_full, True)
+                return
+
+            def fail():
+                la_status.configure(text="The full analysis window couldn't start — details in the log.")
+                messagebox.showerror(APP_NAME, "The full analysis window couldn't start, even in software graphics mode.\n\n"
+                                               f"Last output (also in {LA_LOG}):\n\n{tail[-1500:] or '(nothing)'}", parent=root)
+            ui(fail)
+        threading.Thread(target=watch, daemon=True).start()
 
     la_open_btn.configure(command=la_open)
-    la_full_btn.configure(command=la_open_full)
+    la_full_btn.configure(command=lambda: la_open_full(False))
     la_html_btn.configure(command=la_export_html)
     la_csv_btn.configure(command=la_export_csv)
     la_tree.bind("<<TreeviewSelect>>", la_analyse)
@@ -6840,12 +6908,55 @@ def run_cli(args) -> int:
     return 0
 
 
+def run_lap_analysis(path: Optional[str]) -> int:
+    """The full analysis window (Qt), in its own process. A windowed build has no console, so everything —
+    Python tracebacks and native crashes — goes to the parent's lap_analysis.log, and an error is also shown."""
+    import faulthandler
+    import traceback
+    log_path = LOG_DIR / "lap_analysis.log"
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        fh = open(log_path, "a", encoding="utf-8", errors="replace", buffering=1)
+        if sys.stdout is None or getattr(sys, "frozen", False):
+            sys.stdout = fh
+        if sys.stderr is None or getattr(sys, "frozen", False):
+            sys.stderr = fh
+        faulthandler.enable(fh)                      # segfaults in Qt/OpenGL leave a trace too
+    except OSError:
+        fh = None
+    try:
+        from PySide6 import QtCore, QtWidgets
+        if os.environ.get("LAPANALYSIS_SAFE_GL"):     # must be set before the QApplication exists
+            QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_UseSoftwareOpenGL)
+        qapp = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
+        from lapanalysis.ui import app as la_app
+        # Fires once the event loop runs, i.e. after the window has been built and shown — the tab then
+        # leaves its "Opening…" state.
+        QtCore.QTimer.singleShot(0, lambda: print("LAPANALYSIS_READY", flush=True))
+        return la_app.launch(path)
+    except BaseException as e:
+        if isinstance(e, SystemExit):
+            raise
+        tb = traceback.format_exc()
+        print(tb, flush=True)
+        try:
+            import tkinter as _tk
+            from tkinter import messagebox as _mb
+            r = _tk.Tk()
+            r.withdraw()
+            _mb.showerror("Lap Analysis", f"The full analysis window couldn't start:\n\n{type(e).__name__}: {e}\n\n"
+                                         f"Full details: {log_path}", parent=r)
+            r.destroy()
+        except Exception:
+            pass
+        return 1
+
+
 def main(argv=None):
     a = list(sys.argv[1:] if argv is None else argv)
     if "--lap-analysis" in a:                       # second process started by the Lap Analysis tab
         rest = a[a.index("--lap-analysis") + 1:]
-        from lapanalysis.ui.app import launch
-        return launch(rest[0] if rest and not rest[0].startswith("-") else None)
+        return run_lap_analysis(rest[0] if rest and not rest[0].startswith("-") else None)
     import argparse
     ap = argparse.ArgumentParser(prog="garw_genie", description=f"{APP_NAME} v{APP_VERSION}")
     ap.add_argument("zip", nargs="?", help="dash .zip to upload (optional; pre-fills the GUI)")
