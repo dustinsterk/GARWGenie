@@ -89,7 +89,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.10.1"
+APP_VERSION = "5.10.2"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -6616,8 +6616,15 @@ def run_gui(initial_zip: Optional[str] = None):
                                            "pip install PySide6 pyqtgraph   (they're in requirements.txt and bundled in the builds)", parent=root)
             return
         if la_proc["p"] is not None and la_proc["p"].poll() is None and not safe_gl:
-            log("Lap Analysis: the full analysis window is already starting/open.")
-            return
+            if not messagebox.askyesno(APP_NAME, "The full analysis window is already running.\n\n"
+                                                 "If you can't see it, close that one and open a fresh window?", parent=root):
+                return
+            try:
+                la_proc["p"].kill()
+                la_proc["p"].wait(timeout=5)
+            except Exception:
+                pass
+            log("Lap Analysis: closed the previous full analysis window.")
         cmd = [sys.executable] + ([] if getattr(sys, "frozen", False) else [os.path.abspath(__file__)]) + ["--lap-analysis"]
         if la["path"]:
             cmd.append(la["path"])
@@ -6633,7 +6640,16 @@ def run_gui(initial_zip: Optional[str] = None):
             out = open(LA_LOG, "w", encoding="utf-8", errors="replace")
             out.write(f"{datetime.now():%Y-%m-%d %H:%M:%S}  launching: {cmd}{'  (software OpenGL)' if safe_gl else ''}\n")
             out.flush()
-            p = subprocess.Popen(cmd, env=env, stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+            extra = {}
+            if platform.system() == "Windows":
+                # The app-wide wrapper that hides console windows also sets STARTF_USESHOWWINDOW + SW_HIDE, and
+                # Windows applies that to a GUI program's FIRST window: the Qt window then exists but stays
+                # invisible. Pass our own STARTUPINFO (the wrapper leaves it alone) asking for a normal window.
+                si = subprocess.STARTUPINFO()
+                si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                si.wShowWindow = 1                   # SW_SHOWNORMAL
+                extra["startupinfo"] = si
+            p = subprocess.Popen(cmd, env=env, stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, **extra)
         except Exception as e:
             messagebox.showerror(APP_NAME, f"Couldn't start the full analysis window:\n{e}", parent=root)
             return
@@ -6932,7 +6948,26 @@ def run_lap_analysis(path: Optional[str]) -> int:
         from lapanalysis.ui import app as la_app
         # Fires once the event loop runs, i.e. after the window has been built and shown — the tab then
         # leaves its "Opening…" state.
-        QtCore.QTimer.singleShot(0, lambda: print("LAPANALYSIS_READY", flush=True))
+        def report():
+            shown = [w for w in QtWidgets.QApplication.topLevelWidgets() if w.isVisible() and w.windowTitle()]
+            if shown and platform.system() == "Windows":
+                # Qt can think a window is shown while Windows keeps it hidden (an inherited SW_HIDE start-up
+                # flag). Ask the OS, and force it on screen if needed.
+                import ctypes
+                hwnd = int(shown[0].winId())
+                if not ctypes.windll.user32.IsWindowVisible(hwnd):
+                    print("window hidden by Windows — forcing it visible", flush=True)
+                    ctypes.windll.user32.ShowWindow(hwnd, 1)          # SW_SHOWNORMAL
+                    ctypes.windll.user32.SetForegroundWindow(hwnd)
+                    QtCore.QTimer.singleShot(300, report)
+                    return
+            if shown:
+                g = shown[0].frameGeometry()
+                print(f"LAPANALYSIS_READY  window {g.width()}x{g.height()} at {g.x()},{g.y()}", flush=True)
+            else:
+                print("no visible window yet — retrying", flush=True)
+                QtCore.QTimer.singleShot(500, report)
+        QtCore.QTimer.singleShot(0, report)
         return la_app.launch(path)
     except BaseException as e:
         if isinstance(e, SystemExit):
