@@ -937,10 +937,16 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             sync = VideoSync.from_vbo(self.session.vbo)
             found = find_video(path, self.session.vbo) if path else None
+            if found and not sync.exact:
+                # a GoPro clip carries GPS with UTC in its own metadata (or its .LRV does): exact sync
+                gps = VideoSync.from_gopro(found, self.session.vbo)
+                if gps is not None:
+                    sync = gps
         except Exception:                                # noqa: BLE001
             traceback.print_exc()
             return
         first = self.session.vbo.channels.get("t")
+        self.video_panel.vbo = self.session.vbo
         self.video_panel.load(found, sync,
                               float(first[0]) if first is not None and len(first)
                               else None)
@@ -951,7 +957,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.video_toggle.setChecked(has)
         if has and sync.exact:
             self.statusBar().showMessage(
-                f"linked video: {os.path.basename(found)}", 6000)
+                f"linked video: {os.path.basename(found)}"
+                + (f" — {sync.gps_note}" if sync.gps_note else ""), 8000)
 
     def _populate_channels(self) -> None:
         """List every extra channel this file actually carries."""

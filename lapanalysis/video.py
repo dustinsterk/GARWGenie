@@ -126,6 +126,9 @@ class VideoSync:
     _ms: Optional[np.ndarray] = None
     _index: Optional[np.ndarray] = None
     duration_ms: Optional[float] = None
+    #: set when the offset came from GoPro GPS telemetry (gopro.py): what synced it, and the synced offset
+    gps_note: str = ""
+    gps_offset: Optional[float] = None
 
     # ---- construction -----------------------------------------------------
     @classmethod
@@ -161,10 +164,24 @@ class VideoSync:
     def manual(cls, video_start_session_time: float) -> "VideoSync":
         return cls(kind="offset", offset_s=float(video_start_session_time))
 
+    @classmethod
+    def from_gopro(cls, video_path: str, vbo: VboFile) -> Optional["VideoSync"]:
+        """Exact sync from GoPro GPS telemetry — the clip's own metadata track, or (if that was stripped)
+        a same-name / GoPro GL….LRV proxy — matched to the log by UTC and speed. None if there is no
+        usable GPS or it doesn't overlap the log."""
+        t, v = vbo.channels.get("t"), vbo.channels.get("speed")
+        if t is None or v is None:
+            return None
+        from .gopro import sync_video
+        r = sync_video(video_path, t, v)
+        if r is None:
+            return None
+        return cls(kind="offset", offset_s=r.offset_s, gps_note=r.describe(), gps_offset=r.offset_s)
+
     # ---- queries ----------------------------------------------------------
     @property
     def exact(self) -> bool:
-        return self.kind == "embedded"
+        return self.kind == "embedded" or bool(self.gps_note)
 
     def file_index(self, session_t: float) -> int:
         if self.kind != "embedded" or self._index is None:
@@ -246,7 +263,7 @@ class VideoSync:
         absolute `offset_s` instead would show a five-figure time-of-day
         number that never appears to change.
         """
-        if self.kind == "embedded":
+        if self.kind == "embedded" or self.gps_note:
             return self.describe()
         if session_start is None:
             return self.describe()
@@ -259,6 +276,9 @@ class VideoSync:
         return f"video shifted {shift:.1f}s earlier"
 
     def describe(self) -> str:
+        if self.gps_note:
+            moved = (self.gps_offset or 0.0) - self.offset_s
+            return self.gps_note + (f", nudged {moved:+.2f}s" if abs(moved) >= 0.005 else "")
         if self.kind == "embedded":
             span = (self._ms[-1] - self._ms[0]) / 1000.0
             return f"embedded sync ({span:.0f}s of video)"

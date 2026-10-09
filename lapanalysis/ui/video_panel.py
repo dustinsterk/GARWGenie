@@ -417,6 +417,14 @@ class VideoPanel(QtWidgets.QWidget):
         # current lap instead would push every earlier lap to negative video
         # time, where it reads as "the video does not reach this part".
         sync = VideoSync.manual(self._session_start or 0.0)
+        vbo = getattr(self, "vbo", None)
+        if vbo is not None:
+            try:
+                gps = VideoSync.from_gopro(path, vbo)   # GoPro clip / .LRV: exact sync from its GPS
+            except Exception:                            # noqa: BLE001
+                gps = None
+            if gps is not None:
+                sync = gps
         self.load(path, sync, self._session_start)
 
     def _on_error(self, *args) -> None:                 # pragma: no cover
