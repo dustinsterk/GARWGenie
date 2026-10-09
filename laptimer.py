@@ -324,6 +324,27 @@ NOMINATIM_URL = "https://nominatim.openstreetmap.org/reverse"
 _geocode_cache: dict = {}
 
 
+def parse_admin_tracks(data: bytes):
+    """Tracks.txt for admin editing: the full library in the legacy record-separated format (TrackDB,
+    byte-identical round trip) — or, if it's a plain newline file, the UserTracks format."""
+    text = data.decode("utf-8", "replace")
+    if RS in text or text.lstrip().startswith("#LAPTIMER_TRACKS"):
+        return TrackDB.parse(data)
+    return UserTrackDB.parse(data)
+
+
+def tracklist_text(db) -> str:
+    """TrackList.txt (the stripped list GARW Genie ships) generated from a full track database:
+    name|region|cc|country|ctrLat,ctrLon, centres to 2 decimals, in the database's own order."""
+    lines = [f"# LapTimer track list ({len(db.tracks)} tracks): name|region|cc|country|ctrLat,ctrLon",
+             "# Centres are approximate (2 decimals). To add or change a track, use UserTracks.txt."]
+    for t in db.tracks:
+        c = t.centre or t.auto_centre()
+        lines.append(f"{t.name}|{t.region}|{t.cc}|{t.country}|{c[0]:.2f},{c[1]:.2f}" if c else
+                     f"{t.name}|{t.region}|{t.cc}|{t.country}|")
+    return "\n".join(lines) + "\n"
+
+
 def reverse_geocode(lat: float, lng: float, user_agent: str = "GARW-Genie track editor") -> dict:
     """Region / country for a point, via OpenStreetMap's Nominatim (free; ~1 request/s, identify
     yourself — hence the User-Agent). -> {region, cc, country, place} with '' where unknown."""
@@ -584,7 +605,9 @@ class EditorServer:
     """Serves the Leaflet editor on 127.0.0.1 and relays saves back into the TrackDB."""
 
     def __init__(self, db_getter: Callable[[], object], on_save: Callable[[int, Track], int],
-                 static_dirs: Optional[List[str]] = None, library: Optional[TrackLibrary] = None) -> None:
+                 static_dirs: Optional[List[str]] = None, library: Optional[TrackLibrary] = None,
+                 admin: bool = False) -> None:
+        self.admin = admin          # editing the full library (Tracks.txt) rather than the user's UserTracks.txt
         self.db_getter = db_getter
         self.on_save = on_save
         self.library = library
@@ -615,7 +638,14 @@ class EditorServer:
                 u = urlparse(self.path)
                 qs = parse_qs(u.query)
                 if u.path == "/":
-                    body = EDITOR_HTML.encode()
+                    html = EDITOR_HTML
+                    if server.admin:
+                        html = (html.replace("Saving writes to your local UserTracks.txt in GARW Genie; upload it to the device from the Lap Timer tab.",
+                                             "ADMIN — saving writes to the GARW library file Tracks.txt; regenerate TrackList.txt from the Lap Timer tab.")
+                                    .replace("to the local UserTracks.txt (${j.count} custom tracks)", "to Tracks.txt (${j.count} tracks)")
+                                    .replace("custom track${j.count === 1 ? \"\" : \"s\"} in UserTracks.txt", "track${j.count === 1 ? \"\" : \"s\"} in Tracks.txt")
+                                    .replace("<title>", "<title>[ADMIN] "))
+                    body = html.encode()
                     self.send_response(200)
                     self.send_header("Content-Type", "text/html; charset=utf-8")
                     self.send_header("Content-Length", str(len(body)))

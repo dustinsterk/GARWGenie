@@ -89,7 +89,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.10.2"
+APP_VERSION = "5.11.0"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -5747,7 +5747,9 @@ def run_gui(initial_zip: Optional[str] = None):
     # ---------- Tab: Lap Timer (RaceBox MAC + track database editor) ----------
     LOCAL_USER_TRACKS = CONFIG_DIR / "UserTracks.txt"
     lap = {"db": _lt.UserTrackDB() if _lt else None, "lib": _lt.TrackLibrary() if _lt else None,
-           "path": str(LOCAL_USER_TRACKS), "server": None, "present": None}
+           "path": str(LOCAL_USER_TRACKS), "server": None, "present": None,
+           # admin track editing: a Tracks.txt (full library) next to TrackList.txt takes over the library rows
+           "admin": None, "admin_path": None, "admin_server": None, "admin_backed_up": False}
 
     # -- RaceBox --
     mac_box = ttk.LabelFrame(tab_lap, text="  RaceBox  ", padding=(10, 2, 10, 6))
@@ -6162,6 +6164,7 @@ def run_gui(initial_zip: Optional[str] = None):
     trk_saveas_btn.pack(side="right")
     trk_open_btn = ttk.Button(trow0, text="Open file…")
     trk_open_btn.pack(side="right", padx=(0, 6))
+    trk_regen_btn = ttk.Button(trow0, text="Regenerate TrackList.txt", style="Accent.TButton")   # admin mode only
     trk_status = ttk.Label(trk_box, style="Muted.TLabel", text="")   # not shown: the hints live in the log and the file line
 
     # row ids: "u:<index>" = user track, "l:<name>" = library entry
@@ -6182,6 +6185,51 @@ def run_gui(initial_zip: Optional[str] = None):
                 log(f"GARW track library: {len(lap['lib'].entries)} tracks from {c.name}")
                 return
         log("TrackList.txt not found next to the app — the GARW library list is empty (custom tracks still work).")
+
+    def trk_load_admin():
+        """Admin track editors: a Tracks.txt (the full library) beside the app / TrackList.txt makes every
+        library track editable. Without it nothing changes."""
+        here = Path(__file__).resolve().parent
+        for d in dict.fromkeys((app_dir(), here, CONFIG_DIR)):
+            for nm in ("Tracks.txt", "tracks.txt"):
+                c = Path(d) / nm
+                if c.is_file():
+                    try:
+                        lap["admin"] = _lt.parse_admin_tracks(c.read_bytes())
+                    except Exception as e:
+                        log(f"ERROR: {c} is not a readable track file ({e}) — admin track editing is off.")
+                        return
+                    lap["admin_path"] = str(c)
+                    log(f"ADMIN track editing: {len(lap['admin'].tracks)} library tracks from {c} — edits save to that file.")
+                    trk_regen_btn.pack(side="right", padx=(0, 14))
+                    return
+
+    def trk_save_admin():
+        p = Path(lap["admin_path"])
+        if not lap["admin_backed_up"]:            # one backup of the untouched file per session
+            bak = CONFIG_DIR / "tracks_backups" / f"Tracks_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+            bak.parent.mkdir(parents=True, exist_ok=True)
+            bak.write_bytes(p.read_bytes())
+            lap["admin_backed_up"] = True
+            log(f"  original Tracks.txt backed up → {bak}")
+        p.write_bytes(lap["admin"].serialize())
+
+    def do_trk_regen():
+        adb = lap["admin"]
+        if not adb:
+            return
+        dest = Path(lap["admin_path"]).parent / "TrackList.txt"
+        if not messagebox.askyesno("Regenerate TrackList.txt?", f"Write a fresh TrackList.txt with all {len(adb.tracks)} tracks from Tracks.txt to\n{dest}?"
+                                   + ("\n\nThe existing one there is backed up first." if dest.exists() else "")
+                                   + "\n\n(Ship it with the app by replacing the TrackList.txt in the project before building.)", parent=root):
+            return
+        if dest.exists():
+            bak = CONFIG_DIR / "tracks_backups" / f"TrackList_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+            bak.parent.mkdir(parents=True, exist_ok=True)
+            bak.write_bytes(dest.read_bytes())
+        dest.write_text(_lt.tracklist_text(adb), encoding="utf-8", newline="\n")
+        log(f"TrackList.txt regenerated: {len(adb.tracks)} tracks → {dest}")
+        messagebox.showinfo(APP_NAME, f"TrackList.txt written ({len(adb.tracks)} tracks):\n{dest}", parent=root)
 
     def trk_load_local(path: Optional[str] = None):
         if not _lt:
@@ -6207,13 +6255,23 @@ def run_gui(initial_zip: Optional[str] = None):
             return
         q = trk_q.get().strip().lower()
         user_names = {t.name for t in db.tracks}
+        adb = lap["admin"]
+        lib_names = {t.name for t in adb.tracks} if adb else (set(lib.by_name) if lib else set())
         rows = []
+
+        def kind_of(t):
+            return ("Point-to-point" + (f" {t.start_hdg}°" if t.start_hdg is not None else "")) if t.point_to_point else "Circuit"
+        if adb and trk_show_lib.get():
+            for i, t in enumerate(adb.tracks):
+                rows.append((f"a:{i}", t.country, t.name, (t.name, "GARW library (Tracks.txt)", kind_of(t), t.region,
+                                                           f"{t.country} ({t.cc})" if t.cc else t.country, _lt.fmt_pt(t.sf),
+                                                           len(t.sectors), t.radius), "admin"))
         for i, t in enumerate(db.tracks):
-            kind = ("Point-to-point" + (f" {t.start_hdg}°" if t.start_hdg is not None else "")) if t.point_to_point else "Circuit"
-            src = "Custom (replaces library)" if lib and t.name in lib.by_name else "Custom"
+            kind = kind_of(t)
+            src = "Custom (replaces library)" if t.name in lib_names else "Custom"
             rows.append((f"u:{i}", t.country, t.name, (t.name, src, kind, t.region, f"{t.country} ({t.cc})" if t.cc else t.country,
                                                        _lt.fmt_pt(t.sf), len(t.sectors), t.radius), "user"))
-        if lib and trk_show_lib.get():
+        if lib and trk_show_lib.get() and not adb:
             for e in lib.entries:
                 if e.name in user_names:
                     continue   # the custom one replaces it on the device
@@ -6225,9 +6283,14 @@ def run_gui(initial_zip: Optional[str] = None):
             trk_tree.insert("", "end", iid=iid, values=vals, tags=(tag,))
         trk_tree.tag_configure("user", foreground=P["ok"])
         trk_tree.tag_configure("lib", foreground=P["muted"])
+        trk_tree.tag_configure("admin", foreground=P["accent"])
         n_lib = len(lib.entries) if lib else 0
         shown = lap["path"].replace(str(Path.home()), "~")
-        trk_file_lbl.configure(text=f"{len(db.tracks)} custom track(s) in {shown}   ·   {n_lib} in the GARW library")
+        if adb:
+            trk_file_lbl.configure(text=f"ADMIN · {len(adb.tracks)} library tracks in {lap['admin_path'].replace(str(Path.home()), '~')}"
+                                        f"   ·   {len(db.tracks)} custom")
+        else:
+            trk_file_lbl.configure(text=f"{len(db.tracks)} custom track(s) in {shown}   ·   {n_lib} in the GARW library")
         if db.tracks:
             trk_status.configure(text=f"Custom tracks (green) save to {shown} as you edit; nothing reaches the device until 'Upload UserTracks.txt to device'. "
                                       "A custom track named like a library track replaces it. The map editor opens in your browser (needs internet).")
@@ -6261,13 +6324,37 @@ def run_gui(initial_zip: Optional[str] = None):
             lap["server"] = _lt.EditorServer(lambda: lap["db"], on_save, library=lap["lib"])
         return lap["server"]
 
+    def editor_admin() -> "_lt.EditorServer":
+        if lap["admin_server"] is None:
+            def on_save(index: int, t: "_lt.Track") -> int:
+                adb = lap["admin"]
+                dup = adb.find(t.name)
+                if index < 0:
+                    if dup is not None:
+                        raise ValueError(f"Tracks.txt already has a track called '{t.name}'")
+                    adb.tracks.append(t)
+                    index = len(adb.tracks) - 1
+                else:
+                    if dup is not None and dup != index:
+                        raise ValueError(f"another track in Tracks.txt is already called '{t.name}'")
+                    adb.tracks[index] = t
+                trk_save_admin()
+                log(f"ADMIN: library track saved to Tracks.txt: {t.name}  (start {_lt.fmt_pt(t.sf)}, {len(t.sectors)} sectors"
+                    + (", point-to-point" if t.point_to_point else "") + ")")
+                ui(fill_trk_tree)
+                return index
+            lap["admin_server"] = _lt.EditorServer(lambda: lap["admin"], on_save, admin=True)
+        return lap["admin_server"]
+
     def do_trk_edit():
         sel = trk_selected()
         if len(sel) != 1:
             messagebox.showinfo(APP_NAME, "Select one track to edit.", parent=root)
             return
         iid = sel[0]
-        if iid.startswith("u:"):
+        if iid.startswith("a:"):
+            url = editor_admin().open(int(iid[2:]))
+        elif iid.startswith("u:"):
             url = editor().open(int(iid[2:]))
         else:
             name = iid[2:]
@@ -6280,11 +6367,35 @@ def run_gui(initial_zip: Optional[str] = None):
         trk_status.configure(text=f"Editor open in your browser ({url}). Save there; the list here updates by itself.")
 
     def do_trk_new():
+        if lap["admin"]:
+            ans = messagebox.askyesnocancel(APP_NAME, "Add the new track to the GARW library (Tracks.txt)?\n\n"
+                                                      "Yes — Tracks.txt (admin)\nNo — your own UserTracks.txt", parent=root)
+            if ans is None:
+                return
+            url = (editor_admin() if ans else editor()).open(-1)
+            log(f"Track editor opened in your browser: {url}")
+            return
         url = editor().open(-1)
         log(f"Track editor opened in your browser: {url}")
 
     def do_trk_dup():
         sel = trk_selected()
+        if len(sel) == 1 and sel[0].startswith("a:"):
+            adb = lap["admin"]
+            src = adb.tracks[int(sel[0][2:])]
+            name = ask_string(root, tk, ttk, "Duplicate library track", "Name for the copy (added to Tracks.txt):", src.name + " - Copy")
+            if not name:
+                return
+            if adb.find(name) is not None:
+                messagebox.showerror(APP_NAME, f"Tracks.txt already has a track called '{name}'.", parent=root)
+                return
+            t = _lt.Track.from_line(src.to_line())
+            t.name = name
+            adb.tracks.append(t)
+            trk_save_admin()
+            fill_trk_tree()
+            log(f"ADMIN: library track duplicated: {src.name} → {name}")
+            return
         if len(sel) != 1 or not sel[0].startswith("u:"):
             messagebox.showinfo(APP_NAME, "Select one custom track to duplicate (library tracks have no points to copy — use 'Edit on map…').", parent=root)
             return
@@ -6303,6 +6414,21 @@ def run_gui(initial_zip: Optional[str] = None):
         log(f"Track duplicated: {src.name} → {name}")
 
     def do_trk_del():
+        aidx = sorted((int(i[2:]) for i in trk_selected() if i.startswith("a:")), reverse=True)
+        if aidx:
+            adb = lap["admin"]
+            names = [adb.tracks[i].name for i in aidx]
+            if not messagebox.askyesno("Delete library tracks?", f"ADMIN: remove {len(names)} track(s) from the GARW library file Tracks.txt?\n\n  "
+                                       + "\n  ".join(names[:15]) + ("\n  …" if len(names) > 15 else "")
+                                       + "\n\n(The original file is backed up before the first change.)", icon="warning", parent=root):
+                return
+            for i in aidx:
+                del adb.tracks[i]
+            trk_save_admin()
+            fill_trk_tree()
+            log(f"ADMIN: deleted {len(names)} library track(s) from Tracks.txt: " + ", ".join(names))
+            if not any(i.startswith("u:") for i in trk_selected()):
+                return
         idx = sorted((int(i[2:]) for i in trk_selected() if i.startswith("u:")), reverse=True)
         if not idx:
             messagebox.showinfo(APP_NAME, "Select the custom track(s) to delete. Library tracks can't be deleted — they're built into the dash.", parent=root)
@@ -6325,7 +6451,10 @@ def run_gui(initial_zip: Optional[str] = None):
         if len(sel) != 1:
             return
         iid = sel[0]
-        if iid.startswith("u:"):
+        if iid.startswith("a:"):
+            t = lap["admin"].tracks[int(iid[2:])]
+            p = t.sf or t.centre
+        elif iid.startswith("u:"):
             t = lap["db"].tracks[int(iid[2:])]
             p = t.sf or t.centre
         else:
@@ -6407,6 +6536,7 @@ def run_gui(initial_zip: Optional[str] = None):
         start(worker)
 
     trk_new_btn.configure(command=do_trk_new)
+    trk_regen_btn.configure(command=do_trk_regen)
     trk_edit_btn.configure(command=do_trk_edit)
     trk_dup_btn.configure(command=do_trk_dup)
     trk_del_btn.configure(command=do_trk_del)
@@ -6418,6 +6548,7 @@ def run_gui(initial_zip: Optional[str] = None):
     trk_tree.bind("<Double-1>", lambda e: do_trk_edit())
     if _lt:
         trk_load_library()
+        trk_load_admin()
         trk_load_local()
     else:
         trk_status.configure(text="laptimer.py is missing next to garw_genie.py — the Lap Timer tab is unavailable.")
