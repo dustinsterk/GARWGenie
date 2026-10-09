@@ -5,10 +5,9 @@ name: Build GARW Genie
 # Release with both files attached.
 
 on:
-  push:
-    branches: [main]
-    tags: ["v*"]
   workflow_dispatch:
+  push:
+    tags: ["v*"]
 
 jobs:
   windows:
