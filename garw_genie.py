@@ -89,7 +89,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.12.2"
+APP_VERSION = "5.12.3"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -6051,10 +6051,11 @@ def run_gui(initial_zip: Optional[str] = None):
             with IC7Device(log, confirm) as dev:
                 dev.require_laptimer()
                 data = dev.read_text_file(_lt.RACEBOX_MAC_FILE)
-            if data is None:
-                ui(mac_info.configure, {"text": "On device: — no file (dash uses its built-in default MAC)"})
-                log(f"{_lt.RACEBOX_MAC_FILE} is not on the device — the dash uses the default from LapTimer.qml.")
-                return
+                if data is None:
+                    # Not there yet: create it with the default ('off') so the device always has one.
+                    log(f"{_lt.RACEBOX_MAC_FILE} is not on the device — creating it with the default 'off'.")
+                    data = _lt.racebox_render("off", None)
+                    dev.write_text_file(_lt.RACEBOX_MAC_FILE, data, "RaceBox setting")
             value, status = _lt.racebox_parse(data)
 
             def show():
@@ -6531,8 +6532,12 @@ def run_gui(initial_zip: Optional[str] = None):
             with IC7Device(log, confirm) as dev:
                 dev.require_laptimer()
                 data = dev.read_text_file(_lt.USER_TRACKS_FILE)
-            if data is None:
-                raise RuntimeError(f"{_lt.USER_TRACKS_FILE} is not on the device yet — there are no custom tracks to download.")
+                if data is None:
+                    # Not there yet: create an empty one (standard header, no tracks). Local tracks stay as they are.
+                    dev.write_text_file(_lt.USER_TRACKS_FILE, _lt.UserTrackDB().serialize(), "UserTracks.txt")
+                    log(f"{_lt.USER_TRACKS_FILE} wasn't on the device — created an empty one. Your local custom tracks "
+                        "are unchanged; 'Upload UserTracks.txt to device' sends them.")
+                    return
             db = _lt.UserTrackDB.parse(data)
             if lap["db"].tracks and not confirm("Replace local custom tracks?", f"The device has {len(db.tracks)} custom track(s). Replace the "
                                                  f"{len(lap['db'].tracks)} in your local UserTracks.txt with them?"):

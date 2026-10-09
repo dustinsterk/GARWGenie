@@ -31,7 +31,7 @@ HEADER_RE = re.compile(r"^#LAPTIMER_TRACKS v(\d+)\|(\d+)$")
 MAC_RE = re.compile(r"^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$")
 MAC_ANY_RE = re.compile(r"([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}")
 RACEBOX_TEMPLATE = ("{mac}\n"
-                    "# Your RaceBox Bluetooth MAC address goes on the first line (e.g. D4:F7:FA:9E:08:97).\n"
+                    "# Your RaceBox Bluetooth MAC address goes on the first line (e.g. 12:34:56:78:9A:BC).\n"
                     "# Write \"off\" on the first line to not use a RaceBox.\n")
 
 
@@ -70,8 +70,9 @@ USER_TRACKS_TEMPLATE = """# UserTracks.txt - your own tracks, added to the LapTi
 # - keep all 11 standard fields (empty ones as ||), splits separated by ;
 # - add finLat,finLon (and startHdg) for a point-to-point course
 # - a line with the same name as a library track replaces that track
-#   (TrackList.txt lists the library's names, regions and countries)
 # - lines starting with # are ignored; plain newlines are fine
+# - tracks made on the dash (Set start/finish here) are added at the end, with
+#   the country "Custom tracks"; those can be edited from the dash menu
 # Example (remove the # to use it):
 #Test Course|KS|US|United States|39.000000,-99.000000|20|39.002000,-99.000000||||39.000000,-99.000000|39.000000,-98.999700|0
 """
