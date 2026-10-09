@@ -89,7 +89,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.12.6"
+APP_VERSION = "5.12.7"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -2264,7 +2264,9 @@ class IC7Device:
         done = 0
         try:
             sizes = {}
-            dev_rels = {i[4:] for i in rels if i.startswith("dev:")}
+            # Files from both places: keep them apart in Device/ and USB/ so it's always clear which is which.
+            # From one place only: straight into dest_dir.
+            both = {i[:3] for i in rels} == {"dev", "usb"}
             for i in rels:
                 sizes[i] = sftp.stat(f"{self.lapdata_base(i[:3])}/{i[4:]}").st_size or 0
             total = sum(sizes.values()) or 1
@@ -2272,8 +2274,7 @@ class IC7Device:
             for i in rels:
                 src, r = i[:3], i[4:]
                 remote = f"{self.lapdata_base(src)}/{r}"
-                # a USB file with the same path as an internal one goes to USB/ so neither overwrites the other
-                local = Path(dest_dir) / ("USB" if src == "usb" and r in dev_rels else "") / Path(*r.split("/"))
+                local = Path(dest_dir) / ({"dev": "Device", "usb": "USB"}[src] if both else "") / Path(*r.split("/"))
                 local.parent.mkdir(parents=True, exist_ok=True)
                 tmp = local.with_name(local.name + ".part")
                 with sftp.file(remote, "rb") as fh, open(tmp, "wb") as out:
