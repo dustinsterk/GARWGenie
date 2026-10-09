@@ -89,7 +89,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.11.0"
+APP_VERSION = "5.12.0"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -672,7 +672,7 @@ DEFAULT_CONFIG = {"repos": [], "github_token": "", "after_changes": "restart", "
                   "image_fit": "letterbox",   # Boot & Logo Screens: letterbox | crop | stretch
                   "ssh_user": USERNAME, "ssh_password": PASSWORD,   # login for the unit (editable in the header)
                   "wifi_ssid": TARGET_SSID, "wifi_password": WIFI_PASSWORD,
-                  "auto_check_minutes": 30,   # auto "Check & download" on internet only if last check is older; 0 = never
+                  "auto_check_minutes": 30,   # unused since 5.12: GitHub is checked automatically only on the first launch
                   "retro_font": False}  # 8-bit Press Start 2P UI font; toggle in the header
 
 
@@ -1335,7 +1335,7 @@ class RepoEntry:
         else:
             if offline:
                 raise GitHubError(f"{self.label} is not in the local cache and there is no internet. "
-                                  "Run 'Check & download' while online first.")
+                                  "Press 'Refresh repos' while online first.")
             path = self.download(token, log)
             sha, data = self.latest_sha, path.read_bytes()
         source = {"url": self.url, "owner": self.owner, "repo": self.repo, "branch": self.branch,
@@ -3854,12 +3854,11 @@ def run_gui(initial_zip: Optional[str] = None):
             log(f"GARW device detected at {HOST}" + (f" (Wi-Fi '{ssid}')" if ssid else "") + " — refreshing all tabs …")
             mon["pending_unit"] = True
         if (net_up or (first and net)) and repos:
-            every = float(cfg.get("auto_check_minutes", 30) or 0)
-            stale = [r for r in repos if not r.checked_within(every)] if every > 0 else []
-            if stale:
+            # Automatic GitHub check only on the very first launch (no repo has ever been checked).
+            # After that, the 'Refresh repos' button is the only thing that talks to GitHub.
+            if not any(r.last_checked for r in repos) and not mon.get("first_check_done"):
+                mon["first_check_done"] = True
                 mon["pending_net"] = True
-            elif every > 0:
-                log(f"Internet detected — repos were checked within the last {every:g} min, skipping the automatic GitHub check.")
         # run whatever is pending when the UI is free (one job at a time)
         if not state["busy"]:
             if mon["pending_unit"]:
@@ -3867,11 +3866,9 @@ def run_gui(initial_zip: Optional[str] = None):
                 auto_refresh_all()
             elif mon["pending_net"]:
                 mon["pending_net"] = False
-                every = float(cfg.get("auto_check_minutes", 30) or 0)
-                # Re-evaluate now: if the user pressed 'Check & download' while this was queued,
-                # everything is fresh and the automatic check is redundant.
-                if every > 0 and any(not r.checked_within(every) for r in repos):
-                    log("Internet detected — checking GitHub for dash updates …")
+                # Re-evaluate now: if the user pressed 'Refresh repos' while this was queued, skip it.
+                if not any(r.last_checked for r in repos):
+                    log("First launch — fetching the dashes from GitHub once. From now on use 'Refresh repos'.")
                     check_repos(auto=True)
 
     def monitor_tick():
@@ -4197,7 +4194,7 @@ def run_gui(initial_zip: Optional[str] = None):
         if png:
             set_repo_preview(png, f"{r.dash or r.label}  ·  {r.cached_sha()[:7] if r.cached_sha() else ''}")
         else:
-            set_repo_preview(None, r.label, "No preview yet — press 'Check & download updates' to fetch this dash." if not r.cached_sha()
+            set_repo_preview(None, r.label, "No preview yet — press 'Refresh repos' to fetch this dash." if not r.cached_sha()
                              else "This dash has no .qml.png preview.")
     repo_tree.bind("<<TreeviewSelect>>", on_repo_select, add="+")
 
@@ -4209,7 +4206,7 @@ def run_gui(initial_zip: Optional[str] = None):
     rm_btn.pack(side="left", padx=(6, 0))
     token_btn = ttk.Button(rrow, text="GitHub token…")
     token_btn.pack(side="right")
-    check_btn = ttk.Button(rrow, text="Check & download updates", style="Accent.TButton")
+    check_btn = ttk.Button(rrow, text="Refresh repos", style="Accent.TButton")
     check_btn.pack(side="left", padx=(18, 0))
     install_sel_btn = ttk.Button(rrow, text="Install / update selected")
     install_sel_btn.pack(side="left", padx=(6, 0))
@@ -4217,7 +4214,7 @@ def run_gui(initial_zip: Optional[str] = None):
     install_all_btn.pack(side="left", padx=(6, 0))
     _dr = next((p for p in default_repos_paths() if p.is_file()), None)
     repo_hint = ttk.Label(tab_repo, style="Muted.TLabel", wraplength=900, justify="left",
-                          text="Step 1 (on internet): 'Check & download updates' asks GitHub for each repo's latest commit "
+                          text="Step 1 (on internet): 'Refresh repos' asks GitHub for each repo's latest commit "
                                "and stores the dash in a local cache.   Step 2 (on GARW Wi-Fi, no internet): "
                                "'Install / update selected' pushes the cached dashes to the unit. "
                                "One dash per repo: <Name>.qml + <Name>.qml.png at the repo root.\n"
@@ -4290,11 +4287,11 @@ def run_gui(initial_zip: Optional[str] = None):
                 repos.append(entry)
                 ui(persist)
                 ui(fill_repo_tree)
-                log(f"No internet — {entry.label} added unchecked; it will be validated on the next 'Check & download'.")
+                log(f"No internet — {entry.label} added unchecked; it will be validated on the next 'Refresh repos'.")
                 ui(lambda: messagebox.showwarning(
                     APP_NAME, f"{entry.label} was added but could NOT be validated — there is no internet.\n\n"
                     "It will be checked (and refused if it isn't a v5 dash) the next time you press "
-                    "'Check & download updates' while online.", parent=root))
+                    "'Refresh repos' while online.", parent=root))
                 return
             log(f"Checking {entry.label} …")
             try:
@@ -4448,7 +4445,7 @@ def run_gui(initial_zip: Optional[str] = None):
                 and repo_status(r, installed).startswith(("Update", "Not installed"))]
         if not todo:
             log("Nothing to install — every downloaded repo is already up to date on the unit "
-                "(run 'Check & download updates' while online first).")
+                "(run 'Refresh repos' while online first).")
             return
         install_repos(todo)
 
@@ -4496,7 +4493,7 @@ def run_gui(initial_zip: Optional[str] = None):
         repo_menu.add_separator()
         repo_menu.add_command(label="Install / update selected", command=install_selected,
                               state="normal" if mon.get("unit") else "disabled")
-        repo_menu.add_command(label="Check & download this repo" if one else "Check & download selected",
+        repo_menu.add_command(label="Refresh this repo" if one else "Refresh selected repos",
                               command=lambda: check_repos(sel))
         repo_menu.add_separator()
         repo_menu.add_command(label="Remove from list…", command=remove_repos)
