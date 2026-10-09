@@ -89,7 +89,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.12.3"
+APP_VERSION = "5.12.6"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -2143,14 +2143,14 @@ class IC7Device:
 
     # -- delete --------------------------------------------------------------
     # -- lap timer ------------------------------------------------------------
-    def require_laptimer(self) -> None:
+    def require_laptimer(self, need_data_dir: bool = True) -> None:
         """The LapTimer dash is an optional add-on. Refuse clearly when its folder isn't on the device
         rather than creating files the (absent) dash would never read."""
         if not self._remote_exists(_lt.LAPTIMER_FILE):
             raise RuntimeError(
                 f"The LapTimer dash isn't installed on this device ({_lt.LAPTIMER_FILE} not found).\n\n"
                 "Install the LapTimer add-on first.")
-        if not self._remote_exists(_lt.LAPTIMER_DATA_DIR):
+        if need_data_dir and not self._remote_exists(_lt.LAPTIMER_DATA_DIR):
             raise RuntimeError(
                 f"The lap timer's data folder {_lt.LAPTIMER_DATA_DIR} isn't on the device yet.\n\n"
                 "The LapTimer dash creates it the first time it runs — open the LapTimer screen on the GARW once, "
@@ -2223,26 +2223,38 @@ class IC7Device:
         FILE_LOG.debug("wrote %s: %s", SCREEN_ENABLED_FILE, indices)
         self.log(f"Active screens written: {', '.join(map(str, indices))} → {SCREEN_ENABLED_FILE}")
 
+    LAPDATA_DIRS = {"dev": "LAPTIMER_DATA_DIR", "usb": "LAPTIMER_USB_DIR"}
+
+    @staticmethod
+    def lapdata_base(src: str) -> str:
+        return getattr(_lt, IC7Device.LAPDATA_DIRS[src])
+
     def list_laptimer_data(self) -> List[Tuple[str, int, float]]:
-        """[(path relative to laptimerdata, size, mtime)] for every file in the lap timer's data folder."""
-        self.require_laptimer()
+        """[(id, size, mtime)] for every lap-data file on the unit: id is 'dev:<rel>' for the internal
+        folder (/opt/IC7/laptimerdata) and 'usb:<rel>' for a USB stick in the GARW (/media/laptimerdata)."""
+        self.require_laptimer(need_data_dir=False)
         import stat as _stat
+        present = [src for src in ("dev", "usb") if self._remote_exists(self.lapdata_base(src))]
+        if not present:
+            raise RuntimeError(f"No lap data on the device: neither {_lt.LAPTIMER_DATA_DIR} nor a USB stick "
+                               f"({_lt.LAPTIMER_USB_DIR}) is there.")
         sftp = self.client.open_sftp()
         out: List[Tuple[str, int, float]] = []
 
-        def walk(remote_dir: str, rel: str):
+        def walk(src: str, remote_dir: str, rel: str):
             for a in sftp.listdir_attr(remote_dir):
                 p = f"{remote_dir}/{a.filename}"
                 r = f"{rel}/{a.filename}" if rel else a.filename
                 if _stat.S_ISDIR(a.st_mode or 0):
-                    walk(p, r)
+                    walk(src, p, r)
                 elif _stat.S_ISREG(a.st_mode or 0):
-                    out.append((r, a.st_size or 0, float(a.st_mtime or 0)))
+                    out.append((f"{src}:{r}", a.st_size or 0, float(a.st_mtime or 0)))
         try:
-            walk(_lt.LAPTIMER_DATA_DIR, "")
+            for src in present:
+                walk(src, self.lapdata_base(src), "")
         finally:
             sftp.close()
-        out.sort(key=lambda t: t[0].lower())
+        out.sort(key=lambda t: (t[0][4:].lower(), t[0][:3]))
         return out
 
     def download_laptimer_data(self, rels: List[str], dest_dir: str, delete_after: bool = False) -> int:
@@ -2252,13 +2264,16 @@ class IC7Device:
         done = 0
         try:
             sizes = {}
-            for r in rels:
-                sizes[r] = sftp.stat(f"{_lt.LAPTIMER_DATA_DIR}/{r}").st_size or 0
+            dev_rels = {i[4:] for i in rels if i.startswith("dev:")}
+            for i in rels:
+                sizes[i] = sftp.stat(f"{self.lapdata_base(i[:3])}/{i[4:]}").st_size or 0
             total = sum(sizes.values()) or 1
             got = 0
-            for r in rels:
-                remote = f"{_lt.LAPTIMER_DATA_DIR}/{r}"
-                local = Path(dest_dir) / Path(*r.split("/"))
+            for i in rels:
+                src, r = i[:3], i[4:]
+                remote = f"{self.lapdata_base(src)}/{r}"
+                # a USB file with the same path as an internal one goes to USB/ so neither overwrites the other
+                local = Path(dest_dir) / ("USB" if src == "usb" and r in dev_rels else "") / Path(*r.split("/"))
                 local.parent.mkdir(parents=True, exist_ok=True)
                 tmp = local.with_name(local.name + ".part")
                 with sftp.file(remote, "rb") as fh, open(tmp, "wb") as out:
@@ -2270,17 +2285,18 @@ class IC7Device:
                         out.write(chunk)
                         got += len(chunk)
                         self.progress(got, total)
-                if tmp.stat().st_size != sizes[r]:
+                if tmp.stat().st_size != sizes[i]:
                     tmp.unlink(missing_ok=True)
                     raise RuntimeError(f"{r}: size mismatch after download — stopped, nothing deleted on the device.")
                 os.replace(tmp, local)
-                FILE_LOG.debug("SFTP get %s (%d bytes) -> %s", remote, sizes[r], local)
+                FILE_LOG.debug("SFTP get %s (%d bytes) -> %s", remote, sizes[i], local)
                 done += 1
+                where = " [USB stick]" if src == "usb" else ""
                 if delete_after:
                     sftp.remove(remote)
-                    self.log(f"  {r}  ({sizes[r]:,} bytes) — downloaded and removed from the device")
+                    self.log(f"  {r}{where}  ({sizes[i]:,} bytes) — downloaded and removed from the device")
                 else:
-                    self.log(f"  {r}  ({sizes[r]:,} bytes)")
+                    self.log(f"  {r}{where}  ({sizes[i]:,} bytes)")
         finally:
             sftp.close()
         return done
@@ -5830,7 +5846,7 @@ def run_gui(initial_zip: Optional[str] = None):
     ttk.Label(usb_box, style="Muted.TLabel", wraplength=900, justify="left",
               text=f"Sessions log to a USB stick ({USB_FOLDER} folder, FAT32) when one is in the GARW, otherwise to {_lt.LAPTIMER_DATA_DIR if _lt else ''}. "
                    "Download copies those files here (settings/MAC files left out); Prepare erases a removable drive and sets it up for the GARW.").grid(row=0, column=0, sticky="w")
-    lapdata_btn = ttk.Button(usb_box, text="Download lap data…")
+    lapdata_btn = ttk.Button(usb_box, text="Download lap data…", style="Accent.TButton")
     lapdata_btn.grid(row=0, column=1, sticky="e", padx=(12, 0))
     usb_btn = ttk.Button(usb_box, text="Prepare USB stick…")
     usb_btn.grid(row=0, column=2, sticky="e", padx=(6, 0))
@@ -5914,7 +5930,8 @@ def run_gui(initial_zip: Optional[str] = None):
         ttk.Button(btns, text="Erase & prepare", style="Danger.TButton", command=go).pack(side="right", padx=(0, 6))
         ttk.Button(btns, text="Refresh", command=refresh).pack(side="right", padx=(0, 12))
         dlg.grab_set()
-    LAPDATA_KEEP = re.compile(r"(^racebox_mac_address\.txt$|^usertracks\.txt$|config|settings|\.cfg$|\.ini$|\.conf$|^\.)", re.I)
+    # not lap data: MAC/track/settings files, the dash's own index.* and probe.* bookkeeping files, dotfiles
+    LAPDATA_KEEP = re.compile(r"(^racebox_mac_address\.txt$|^usertracks\.txt$|^index\.|^probe\.|config|settings|\.cfg$|\.ini$|\.conf$|^\.)", re.I)
 
     def do_lapdata_download():
         """List the lap timer's data folder on the device, let the user pick, copy to a folder here."""
@@ -5928,20 +5945,20 @@ def run_gui(initial_zip: Optional[str] = None):
 
     def show_lapdata(files: List[Tuple[str, int, float]]):
         dlg = tk.Toplevel(root)
-        dlg.title(f"Lap data on the device — {_lt.LAPTIMER_DATA_DIR}")
+        dlg.title("Lap data on the GARW")
         dlg.configure(bg=P["bg"])
         dlg.transient(root)
         dlg.geometry(f"+{root.winfo_rootx() + 160}+{root.winfo_rooty() + 120}")
         frm = ttk.Frame(dlg, padding=14)
         frm.pack(fill="both", expand=True)
-        data_files = [f for f in files if not LAPDATA_KEEP.search(f[0].rsplit("/", 1)[-1])]
+        data_files = [f for f in files if not LAPDATA_KEEP.search(f[0][4:].rsplit("/", 1)[-1])]
+        on_usb = any(f[0].startswith("usb:") for f in files)
         other = [f for f in files if f not in data_files]
-        ttk.Label(frm, wraplength=640, justify="left",
-                  text=(f"{len(data_files)} session/track file(s) on the device ({sum(f[1] for f in data_files) / 1e6:.1f} MB). "
-                        f"Settings and MAC files ({len(other)}) are greyed out and unticked — tick them if you want them too. "
-                        "Click a row to tick/untick it.")).grid(row=0, column=0, columnspan=3, sticky="w")
-        tv = ttk.Treeview(frm, columns=("sel", "path", "size", "date"), show="headings", height=min(18, max(6, len(files))), selectmode="none")
-        for c, t, w, an in (("sel", "", 36, "center"), ("path", "File", 420, "w"), ("size", "Size", 90, "e"), ("date", "Modified", 150, "w")):
+        show_other = tk.BooleanVar(value=False)
+        head = ttk.Label(frm, wraplength=640, justify="left")
+        head.grid(row=0, column=0, columnspan=3, sticky="w")
+        tv = ttk.Treeview(frm, columns=("sel", "where", "path", "size", "date"), show="headings", height=min(18, max(6, len(data_files))), selectmode="none")
+        for c, t, w, an in (("sel", "", 36, "center"), ("where", "Location", 90, "w"), ("path", "File", 380, "w"), ("size", "Size", 90, "e"), ("date", "Modified", 150, "w")):
             tv.heading(c, text=t)
             tv.column(c, width=w, anchor=an, stretch=(c == "path"))
         tv.grid(row=1, column=0, columnspan=3, sticky="nsew", pady=(8, 0))
@@ -5950,18 +5967,32 @@ def run_gui(initial_zip: Optional[str] = None):
         tv.configure(yscrollcommand=sb.set)
         frm.rowconfigure(1, weight=1)
         frm.columnconfigure(0, weight=1)
-        checked: Dict[str, bool] = {}
-        for rel, size, mtime in files:
-            is_data = (rel, size, mtime) in data_files
-            checked[rel] = is_data
-            tv.insert("", "end", iid=rel, values=("☑" if is_data else "☐", rel,
-                                                   f"{size / 1024:.0f} KB" if size >= 1024 else f"{size} B",
-                                                   datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M") if mtime else ""),
-                      tags=("data",) if is_data else ("other",))
         tv.tag_configure("data", foreground=P["text"])
         tv.tag_configure("other", foreground=P["muted"])
-        if not files:
-            tv.insert("", "end", iid="none", values=("", "(the folder is empty)", "", ""))
+        checked: Dict[str, bool] = {f[0]: True for f in data_files}
+
+        def fill():
+            """Lap files only; settings/MAC/index/probe files appear (greyed, unticked) when asked for, and
+            are unticked again when hidden so a hidden file is never downloaded."""
+            tv.delete(*tv.get_children())
+            if not show_other.get():
+                for f in other:
+                    checked.pop(f[0], None)
+            shown = data_files + (other if show_other.get() else [])
+            shown.sort(key=lambda f: (f[0][4:].lower(), f[0][:3]))
+            for rel, size, mtime in shown:
+                is_data = rel in {f[0] for f in data_files}
+                checked.setdefault(rel, False)
+                tv.insert("", "end", iid=rel, values=("☑" if checked[rel] else "☐", "USB stick" if rel.startswith("usb:") else "Device", rel[4:],
+                                                       f"{size / 1024:.0f} KB" if size >= 1024 else f"{size} B",
+                                                       datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M") if mtime else ""),
+                          tags=("data",) if is_data else ("other",))
+            if not shown:
+                tv.insert("", "end", iid="none", values=("", "", "(no lap files on the device)", "", ""))
+            hidden = 0 if show_other.get() else len(other)
+            head.configure(text=f"{len(data_files)} lap file(s) ({sum(f[1] for f in data_files) / 1e6:.1f} MB)"
+                                + (" on the device and the USB stick in the GARW" if on_usb else " on the device")
+                                + (f" — {hidden} other file(s) hidden." if hidden else ".") + "  Click a row to tick/untick it.")
 
         def toggle(e):
             iid = tv.identify_row(e.y)
@@ -5971,17 +6002,18 @@ def run_gui(initial_zip: Optional[str] = None):
             tv.set(iid, "sel", "☑" if checked[iid] else "☐")
         tv.bind("<Button-1>", toggle)
 
-        def set_all(val: bool, only_data: bool = False):
-            for rel in checked:
-                if only_data and not any(f[0] == rel for f in data_files):
-                    continue
-                checked[rel] = val
-                tv.set(rel, "sel", "☑" if val else "☐")
+        def set_all(val: bool):
+            for rel in tv.get_children():
+                if rel != "none":
+                    checked[rel] = val
+                    tv.set(rel, "sel", "☑" if val else "☐")
+        fill()
         row = ttk.Frame(frm)
         row.grid(row=2, column=0, columnspan=4, sticky="ew", pady=(8, 0))
-        ttk.Button(row, text="Tick data files", command=lambda: (set_all(False), set_all(True, True))).pack(side="left")
-        ttk.Button(row, text="Tick all", command=lambda: set_all(True)).pack(side="left", padx=(6, 0))
+        ttk.Button(row, text="Tick all", command=lambda: set_all(True)).pack(side="left")
         ttk.Button(row, text="Untick all", command=lambda: set_all(False)).pack(side="left", padx=(6, 0))
+        if other:
+            ttk.Checkbutton(row, text=f"Show other files ({len(other)})", variable=show_other, command=fill).pack(side="left", padx=(18, 0))
         delete_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(row, text="Remove from device after a verified download", variable=delete_var).pack(side="left", padx=(24, 0))
 
@@ -6004,9 +6036,9 @@ def run_gui(initial_zip: Optional[str] = None):
                 if not gui_preflight():
                     raise RuntimeError(f"GARW device not reachable at {HOST}.")
                 log("=" * 60)
-                log(f"LAP DATA: {len(rels)} file(s) from {_lt.LAPTIMER_DATA_DIR} → {dest}" + ("  (removing from device)" if delete_after else ""))
+                log(f"LAP DATA: {len(rels)} file(s) from the GARW → {dest}" + ("  (removing from device)" if delete_after else ""))
                 with IC7Device(log, confirm, set_progress) as dev:
-                    dev.require_laptimer()
+                    dev.require_laptimer(need_data_dir=False)
                     n = dev.download_laptimer_data(rels, dest, delete_after)
                 log(f"Done — {n} file(s) in {dest}")
                 cfg["lapdata_dir"] = dest
