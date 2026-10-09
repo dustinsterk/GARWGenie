@@ -89,7 +89,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.12.0"
+APP_VERSION = "5.12.1"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -2102,6 +2102,35 @@ class IC7Device:
                 raise RuntimeError(f"Verification failed: {remote_dir}/{fname} missing after upload.")
         self.log(f"Uploaded {total} file(s) to {remote_dir}")
 
+    def upload_enc(self, local_path: str) -> str:
+        """Copy an encrypted add-on (Name.enc) into the library as-is: staged upload, size check, rename.
+        Refused when a dash FOLDER of the same name exists (both would claim the same screen)."""
+        fname = os.path.basename(local_path)
+        name = fname[:-4]
+        if not fname.lower().endswith(".enc") or not NAME_RE.match(name):
+            raise RuntimeError(f"'{fname}' isn't a valid add-on file name (letters, digits, '-' and '_' only, ending in .enc).")
+        remote = f"{LIBRARY_DIR}/{name}.enc"
+        rc, out, _ = self._run(f"[ -d {_sq(LIBRARY_DIR + '/' + name)} ] && echo DIR; [ -e {_sq(remote)} ] && echo FILE; true")
+        if "DIR" in out:
+            raise RuntimeError(f"There is already a dash folder called '{name}' in {LIBRARY_DIR} — '{fname}' can't be installed "
+                               f"next to it. Delete the '{name}' folder first if the add-on should replace it.")
+        if "FILE" in out and not self.confirm("Replace add-on?", f"{remote} is already on the device. Replace it?"):
+            raise UploadAborted("Install cancelled — nothing was changed on the unit.")
+        size = os.path.getsize(local_path)
+        tmp = f"{LIBRARY_DIR}/.{name}.enc.uploading"
+        self.log(f"Uploading {fname} ({size:,} bytes) → {remote}")
+        sftp = self.client.open_sftp()
+        try:
+            sftp.put(local_path, tmp, callback=lambda done, total: self.progress(done, total or 1))
+        finally:
+            sftp.close()
+        rc, out, err = self._run(f"[ \"$(wc -c < {_sq(tmp)})\" -eq {size} ] && mv -f {_sq(tmp)} {_sq(remote)} && chmod a+r {_sq(remote)} && sync && echo OK")
+        if "OK" not in out:
+            self._run(f"rm -f {_sq(tmp)}")
+            raise RuntimeError(f"Upload of {fname} failed: {err.strip() or 'size mismatch'}")
+        self.log(f"Installed {remote}")
+        return name
+
     def upload_all(self, pkgs: List[DashPackage]):
         self.confirm_replacements(pkgs)
         grand_total = sum(len(p.files) for p in pkgs)
@@ -4088,6 +4117,8 @@ def run_gui(initial_zip: Optional[str] = None):
         path = (path or "").strip().strip('"')
         if not path or not os.path.isfile(path):
             return
+        if path.lower().endswith(".enc"):
+            return install_enc(path)
         try:
             pkgs = validate_zip(path)
         except ValidationError as e:
@@ -4111,6 +4142,29 @@ def run_gui(initial_zip: Optional[str] = None):
             log("Install cancelled.")
             return
         start(lambda: install_packages(pkgs, os.path.basename(path)))
+
+    def install_enc(path: str):
+        """An encrypted add-on dash: uploaded unchanged into the library (not unzipped, not validated)."""
+        fname = os.path.basename(path)
+        if not messagebox.askyesno("Install add-on?", f"Copy {fname} ({os.path.getsize(path):,} bytes) into {LIBRARY_DIR}/ on the device?",
+                                   parent=root):
+            log("Install cancelled.")
+            return
+
+        def worker():
+            log("=" * 60)
+            log(f"Installing add-on {fname}")
+            if not gui_preflight():
+                raise RuntimeError(f"GARW device not reachable at {HOST}. Join Wi-Fi '{TARGET_SSID}' first.")
+            with IC7Device(log, confirm, set_progress) as dev:
+                dev.check_version()
+                name = dev.upload_enc(path)
+                refresh_installed(dev)
+                apply_after(dev)
+            log("Done.")
+            tail = {"restart": "\n\nThe GARW binary was restarted.", "reboot": "\n\nThe unit is rebooting.", "none": ""}[after_mode()]
+            ui(lambda: messagebox.showinfo(APP_NAME, f"Installed to {LIBRARY_DIR}/:\n  {name}.enc" + tail, parent=root))
+        start(worker)
 
     def do_install_zip():
         path = filedialog.askopenfilename(title="Select dash .zip", filetypes=[("Zip files", "*.zip"), ("All files", "*.*")], parent=root)
