@@ -89,7 +89,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.12.1"
+APP_VERSION = "5.12.2"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -5800,7 +5800,7 @@ def run_gui(initial_zip: Optional[str] = None):
     lap = {"db": _lt.UserTrackDB() if _lt else None, "lib": _lt.TrackLibrary() if _lt else None,
            "path": str(LOCAL_USER_TRACKS), "server": None, "present": None,
            # admin track editing: a Tracks.txt (full library) next to TrackList.txt takes over the library rows
-           "admin": None, "admin_path": None, "admin_server": None, "admin_backed_up": False}
+           "admin": None, "admin_path": None, "admin_server": None, "admin_backed_up": False, "tl_backed_up": False}
 
     # -- RaceBox --
     mac_box = ttk.LabelFrame(tab_lap, text="  RaceBox  ", padding=(10, 2, 10, 6))
@@ -6215,7 +6215,6 @@ def run_gui(initial_zip: Optional[str] = None):
     trk_saveas_btn.pack(side="right")
     trk_open_btn = ttk.Button(trow0, text="Open file…")
     trk_open_btn.pack(side="right", padx=(0, 6))
-    trk_regen_btn = ttk.Button(trow0, text="Regenerate TrackList.txt", style="Accent.TButton")   # admin mode only
     trk_status = ttk.Label(trk_box, style="Muted.TLabel", text="")   # not shown: the hints live in the log and the file line
 
     # row ids: "u:<index>" = user track, "l:<name>" = library entry
@@ -6252,7 +6251,6 @@ def run_gui(initial_zip: Optional[str] = None):
                         return
                     lap["admin_path"] = str(c)
                     log(f"ADMIN track editing: {len(lap['admin'].tracks)} library tracks from {c} — edits save to that file.")
-                    trk_regen_btn.pack(side="right", padx=(0, 14))
                     return
 
     def trk_save_admin():
@@ -6264,23 +6262,22 @@ def run_gui(initial_zip: Optional[str] = None):
             lap["admin_backed_up"] = True
             log(f"  original Tracks.txt backed up → {bak}")
         p.write_bytes(lap["admin"].serialize())
+        trk_sync_tracklist()
 
-    def do_trk_regen():
+    def trk_sync_tracklist():
+        """Tracks.txt is the master: after every admin change the stripped TrackList.txt beside it is rewritten
+        from it (same order, name|region|cc|country|centre to 2 decimals), so added, edited, duplicated and
+        deleted tracks all carry over. The untouched TrackList.txt is backed up once per session."""
         adb = lap["admin"]
-        if not adb:
-            return
         dest = Path(lap["admin_path"]).parent / "TrackList.txt"
-        if not messagebox.askyesno("Regenerate TrackList.txt?", f"Write a fresh TrackList.txt with all {len(adb.tracks)} tracks from Tracks.txt to\n{dest}?"
-                                   + ("\n\nThe existing one there is backed up first." if dest.exists() else "")
-                                   + "\n\n(Ship it with the app by replacing the TrackList.txt in the project before building.)", parent=root):
-            return
-        if dest.exists():
+        if dest.exists() and not lap["tl_backed_up"]:
             bak = CONFIG_DIR / "tracks_backups" / f"TrackList_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
             bak.parent.mkdir(parents=True, exist_ok=True)
             bak.write_bytes(dest.read_bytes())
+            log(f"  original TrackList.txt backed up → {bak}")
+        lap["tl_backed_up"] = True
         dest.write_text(_lt.tracklist_text(adb), encoding="utf-8", newline="\n")
-        log(f"TrackList.txt regenerated: {len(adb.tracks)} tracks → {dest}")
-        messagebox.showinfo(APP_NAME, f"TrackList.txt written ({len(adb.tracks)} tracks):\n{dest}", parent=root)
+        log(f"  TrackList.txt synced ({len(adb.tracks)} tracks) → {dest}")
 
     def trk_load_local(path: Optional[str] = None):
         if not _lt:
@@ -6587,7 +6584,6 @@ def run_gui(initial_zip: Optional[str] = None):
         start(worker)
 
     trk_new_btn.configure(command=do_trk_new)
-    trk_regen_btn.configure(command=do_trk_regen)
     trk_edit_btn.configure(command=do_trk_edit)
     trk_dup_btn.configure(command=do_trk_dup)
     trk_del_btn.configure(command=do_trk_del)
