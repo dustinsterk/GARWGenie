@@ -315,6 +315,19 @@ def parse_csv(path: str, delimiter: Optional[str] = None) -> VboFile:
     unit_row = rows[units_idx] if units_idx is not None else None
     data_start = (units_idx if units_idx is not None else head_idx) + 1
 
+    # A logger that loses power or flushes the wrong buffer mid-write leaves rows of binary junk: control
+    # bytes, undecodable bytes, a field count that doesn't match the header. Their numbers are garbage
+    # (positions thousands of km away), so drop them rather than let one row wreck a lap.
+    def corrupt(r: List[str]) -> bool:
+        if abs(len(r) - len(header)) > 1:
+            return True
+        # \x1e (record separator) ends every row of a GARW LapTimer log; tab and CR are ordinary too
+        return any(ch == "\ufffd" or (ord(ch) < 32 and ch not in "\t\r\x1e") for c in r for ch in c)
+    data = rows[data_start:]
+    clean = [r for r in data if not corrupt(r)]
+    dropped = len(data) - len(clean)
+    rows = rows[:data_start] + clean
+
     columns: Dict[str, List[str]] = {}
     units: Dict[str, Optional[str]] = {}
     for i, name in enumerate(header):
@@ -337,6 +350,8 @@ def parse_csv(path: str, delimiter: Optional[str] = None) -> VboFile:
 
     notes: List[str] = [f"Read from CSV (delimiter {delim!r}, "
                         f"header on line {head_idx + 1})"]
+    if dropped:
+        notes.append(f"{dropped} corrupted row{'s' if dropped != 1 else ''} skipped (binary junk in the file)")
     vbo = VboFile(path=path, source_format="csv")
     vbo.raw_columns = [h.strip() for h in header]
 
@@ -375,7 +390,7 @@ def parse_csv(path: str, delimiter: Optional[str] = None) -> VboFile:
     vbo.channels["speed_kmh"] = vbo.channels["speed"] * 3.6
 
     for canon in ("heading", "height", "ax_g", "ay_g", "brake", "throttle",
-                  "rpm", "steer", "gear", "heartrate", "sats", "distance"):
+                  "rpm", "steer", "gear", "heartrate", "sats", "distance", "lap"):
         if canon not in columns:
             continue
         values = _fill(np.array([_to_float(v) for v in columns[canon]]))[keep]

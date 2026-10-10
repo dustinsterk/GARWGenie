@@ -115,6 +115,12 @@ class Session:
     #: any the file declares. Empty means "use the file's, or auto".
     custom_splits: List[Tuple[float, float, float, float]] = field(
         default_factory=list)
+    #: 'laps' — a circuit split at a start/finish line; 'p2p' — point-to-point runs (hillclimb, autocross,
+    #: stage) timed start gate -> finish gate; 'runs' — straight-line runs (acceleration pulls, drag passes)
+    #: taken from the log's own run/lap column, each timed from launch
+    mode: str = "laps"
+    #: point-to-point: the finish gate, local metres (start_finish then holds the START gate)
+    finish: Optional[Tuple[float, float, float, float]] = None
 
     @property
     def valid_laps(self) -> List[LapTrack]:
@@ -122,6 +128,10 @@ class Session:
 
     def best_lap(self) -> Optional[LapTrack]:
         pool = self.valid_laps or self.laps
+        if self.mode == "runs" and pool:
+            # runs differ in length: the quickest is the one that covers the shared distance soonest
+            common = min(l.length for l in pool)
+            return min(pool, key=lambda l: float(np.interp(common, l.s, l.t)))
         return min(pool, key=lambda l: l.lap_time) if pool else None
 
     def by_number(self, n: int) -> Optional[LapTrack]:
@@ -307,8 +317,15 @@ def build_session(vbo: VboFile,
                   start_finish_latlon: Optional[Sequence[float]] = None,
                   min_lap_time: float = 15.0,
                   curv_smooth_m: float = 22.0,
-                  sf_half_width: float = 30.0) -> Session:
-    """Split a VBO session into laps and resample each to the distance domain."""
+                  sf_half_width: float = 30.0,
+                  finish_latlon: Optional[Sequence[float]] = None,
+                  course_name: str = "") -> Session:
+    """Split a VBO session into laps and resample each to the distance domain.
+
+    With `finish_latlon` (and `start_finish_latlon` as the START gate) the course is point-to-point:
+    each run is timed from a start-gate crossing to the next finish-gate crossing."""
+    if finish_latlon is not None and start_finish_latlon is not None:
+        return _build_p2p(vbo, start_finish_latlon, finish_latlon, ds, curv_smooth_m, course_name)
     lat = vbo.channels["lat_deg"]
     lon = vbo.channels["lon_deg"]
     t = vbo.channels["t"]
@@ -390,11 +407,132 @@ def build_session(vbo: VboFile,
         if lap is not None:
             laps.append(lap)
 
-    _flag_outliers(laps)
+    mode = "laps"
+    if not laps and vbo.channels.get("lap") is not None:
+        runs = _runs_from_column(vbo, x, y, lat, lon, t, speed, ds, curv_smooth_m, lat0, lon0)
+        if runs:
+            laps, mode = runs, "runs"
+            sf_source = "runs from the log's lap column (straight-line, timed from launch)"
+    if mode == "laps":
+        _flag_outliers(laps)
 
     sess = Session(vbo=vbo, lat0=lat0, lon0=lon0, laps=laps, start_finish=sf,
-                   ds=ds, x=x, y=y, t=t, speed=speed, sf_source=sf_source)
+                   ds=ds, x=x, y=y, t=t, speed=speed, sf_source=sf_source, mode=mode)
     return sess
+
+
+def _build_p2p(vbo: VboFile, start_ll: Sequence[float], finish_ll: Sequence[float],
+               ds: float, curv_smooth_m: float, course_name: str = "") -> Session:
+    """Point-to-point runs: start-gate crossing -> next finish-gate crossing.
+
+    Crossings are counted in either direction, then paired so that each finish crossing takes the LAST
+    start crossing before it (and after the previous run). A return road that passes the start again in
+    reverse therefore can't open a phantom run, and a car that re-crosses the finish on the way back
+    simply has no new start to pair with. No minimum speed at the start: cars stage just behind the line."""
+    lat = vbo.channels["lat_deg"]
+    lon = vbo.channels["lon_deg"]
+    t = vbo.channels["t"]
+    speed = vbo.channels["speed"]
+    x, y, lat0, lon0 = geo.project_local(lat, lon)
+
+    def local(q):
+        xs, ys, _, _ = geo.project_local(np.array([q[0], q[2]]), np.array([q[1], q[3]]), lat0, lon0)
+        return (float(xs[0]), float(ys[0]), float(xs[1]), float(ys[1]))
+    hw_s = 0.5 * math.hypot(*np.subtract(local(start_ll)[2:], local(start_ll)[:2]))
+    hw_f = 0.5 * math.hypot(*np.subtract(local(finish_ll)[2:], local(finish_ll)[:2]))
+    sg = recentre_gate(local(start_ll), x, y, max(hw_s, 5.0))
+    fg = recentre_gate(local(finish_ll), x, y, max(hw_f, 5.0))
+    valid_steps = geo.plausible_steps(x, y, t, speed)
+    events = [(geo.interp_at(t, i, f), "S", i, f) for i, f in
+              geo.segment_crossings(x, y, *sg, require_forward=False, valid_steps=valid_steps)]
+    events += [(geo.interp_at(t, i, f), "F", i, f) for i, f in
+               geo.segment_crossings(x, y, *fg, require_forward=False, valid_steps=valid_steps)]
+    events.sort(key=lambda e: e[0])
+    laps: List[LapTrack] = []
+    last_s = None
+    for tc, kind, i, f in events:
+        if kind == "S":
+            last_s = (i, f, tc)
+            continue
+        if last_s is None:
+            continue
+        i0, f0, t0 = last_s
+        if not (3.0 <= tc - t0 <= 3600.0):
+            continue
+        lap = _extract_lap(vbo, len(laps) + 1, x, y, lat, lon, t, speed,
+                           i0, f0, t0, i, f, tc, ds, curv_smooth_m, lat0, lon0, min_length=RUN_MIN_M)
+        if lap is not None:
+            laps.append(lap)
+        last_s = None
+    _flag_outliers(laps)
+    src = f"point-to-point{(' — ' + course_name) if course_name else ''}: start + finish gates"
+    return Session(vbo=vbo, lat0=lat0, lon0=lon0, laps=laps, start_finish=sg, ds=ds,
+                   x=x, y=y, t=t, speed=speed, sf_source=src, mode="p2p", finish=fg)
+
+
+def gate_at(vbo: VboFile, lat: float, lon: float, half_width: float = 15.0,
+            heading_deg: Optional[float] = None) -> Optional[Tuple[float, float, float, float]]:
+    """A timing gate (lat1, lon1, lat2, lon2) through a point, square to the direction of travel there.
+
+    The direction is `heading_deg` (compass, e.g. a track's start heading) when given; otherwise it is
+    read from the log — the car's path where it passes closest to the point. None when the log never
+    comes within 100 m of the point."""
+    la, lo = vbo.channels["lat_deg"], vbo.channels["lon_deg"]
+    x, y, lat0, lon0 = geo.project_local(la, lo)
+    px, py, _, _ = geo.project_local(np.array([lat]), np.array([lon]), lat0, lon0)
+    px, py = float(px[0]), float(py[0])
+    d = np.hypot(x - px, y - py)
+    i = int(np.argmin(d))
+    if d[i] > 100.0:
+        return None
+    if heading_deg is not None:
+        hx, hy = math.sin(math.radians(heading_deg)), math.cos(math.radians(heading_deg))
+    else:
+        a, b = max(0, i - 3), min(len(x) - 1, i + 3)
+        hx, hy = float(x[b] - x[a]), float(y[b] - y[a])
+    ax, ay, bx, by = _line_through(px, py, hx, hy, half_width)
+    la1, lo1 = geo.unproject_local(ax, ay, lat0, lon0)
+    la2, lo2 = geo.unproject_local(bx, by, lat0, lon0)
+    return (float(la1), float(lo1), float(la2), float(lo2))
+
+
+#: a run shorter than this, or that never reaches RUN_MIN_KMH, is an aborted launch
+RUN_MIN_M, RUN_MIN_KMH, LAUNCH_MS = 50.0, 20.0, 0.3
+
+
+def _runs_from_column(vbo: VboFile, x, y, lat, lon, t, speed, ds, curv_smooth_m,
+                      lat0, lon0) -> List[LapTrack]:
+    """Straight-line runs (acceleration pulls, drag passes) from the log's run/lap column — for logs that
+    never cross a start/finish line. Each run starts at launch (speed first above LAUNCH_MS) and ends where
+    the run's rows end; aborted launches and stray corrupted rows are dropped."""
+    lap = np.asarray(vbo.channels["lap"], dtype=float)
+    n = min(len(lap), len(t))
+    out: List[LapTrack] = []
+    values = [v for v in np.unique(lap[:n][np.isfinite(lap[:n])])]
+    for val in values:
+        idx = np.where(lap[:n] == val)[0]
+        # a run is a contiguous block; tolerate a few corrupted rows inside it, split on real gaps
+        pieces = np.split(idx, np.where(np.diff(idx) > 5)[0] + 1)
+        for piece in pieces:
+            if piece.size < 10:
+                continue
+            a, b = int(piece[0]), int(piece[-1])
+            moving = np.where(speed[a:b + 1] > LAUNCH_MS)[0]
+            if moving.size < 10:
+                continue
+            i0 = a + int(moving[0])
+            if speed[a:b + 1].max() * 3.6 < RUN_MIN_KMH:
+                continue
+            dist = float(np.nansum(np.hypot(np.diff(x[i0:b + 1]), np.diff(y[i0:b + 1]))))
+            if dist < RUN_MIN_M:
+                continue
+            run = _extract_lap(vbo, len(out) + 1, x, y, lat, lon, t, speed,
+                               i0, 0.0, float(t[i0]), b, 0.0, float(t[b]), ds, curv_smooth_m, lat0, lon0,
+                               min_length=RUN_MIN_M)
+            if run is not None:
+                run.note = f"run {int(val)} in the file"
+                out.append(run)
+    return out
 
 
 def _extract_lap(vbo: VboFile, number: int,
@@ -402,7 +540,7 @@ def _extract_lap(vbo: VboFile, number: int,
                  i0: int, f0: float, t0: float,
                  i1: int, f1: float, t1: float,
                  ds: float, curv_smooth_m: float,
-                 lat0: float, lon0: float) -> Optional[LapTrack]:
+                 lat0: float, lon0: float, min_length: float = 200.0) -> Optional[LapTrack]:
     lo = i0
     hi = min(i1 + 2, len(t))
     if hi - lo < 20:
@@ -430,7 +568,7 @@ def _extract_lap(vbo: VboFile, number: int,
 
     s_seg = geo.distance_from_speed(t_seg, v_seg)
     length = float(s_seg[-1])
-    if length < 200.0:
+    if length < min_length:
         return None
 
     n_grid = max(32, int(round(length / ds)) + 1)

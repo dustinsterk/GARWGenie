@@ -854,7 +854,9 @@ def analyse(session: Session,
         raise ValueError(f"Lap {lap_number} not found")
 
     # Corners always come from the reference lap so windows are consistent.
-    corners = detect_corners(ref, **corner_kw)
+    # a straight-line run has no corners — GPS jitter at walking pace at the launch would otherwise
+    # read as a hairpin
+    corners = [] if getattr(session, "mode", "laps") == "runs" else detect_corners(ref, **corner_kw)
     # Attach any names the driver gave these corners at this circuit. Failing
     # to read the store must never stop an analysis.
     try:

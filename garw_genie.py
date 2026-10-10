@@ -89,7 +89,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.13.0"
+APP_VERSION = "5.14.0"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -6729,12 +6729,22 @@ def run_gui(initial_zip: Optional[str] = None):
 
         def worker():
             from lapanalysis.parser import open_log
-            from lapanalysis.laps import build_session
+            from lapanalysis import trackmatch
             log(f"Lap Analysis: reading {path} …")
             vbo = open_log(path)
-            session = build_session(vbo)
+            # point-to-point courses (hillclimb, autocross) from the tracks this app knows
+            known = (list(lap["db"].tracks) if lap.get("db") else []) + (list(lap["admin"].tracks) if lap.get("admin") else [])
+            trackmatch.register_tracks(known or load_course_tracks())
+            session = trackmatch.session_for(vbo)
+            if session.mode == "p2p":
+                log(f"Lap Analysis: {session.sf_source}")
             la.update(session=session, path=path, result=None)
-            log(f"Lap Analysis: {len(session.laps)} lap(s), {len(session.valid_laps)} clean.")
+            if getattr(session, "mode", "laps") == "runs":
+                log(f"Lap Analysis: {len(session.laps)} straight-line run(s) (taken from the log's run column).")
+            elif getattr(session, "mode", "laps") == "p2p":
+                log(f"Lap Analysis: {len(session.laps)} start-to-finish run(s).")
+            else:
+                log(f"Lap Analysis: {len(session.laps)} lap(s), {len(session.valid_laps)} clean.")
             ui(la_fill)
         start(worker)
 
@@ -6747,9 +6757,18 @@ def run_gui(initial_zip: Optional[str] = None):
             la_set_text("No laps found in this log. The start/finish line may be missing — open the full analysis window to set one.")
             return
         best = s.best_lap()
+        runs = getattr(s, "mode", "laps") == "runs"
+        common = min((l.length for l in s.laps), default=0.0)
+        la_tree.heading("lap", text="Run" if runs or getattr(s, "mode", "") == "p2p" else "Lap")
         for lap in s.laps:
-            d = (lap.lap_time - best.lap_time) if best else 0.0
+            if runs and best:      # straight-line runs differ in length: compare over the distance all covered
+                import numpy as _np
+                d = float(_np.interp(common, lap.s, lap.t) - _np.interp(common, best.s, best.t))
+            else:
+                d = (lap.lap_time - best.lap_time) if best else 0.0
             status = ("★ fastest" if best is lap else "") if lap.valid else ("excluded" + (f" — {lap.note}" if lap.note else ""))
+            if runs:
+                status = ("★ quickest  " if best is lap else "") + lap.note
             la_tree.insert("", "end", iid=str(lap.number), values=(lap.number, fmt_time(lap.lap_time),
                                                                      "" if best is lap else fmt_delta(d), status),
                            tags=("best",) if best is lap else ("bad",) if not lap.valid else ())
@@ -7140,6 +7159,31 @@ def run_cli(args) -> int:
     return 0
 
 
+def load_course_tracks() -> list:
+    """Every track GARW Genie knows with full gate data — the user's UserTracks.txt and, for admin track
+    editors, the Tracks.txt beside the app — for matching logs to point-to-point courses."""
+    if _lt is None:
+        return []
+    out = []
+    p = CONFIG_DIR / "UserTracks.txt"
+    if p.is_file():
+        try:
+            out += _lt.UserTrackDB.parse(p.read_bytes()).tracks
+        except Exception:
+            pass
+    here = Path(__file__).resolve().parent
+    for d in dict.fromkeys((app_dir(), here, CONFIG_DIR)):
+        for nm in ("Tracks.txt", "tracks.txt"):
+            c = Path(d) / nm
+            if c.is_file():
+                try:
+                    out += _lt.parse_admin_tracks(c.read_bytes()).tracks
+                except Exception:
+                    pass
+                return out
+    return out
+
+
 def run_lap_analysis(path: Optional[str]) -> int:
     """The full analysis window (Qt), in its own process. A windowed build has no console, so everything —
     Python tracebacks and native crashes — goes to the parent's lap_analysis.log, and an error is also shown."""
@@ -7162,6 +7206,8 @@ def run_lap_analysis(path: Optional[str]) -> int:
             QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_UseSoftwareOpenGL)
         qapp = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
         from lapanalysis.ui import app as la_app
+        from lapanalysis import trackmatch
+        trackmatch.register_tracks(load_course_tracks())
         # Fires once the event loop runs, i.e. after the window has been built and shown — the tab then
         # leaves its "Opening…" state.
         def report():

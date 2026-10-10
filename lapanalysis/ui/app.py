@@ -242,6 +242,16 @@ class MainWindow(QtWidgets.QMainWindow):
                           "start/finish line, then the laps re-split")
         set_sf.triggered.connect(lambda: self._begin_gate("sf"))
 
+        set_finish = QtGui.QAction("Set finish (point-to-point)", self)
+        set_finish.setToolTip("For a hillclimb, autocross or stage: click two points to place the FINISH "
+                              "line. The start/finish line becomes the START, and each run is timed from "
+                              "start to finish")
+        set_finish.triggered.connect(lambda: self._begin_gate("finish"))
+
+        clear_finish = QtGui.QAction("Back to circuit timing", self)
+        clear_finish.setToolTip("Drop the finish line and time laps at the start/finish again")
+        clear_finish.triggered.connect(self._clear_finish)
+
         add_sector = QtGui.QAction("Add sector", self)
         add_sector.setToolTip("Click two points on the track map to place a "
                               "sector boundary")
@@ -253,6 +263,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         timing_menu = QtWidgets.QMenu(self)
         timing_menu.addAction(set_sf)
+        timing_menu.addAction(set_finish)
+        timing_menu.addAction(clear_finish)
         timing_menu.addAction(add_sector)
         timing_menu.addAction(clear_sectors)
         timing_btn = QtWidgets.QToolButton(self)
@@ -575,7 +587,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.statusBar().showMessage(f"parsing {path} ...")
             QtWidgets.QApplication.processEvents()
             vbo = open_log(path)
-            session = build_session(vbo)
+            from ..trackmatch import session_for
+            session = session_for(vbo)          # a known point-to-point course is timed gate to gate
             self._vbo_path = path
         except Exception as exc:                       # noqa: BLE001
             traceback.print_exc()
@@ -591,7 +604,9 @@ class MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.warning(
                 self, "No laps found",
                 "No start/finish crossings were detected. The file may contain "
-                "less than one full lap, or the timing line may be wrong.")
+                "less than one full lap, or the timing line may be wrong.\n\n"
+                "For a point-to-point course (hillclimb, autocross), use Timing → Set start/finish "
+                "for the start line and Timing → Set finish (point-to-point).")
             return
         self._adopt(session)
 
@@ -600,7 +615,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.session is None:
             return
         self.map.begin_gate_edit(kind)
-        what = "start/finish line" if kind == "sf" else "sector boundary"
+        p2p = getattr(self.session, "mode", "laps") == "p2p"
+        what = {"sf": "start line" if p2p else "start/finish line", "finish": "FINISH line"}.get(kind, "sector boundary")
         self.statusBar().showMessage(
             f"Click two points on the track map to set the {what}.")
 
@@ -621,13 +637,21 @@ class MainWindow(QtWidgets.QMainWindow):
 
         try:
             vbo = open_log(self._vbo_path)
+            fin = self._current_finish_latlon()
             if kind == "sf":
-                new = build_session(vbo, start_finish_latlon=list(gate))
+                new = build_session(vbo, start_finish_latlon=list(gate), finish_latlon=fin)
                 new.custom_splits = list(self.session.custom_splits)
-                msg = "Start/finish updated; laps re-split."
+                msg = "Start updated; runs re-timed." if fin else "Start/finish updated; laps re-split."
+            elif kind == "finish":
+                start = self._current_sf_latlon()
+                if start is None:
+                    raise ValueError("Set the start line first.")
+                new = build_session(vbo, start_finish_latlon=start, finish_latlon=list(gate))
+                new.custom_splits = list(self.session.custom_splits)
+                msg = f"Point-to-point: {len(new.laps)} run(s) timed start to finish."
             else:
                 new = build_session(
-                    vbo, start_finish_latlon=self._current_sf_latlon())
+                    vbo, start_finish_latlon=self._current_sf_latlon(), finish_latlon=fin)
                 new.custom_splits = list(self.session.custom_splits) + [gate]
                 msg = f"Sector boundary added ({len(new.custom_splits)} total)."
         except Exception as exc:                       # noqa: BLE001
@@ -638,9 +662,11 @@ class MainWindow(QtWidgets.QMainWindow):
         if not new.laps:
             QtWidgets.QMessageBox.warning(
                 self, "No laps",
-                "That start/finish line was never crossed — the laps could "
-                "not be split. The line may be off the track or facing the "
-                "wrong way.")
+                ("No run crossed the start and then the finish. Check both lines sit across the road "
+                 "the car drove." if new.mode == "p2p" else
+                 "That start/finish line was never crossed — the laps could "
+                 "not be split. The line may be off the track or facing the "
+                 "wrong way."))
             return
         self._adopt(new)
         self.statusBar().showMessage(msg)
@@ -655,6 +681,33 @@ class MainWindow(QtWidgets.QMainWindow):
         la1, lo1 = unproject_local(ax, ay, self.session.lat0, self.session.lon0)
         la2, lo2 = unproject_local(bx, by, self.session.lat0, self.session.lon0)
         return [float(la1), float(lo1), float(la2), float(lo2)]
+
+    def _current_finish_latlon(self):
+        """The point-to-point finish gate as a lat/lon quad, or None on a circuit."""
+        from ..geometry import unproject_local
+        fin = getattr(self.session, "finish", None) if self.session is not None else None
+        if fin is None:
+            return None
+        ax, ay, bx, by = fin
+        la1, lo1 = unproject_local(ax, ay, self.session.lat0, self.session.lon0)
+        la2, lo2 = unproject_local(bx, by, self.session.lat0, self.session.lon0)
+        return [float(la1), float(lo1), float(la2), float(lo2)]
+
+    def _clear_finish(self) -> None:
+        if self.session is None or getattr(self.session, "finish", None) is None or not self._vbo_path:
+            self.statusBar().showMessage("Already timing laps at the start/finish.")
+            return
+        try:
+            new = build_session(open_log(self._vbo_path))
+        except Exception as exc:                       # noqa: BLE001
+            QtWidgets.QMessageBox.warning(self, "Could not apply", str(exc))
+            return
+        if not new.laps:
+            QtWidgets.QMessageBox.warning(self, "No laps", "Without a finish line this log has no laps — "
+                                          "it looks like a point-to-point course.")
+            return
+        self._adopt(new)
+        self.statusBar().showMessage("Back to circuit timing.")
 
     def _clear_custom_sectors(self) -> None:
         if self.session is None or not self.session.custom_splits:
@@ -868,9 +921,11 @@ class MainWindow(QtWidgets.QMainWindow):
             f"<span style='color:#6b7280'>{len(a.corners)} corners · "
             f"{self.units.length_s(lap.length)} · theoretical best {fmt_time(tb)} "
             f"({tb - best.lap_time:+.3f} vs best)</span>")
+        mode = getattr(self.session, "mode", "laps")
         self.statusBar().showMessage(
-            f"{len(self.session.laps)} laps · start/finish from "
-            f"{self.session.sf_source} · {self.session.vbo.sample_rate:.0f} Hz")
+            (f"{len(self.session.laps)} runs · {self.session.sf_source}" if mode != "laps" else
+             f"{len(self.session.laps)} laps · start/finish from {self.session.sf_source}")
+            + f" · {self.session.vbo.sample_rate:.0f} Hz")
 
     def _top_tab_changed(self, *_) -> None:
         if not self.analysis:
@@ -1327,7 +1382,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.map.set_compare_line(a.reference if a.reference is not lap else None)
         brakes = [m.s_brake for m in a.metrics if m.s_brake is not None]
         self.map.set_corner_labels(lap, a.corners, brakes)
-        self.map.set_start_finish(self.session.start_finish, label="S/F")
+        p2p = getattr(self.session, "mode", "laps") == "p2p"
+        self.map.set_start_finish(self.session.start_finish, label="START" if p2p else "S/F")
+        self.map.set_finish(getattr(self.session, "finish", None))
         # Sector gate lines + labels from the ACTUAL sectors (file, user, or
         # auto), drawn on both maps. The 3D view also gets the labels so each
         # gate is annotated ("S/F", "S1"…) the way a driver would want them.
@@ -1335,7 +1392,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.map.set_sector_lines(sector_lines, sector_labels)
         if hasattr(self, "view3d"):
             self.view3d.set_gates(self.session.start_finish, sector_lines,
-                                  sf_label="S/F", sector_labels=sector_labels)
+                                  sf_label="START" if p2p else "S/F", sector_labels=sector_labels,
+                                  finish=getattr(self.session, "finish", None))
             self.view3d.set_corners(a.corners)
         self._apply_basemap()
 

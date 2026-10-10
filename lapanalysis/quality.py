@@ -342,10 +342,26 @@ def assess(session: Session, corners: Sequence[Corner] = (),
     rate_check, spacing = _rate_check(session, u)
     q.brake_point_precision_m = spacing
     q.checks.append(rate_check)
-    q.checks.append(_lap_count_check(session))
-    q.checks.append(_timing_line_check(session))
-    q.checks.append(_closure_check(session, u))
-    q.checks.append(_continuity_check(session))
+    mode = getattr(session, "mode", "laps")
+    if mode == "laps":
+        # circuit-only checks: straight-line runs have no timing line to close, and the logger
+        # pausing between runs is not a dropout
+        q.checks.append(_lap_count_check(session))
+        q.checks.append(_timing_line_check(session))
+        q.checks.append(_closure_check(session, u))
+        q.checks.append(_continuity_check(session))
+    elif mode == "p2p":
+        # start and finish are different places, so there is no lap closure to check
+        q.checks.append(_lap_count_check(session))
+        q.checks.append(Check("start/finish", GOOD, "start and finish gates (point-to-point)",
+                              "Each run is timed from the start gate to the finish gate."))
+        q.checks.append(_continuity_check(session))
+    junk = next((c for c in getattr(session.vbo, "comments", []) if "corrupted row" in c), None)
+    if junk:
+        q.checks.append(Check("file integrity", FAIR, junk.split(" (")[0],
+                              "The log contains rows of binary junk — usually the logger losing power or "
+                              "writing the wrong buffer mid-row. They were skipped; the samples either side "
+                              "are joined by interpolation."))
     q.checks.append(_channels_check(session))
     if corners:
         q.checks.append(_corner_stability_check(session, corners))

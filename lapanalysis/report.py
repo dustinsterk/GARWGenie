@@ -31,15 +31,29 @@ def session_summary(session: Session) -> str:
     lines.append(f"Samples       : {session.vbo.n_samples} @ "
                  f"{session.vbo.sample_rate:.0f} Hz")
     lines.append(f"Channels      : {', '.join(sorted(session.vbo.channels))}")
-    lines.append(f"Start/finish  : {session.sf_source}")
-    lines.append(f"Laps detected : {len(session.laps)} "
-                 f"({len(session.valid_laps)} clean)")
+    runs = getattr(session, "mode", "laps") == "runs"
+    p2p = getattr(session, "mode", "laps") == "p2p"
+    common = min((l.length for l in session.laps), default=0.0)
+    label = 'Runs' if runs else ('Timing' if p2p else 'Start/finish')
+    lines.append(f"{label:<14}: {session.sf_source}")
+    if runs:
+        lines.append(f"Runs found    : {len(session.laps)} straight-line run(s)")
+    elif p2p:
+        lines.append(f"Runs found    : {len(session.laps)} start-to-finish run(s) "
+                     f"({len(session.valid_laps)} clean)")
+    else:
+        lines.append(f"Laps detected : {len(session.laps)} "
+                     f"({len(session.valid_laps)} clean)")
     lines.append("")
-    lines.append(f"{'Lap':>4}  {'Time':>10}  {'Delta':>8}  {'Len m':>7}  Note")
+    lines.append(f"{'Run' if (runs or p2p) else 'Lap':>4}  {'Time':>10}  {'Delta':>8}  {'Len m':>7}  Note"
+                 + (f"   (Delta: over the shared {common:.0f} m)" if runs and session.laps else ""))
     lines.append("-" * 58)
     for lap in session.laps:
-        d = lap.lap_time - best.lap_time if best else 0.0
-        flag = "" if lap.valid else f"  [{lap.note}]"
+        if runs and best:
+            d = float(np.interp(common, lap.s, lap.t) - np.interp(common, best.s, best.t))
+        else:
+            d = lap.lap_time - best.lap_time if best else 0.0
+        flag = (f"  {lap.note}" if runs else "") if lap.valid else f"  [{lap.note}]"
         lines.append(f"{lap.number:>4}  {fmt_time(lap.lap_time):>10}  "
                      f"{fmt_delta(d):>8}  {lap.length:>7.0f}{flag}")
     return "\n".join(lines)
@@ -79,9 +93,77 @@ def delta_table(analysis: LapAnalysis) -> str:
     return "\n".join(lines)
 
 
+#: straight-line benchmarks: (label, metres) for distances, (label, m/s) for speeds
+_ACCEL_DISTANCES = (("60 ft", 18.288), ("330 ft", 100.584), ("1/8 mi", 201.168), ("1000 ft", 304.8), ("1/4 mi", 402.336))
+_ACCEL_SPEEDS_IMPERIAL = (("0-30 mph", 30 * 0.44704), ("0-60 mph", 60 * 0.44704), ("0-100 mph", 100 * 0.44704))
+_ACCEL_SPEEDS_METRIC = (("0-50 km/h", 50 / 3.6), ("0-100 km/h", 100 / 3.6), ("0-150 km/h", 150 / 3.6))
+
+
+def accel_metrics(run) -> dict:
+    """Straight-line numbers for one run, timed from launch (first movement, no drag-strip rollout).
+    Only benchmarks the run actually reached are included."""
+    t, s, v = run.t, run.s, run.speed
+    out = {"time": float(run.lap_time), "dist": float(run.length), "top": float(np.nanmax(v)),
+           "peak_g": float(np.nanmax(run.ax_g)) if run.ax_g.size else float("nan")}
+    for label, target in _ACCEL_SPEEDS_IMPERIAL + _ACCEL_SPEEDS_METRIC:
+        hit = np.where(v >= target)[0]
+        if hit.size:
+            i = int(hit[0])
+            ti = t[i] if i == 0 else float(np.interp(target, [v[i - 1], v[i]], [t[i - 1], t[i]]))
+            out[label] = float(ti)
+    for label, dist in _ACCEL_DISTANCES:
+        if s[-1] >= dist:
+            out[label] = (float(np.interp(dist, s, t)), float(np.interp(dist, s, v)))
+    return out
+
+
+def accel_block(session: Session, units=None) -> str:
+    """Table of straight-line benchmarks for every run in a 'runs' session."""
+    from .units import METRIC
+    u = units or METRIC
+    imperial = getattr(u, "speed_label", "km/h") == "mph"
+    speeds = _ACCEL_SPEEDS_IMPERIAL if imperial else _ACCEL_SPEEDS_METRIC
+    rows = [(r.number, accel_metrics(r)) for r in session.laps]
+    if not rows:
+        return ""
+    cols = [lab for lab, _ in speeds if any(lab in m for _, m in rows)] + \
+           [lab for lab, _ in _ACCEL_DISTANCES if any(lab in m for _, m in rows)]
+    sp = u.speed_label
+    conv = (lambda ms: ms / 0.44704) if imperial else (lambda ms: ms * 3.6)
+    head = f"{'Run':>4}  " + "  ".join(f"{c:>14}" for c in cols) + f"  {'Top ' + sp:>9}  {'Peak g':>6}"
+    lines = ["STRAIGHT-LINE RUNS  (timed from launch — first movement, no drag-strip rollout;"
+             " distance columns show time @ trap speed)", head, "-" * len(head)]
+    for n, m in rows:
+        cells = []
+        for c in cols:
+            val = m.get(c)
+            if val is None:
+                cells.append(f"{'—':>14}")
+            elif isinstance(val, tuple):
+                cells.append(f"{val[0]:6.2f}s @{conv(val[1]):5.1f}".rjust(14))
+            else:
+                cells.append(f"{val:13.2f}s")
+        lines.append(f"{n:>4}  " + "  ".join(cells) + f"  {conv(m['top']):>9.1f}  {m['peak_g']:>6.2f}")
+    return "\n".join(lines)
+
+
 def insight_report(analysis: LapAnalysis, session: Optional[Session] = None,
                    max_items: int = 14, units=None) -> str:
     lines: List[str] = []
+    if session is not None and getattr(session, "mode", "laps") == "runs":
+        # Straight-line runs: the benchmark table, and the chosen run against the reference over the
+        # distance both covered. Corner, sector and coaching sections are circuit tools and are left out.
+        lines.append(accel_block(session, units))
+        lap, ref = analysis.lap, analysis.reference
+        if ref is not None and ref is not lap:
+            common = min(lap.length, ref.length)
+            ta, tb = float(np.interp(common, lap.s, lap.t)), float(np.interp(common, ref.s, ref.t))
+            from .units import METRIC
+            u = units or METRIC
+            lines.append("")
+            lines.append(f"Run {lap.number} vs run {ref.number} over the {u.d_s(common)} both covered: "
+                         f"{ta:.2f}s vs {tb:.2f}s ({fmt_delta(ta - tb)})")
+        return "\n".join(lines)
     lap = analysis.lap
     ref = analysis.reference
 

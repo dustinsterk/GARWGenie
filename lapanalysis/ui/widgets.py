@@ -763,6 +763,17 @@ class TrackMap(ClickToggleMixin, pg.PlotWidget):
             self._sf_label_items.append(
                 self._gate_label(ax, ay, bx, by, label, "#ffffff"))
 
+    def set_finish(self, line, label: str = "FINISH") -> None:
+        """Point-to-point finish gate (red), or None to remove it."""
+        for it in getattr(self, "_finish_items", []):
+            self.removeItem(it)
+        self._finish_items = []
+        if line is None:
+            return
+        ax, ay, bx, by = line
+        self._finish_items.append(self.plot([ax, bx], [ay, by], pen=pg.mkPen("#ff4d4d", width=2)))
+        self._finish_items.append(self._gate_label(ax, ay, bx, by, label, "#ff4d4d"))
+
     def _gate_label(self, ax, ay, bx, by, text, colour):
         """A small text tag centred on a gate line, added to the scene."""
         txt = pg.TextItem(text, color=colour, anchor=(0.5, 0.5))

@@ -409,7 +409,7 @@ class View3D(QtWidgets.QWidget):
                 pass
 
     def set_gates(self, start_finish, sector_lines, sf_label="S/F",
-                  sector_labels=None) -> None:
+                  sector_labels=None, finish=None) -> None:
         """Draw the timing gates in 3D, matching the flat map.
 
         start_finish is a local-metre (ax, ay, bx, by) quad or None; each
@@ -418,6 +418,7 @@ class View3D(QtWidgets.QWidget):
         redrawn whenever the lap changes, so a rebuild does not drop them.
         """
         self._start_finish = start_finish
+        self._finish = finish
         self._sector_lines = list(sector_lines or [])
         self._sf_label = sf_label
         self._sector_labels = list(sector_labels or [])
@@ -437,6 +438,9 @@ class View3D(QtWidgets.QWidget):
         if sf is not None:
             gates.append((sf, (1.0, 1.0, 1.0, 0.9),
                           getattr(self, "_sf_label", "S/F")))
+        fin = getattr(self, "_finish", None)
+        if fin is not None:
+            gates.append((fin, (1.0, 0.3, 0.3, 0.9), "FINISH"))
         labels = getattr(self, "_sector_labels", [])
         for k, line in enumerate(getattr(self, "_sector_lines", [])):
             lbl = labels[k] if k < len(labels) else f"S{k + 1}"
