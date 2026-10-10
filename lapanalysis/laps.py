@@ -288,6 +288,65 @@ def recentre_gate(gate: Tuple[float, float, float, float],
             x[i] + ux * half_width, y[i] + uy * half_width)
 
 
+def sf_from_lap_column(vbo: VboFile, x: np.ndarray, y: np.ndarray, speed: np.ndarray,
+                       half_width: float = 30.0, max_spread_m: float = 25.0
+                       ) -> Optional[Tuple[float, float, float, float]]:
+    """Start/finish line from a logger's lap counter (the GARW LapTimer, RaceChrono and similar exports).
+
+    Where the counter steps up by one, the car was on the logger's timing line. If those points agree —
+    within `max_spread_m` of their median — the line goes through that median, square to the direction of
+    travel there. Straight-line run logs number their runs the same way, but each run starts from a
+    standstill wherever the car launched, so slow or scattered steps are rejected."""
+    lap = vbo.channels.get("lap")
+    if lap is None:
+        return None
+    lap = np.asarray(lap, dtype=float)
+    n = min(len(lap), len(x))
+    lt = vbo.channels.get("laptime")
+    t = vbo.channels["t"]
+    steps = [i for i in range(1, n) if np.isfinite(lap[i]) and np.isfinite(lap[i - 1])
+             and lap[i] - lap[i - 1] == 1 and speed[i] > 3.0]
+    if lt is not None:
+        # the running lap time restarting is a crossing too — including the first one, out of the pre-lap
+        steps = sorted(set(steps) | {i for i in range(1, n) if np.isfinite(lt[i]) and np.isfinite(lt[i - 1])
+                                     and lt[i] < lt[i - 1] - 1.0 and speed[i] > 3.0})
+    if len(steps) < 2:
+        return None
+    # Where exactly was the line? Between sample i-1 and i. A logger that also records its running lap
+    # time says how long before sample i the crossing happened — use it; otherwise take the midpoint.
+    pts = []
+    for i in steps:
+        if lt is not None and np.isfinite(lt[i]) and 0.0 <= lt[i] <= (t[i] - t[i - 1]) * 1.5:
+            tc = t[i] - float(lt[i])
+            pts.append((float(np.interp(tc, t[i - 1:i + 1], x[i - 1:i + 1])),
+                        float(np.interp(tc, t[i - 1:i + 1], y[i - 1:i + 1]))))
+        else:
+            pts.append(((x[i - 1] + x[i]) / 2.0, (y[i - 1] + y[i]) / 2.0))
+    px, py = np.array([p[0] for p in pts]), np.array([p[1] for p in pts])
+    cx, cy = float(np.median(px)), float(np.median(py))
+    if np.max(np.hypot(px - cx, py - cy)) > max_spread_m:
+        return None
+    hx = float(np.mean([x[min(i + 2, n - 1)] - x[max(i - 2, 0)] for i in steps]))
+    hy = float(np.mean([y[min(i + 2, n - 1)] - y[max(i - 2, 0)] for i in steps]))
+    # The logger's line need not be square to the road. Exact crossings that spread across the road and
+    # sit on one straight line ARE that line: fit it, so a lap that crosses at the far side is timed the
+    # same way the logger timed it.
+    if lt is not None and len(pts) >= 3:
+        P = np.column_stack([px, py])
+        c = P.mean(axis=0)
+        _, sv, vt = np.linalg.svd(P - c)
+        spread = float(np.ptp((P - c) @ vt[0]))
+        resid = float(np.max(np.abs((P - c) @ vt[1])))
+        if spread >= 1.5 and resid <= 0.3:
+            dx, dy = float(vt[0][0]), float(vt[0][1])
+            nx, ny = -hy, hx                      # _line_through's orientation, so forward crossings count
+            if dx * nx + dy * ny < 0:
+                dx, dy = -dx, -dy
+            return (float(c[0] - dx * half_width), float(c[1] - dy * half_width),
+                    float(c[0] + dx * half_width), float(c[1] + dy * half_width))
+    return _line_through(cx, cy, hx, hy, half_width)
+
+
 def start_finish_from_vbo(vbo: VboFile, lat0: float, lon0: float,
                           min_half_width: float = 25.0):
     if vbo.start_finish is None:
@@ -363,6 +422,12 @@ def build_session(vbo: VboFile,
                 sf_source = (f"auto (declared line ignored: {km:,.0f} km "
                              f"from this data)" if too_far else
                              "auto (declared line never crossed)")
+    if sf is None:
+        # The logger's own lap counter knows where its start/finish is: take the line from where it steps.
+        from_laps = sf_from_lap_column(vbo, x, y, speed, sf_half_width)
+        if from_laps is not None:
+            sf = from_laps
+            sf_source = "from the logger's lap changes (its own start/finish)"
     if sf is None:
         sf, auto_label = auto_start_finish(x, y, speed, t,
                                            half_width=sf_half_width,
