@@ -197,6 +197,9 @@ def _timing_line_check(session: Session) -> Check:
     if src == "file":
         return Check("start/finish", GOOD, "declared in the file",
                      "Lap times match whatever the logger reported.")
+    if "logger" in src:
+        return Check("start/finish", GOOD, "the logger's own start/finish",
+                     "Laps are split where the logger itself counted them, so lap times match the dash.")
     if "ignored" in src:
         return Check(
             "start/finish", FAIR, "declared line rejected, placed automatically",

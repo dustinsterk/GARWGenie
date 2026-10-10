@@ -708,6 +708,14 @@ def _flag_outliers(laps: List[LapTrack]) -> None:
     times = np.array([l.lap_time for l in laps])
     best = float(np.min(times))
     med_len = float(np.median([l.length for l in laps]))
+
+    def crawl_secs(lap: LapTrack) -> float:
+        crawl = lap.speed * 3.6 < 10.0
+        return float(np.sum(np.diff(lap.t)[crawl[:-1]])) if crawl.any() else 0.0
+
+    # What every lap does is part of the course — a stop sign or a junction on a road loop, a
+    # walking-pace hairpin — not an incident. Only crawling well beyond the typical lap counts.
+    typical_crawl = float(np.median([crawl_secs(l) for l in laps])) if len(laps) >= 2 else 0.0
     for lap in laps:
         reasons = []
         if lap.lap_time > best * 1.35:
@@ -716,11 +724,9 @@ def _flag_outliers(laps: List[LapTrack]) -> None:
             reasons.append("path length off")
         # A slow hairpin on a kart track is not an incident. Only a *sustained*
         # crawl — several seconds of it — means a pit stop, spin or off.
-        crawl = lap.speed * 3.6 < 10.0
-        if crawl.any():
-            secs = float(np.sum(np.diff(lap.t)[crawl[:-1]]))
-            if secs > 4.0:
-                reasons.append(f"{secs:.0f}s below 10 km/h")
+        secs = crawl_secs(lap)
+        if secs - typical_crawl > 4.0:
+            reasons.append(f"{secs:.0f}s below 10 km/h")
         if reasons:
             lap.valid = False
             lap.note = "; ".join(reasons)
