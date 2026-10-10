@@ -108,6 +108,12 @@ class VideoPanel(QtWidgets.QWidget):
             self.player.setAudioOutput(self.audio)
             self.audio.setVolume(0.0)          # muted until asked; engine noise
             self.player.setVideoOutput(self._item)          # over a data trace
+            # Count frames actually delivered, so a "decode one frame" nudge can wait for one.
+            self._frames = 0
+            try:
+                self._item.videoSink().videoFrameChanged.connect(self._count_frame)
+            except Exception:                                # pragma: no cover
+                pass
             self.player.errorOccurred.connect(self._on_error)
             self.player.durationChanged.connect(self._on_duration)
             self.player.playbackStateChanged.connect(self._on_state)
@@ -478,12 +484,36 @@ class VideoPanel(QtWidgets.QWidget):
         if self.player.playbackState() == QMediaPlayer.PlayingState:
             return
         self._suppress = True
+        self._start_nudge_clock()
         self.player.play()
         QtCore.QTimer.singleShot(40, self._end_refresh_step)
 
+    def _count_frame(self, *_a) -> None:
+        self._frames = getattr(self, "_frames", 0) + 1
+
+    def _start_nudge_clock(self) -> None:
+        self._nudge_frames = getattr(self, "_frames", 0)
+        self._nudge_clock = QtCore.QElapsedTimer()
+        self._nudge_clock.start()
+
+    #: longest a paused-frame nudge keeps the player running while it waits for a frame
+    NUDGE_MAX_MS = 1500
+
     def _end_refresh_step(self) -> None:
+        # A big clip (5.3K HEVC with a keyframe a second) can take far longer than 40 ms to produce the
+        # frame it was asked for. Pausing before one arrives left the panel black — most visibly on first
+        # open. Keep it running until a frame has actually been delivered (or give up after a while).
+        clock = getattr(self, "_nudge_clock", None)
+        if (not self._playing and clock is not None and self.player is not None
+                and getattr(self, "_frames", 0) == getattr(self, "_nudge_frames", 0)
+                and clock.elapsed() < self.NUDGE_MAX_MS):
+            QtCore.QTimer.singleShot(30, self._end_refresh_step)
+            return
         self._decoding = False
-        if MULTIMEDIA and self.player is not None:
+        # This is the tail of a 40 ms "play to show a frame" nudge. If real playback started in the
+        # meantime (a click right after hovering — follow mouse does these nudges constantly), pausing
+        # here would freeze the video while the data runs on.
+        if MULTIMEDIA and self.player is not None and not self._playing:
             self.player.pause()
         self._suppress = False
         self._apply_volume()
@@ -503,6 +533,7 @@ class VideoPanel(QtWidgets.QWidget):
             return
         self._decoding = True
         self._suppress = True
+        self._start_nudge_clock()
         self.player.play()
         QtCore.QTimer.singleShot(40, self._end_refresh_step)
 
