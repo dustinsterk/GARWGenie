@@ -115,6 +115,25 @@ def find_video(vbo_path: str, vbo: VboFile, index: int = 1) -> Optional[str]:
 # --------------------------------------------------------------------------
 
 
+def _utc_shift(vbo: VboFile, t: np.ndarray) -> float:
+    """Seconds to add to a log's session time to get UTC seconds-of-day, from a GPS time-of-week
+    column (u-blox iTOW, ms) when the log has one; 0 otherwise. Lets the camera's GPS clock line up the
+    two directly instead of by matching speed traces, which can pick the wrong lap on a loop."""
+    itow = vbo.channels.get("itow")
+    if itow is None or len(itow) != len(t):
+        return 0.0
+    itow = np.asarray(itow, dtype=float)
+    ok = np.isfinite(itow) & (itow > 0) & np.isfinite(t)
+    if ok.sum() < 10:
+        return 0.0
+    utc = (itow[ok] / 1000.0 - 18.0) % 86400.0       # GPS - UTC = 18 s since 2017
+    d = utc - t[ok]
+    d0 = float(np.median(d))
+    if np.median(np.abs(d - d0)) > 0.5:              # not a steady clock — don't trust it
+        return 0.0
+    return d0
+
+
 @dataclass
 class VideoSync:
     """Maps session time (seconds) to a position in the video (milliseconds)."""
@@ -173,10 +192,14 @@ class VideoSync:
         if t is None or v is None:
             return None
         from .gopro import sync_video
-        r = sync_video(video_path, t, v)
+        accel = [vbo.channels[k] for k in ("ax_g", "ay_g") if k in vbo.channels]
+        t = np.asarray(t, dtype=float)
+        shift = _utc_shift(vbo, t)            # relative-time logs that carry GPS time of week
+        r = sync_video(video_path, t + shift, v, accel)
         if r is None:
             return None
-        return cls(kind="offset", offset_s=r.offset_s, gps_note=r.describe(), gps_offset=r.offset_s)
+        off = r.offset_s - shift
+        return cls(kind="offset", offset_s=off, gps_note=r.describe(), gps_offset=off)
 
     # ---- queries ----------------------------------------------------------
     @property

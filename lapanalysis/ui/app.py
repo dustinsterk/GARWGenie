@@ -11,6 +11,8 @@ from typing import List, Optional
 import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from .jumpslider import JumpSlider
+
 from ..corners import Corner
 from ..insights import (LapAnalysis, analyse, consistency_insights,
                         limit_usage, theoretical_best)
@@ -137,7 +139,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._last_corner: Optional[int] = None
         self._timer = QtCore.QTimer(self)
         self._timer.setInterval(33)                # ~30 fps
-        self._timer.timeout.connect(self._tick)
+        self._timer.timeout.connect(self._tick_guarded)
+        self._in_tick = False
         #: real elapsed time between ticks. A Qt timer is not a clock — under
         #: load it fires late, and advancing the playhead by the *nominal*
         #: interval makes it fall behind the video a little every frame.
@@ -326,7 +329,7 @@ class MainWindow(QtWidgets.QMainWindow):
         fit_combo(self.scope_box)
         play_bar.addWidget(self.scope_box)
 
-        self.scrub = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.scrub = JumpSlider(QtCore.Qt.Horizontal)
         self.scrub.setRange(0, 1000)
         self.scrub.sliderMoved.connect(self._scrubbed)
         play_bar.addWidget(self.scrub)
@@ -466,7 +469,7 @@ class MainWindow(QtWidgets.QMainWindow):
         for view in (self.map, self.view3d, self.video_panel):
             view.clicked.connect(self._toggle_play)
         for plot in (self.speed, self.delta):
-            plot.clickedAt.connect(self._seek_to)
+            plot.clickedAt.connect(self._trace_clicked)
 
         centre = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         centre.addWidget(self.top_split)
@@ -1072,9 +1075,9 @@ class MainWindow(QtWidgets.QMainWindow):
         plot = ChannelPlot(self.cursor)
         plot.hover_enabled = self.hover_box.isChecked()
         plot.set_units(self.units)
-        plot.clicked.connect(self._toggle_play)
+        plot.clicked.connect(self._channel_plot_clicked)
         plot.setXLink(self.delta)
-        plot.clickedAt.connect(self._seek_to)
+        plot.clickedAt.connect(self._trace_clicked)
 
         box = QtWidgets.QComboBox()
         remove = QtWidgets.QToolButton()
@@ -1209,6 +1212,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self._play_s = float(value) / 1000.0 * self.analysis.lap.length
         self.cursor.set(self._play_s)
 
+    def _tick_guarded(self) -> None:
+        # Cursor moves made by the playhead itself are "follow the video"; anything else that moves the
+        # cursor while playing (scrub bar, a click on a plot or the map) is a jump the video must follow.
+        self._in_tick = True
+        try:
+            self._tick()
+        finally:
+            self._in_tick = False
+
     def _tick(self) -> None:
         """Advance the playhead.
 
@@ -1299,6 +1311,19 @@ class MainWindow(QtWidgets.QMainWindow):
                 [r["plot"] for r in self.channel_rows]:
             plot.hover_enabled = bool(on)
 
+    def _trace_clicked(self, x: float) -> None:
+        """A click on a trace puts the playhead there. With "follow mouse" on, it also plays from there:
+        you hover to the spot you want, click, and it runs (or, if it is already running, carries on
+        from the new spot)."""
+        self._seek_to(x)
+        if self.hover_box.isChecked() and not self._timer.isActive():
+            self._toggle_play()
+
+    def _channel_plot_clicked(self) -> None:
+        # with "follow mouse" on, _trace_clicked has already started playback from the click
+        if not self.hover_box.isChecked():
+            self._toggle_play()
+
     def _seek_to(self, x: float) -> None:
         """Put the playhead where the plot was clicked."""
         if self.analysis is None:
@@ -1314,8 +1339,12 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.analysis is None:
             return
         lap = self.analysis.lap
-        self.video_panel.follow(lap.t_start + lap.at(s, lap.t),
-                                self._timer.isActive(), self._play_rate)
+        session_t = lap.t_start + lap.at(s, lap.t)
+        if self._timer.isActive() and not self._in_tick:
+            self._play_s = s
+            self.video_panel.jump_while_playing(session_t)
+            return
+        self.video_panel.follow(session_t, self._timer.isActive(), self._play_rate)
 
     def _on_cursor_repaint(self, s: float) -> None:
         """Rate limited by the cursor. Everything that costs real paint time.

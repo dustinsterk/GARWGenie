@@ -190,6 +190,7 @@ def _payload_gps(buf: bytes):
     """[(lat, lon, speed2d, utc_posix_or_None, fix)] for one payload, plus the payload's GPSU (or None)."""
     samples: List[Tuple[float, float, float, Optional[float], int]] = []
     payload_utc: Optional[float] = None
+    accl: List[Tuple[float, float, float]] = []      # accelerometer, m/s^2, camera axes
 
     def walk(start: int, end: int):
         nonlocal payload_utc
@@ -233,6 +234,11 @@ def _payload_gps(buf: bytes):
                     lat, lon = row[0] / sc[0], row[1] / sc[1]
                     spd = row[3] / sc[3]
                     samples.append((lat, lon, spd, None, fix))
+            elif key == b"ACCL":
+                sc = scal if len(scal) >= 3 else [scal[0]] * 3
+                for row in _values(t, ssize, rep, d):
+                    if len(row) >= 3:
+                        accl.append((row[0] / sc[0], row[1] / sc[1], row[2] / sc[2]))
             elif key == b"GPS9" and tdef:
                 fmts = [_TYPES.get(c, "i") for c in tdef]
                 for i in range(rep):
@@ -245,7 +251,7 @@ def _payload_gps(buf: bytes):
                     samples.append((lat, lon, spd, _GPS_EPOCH + days * 86400.0 + secs, f9))
 
     walk_bytes(buf)
-    return samples, payload_utc
+    return samples, payload_utc, accl
 
 
 @dataclass
@@ -257,6 +263,9 @@ class GoProGPS:
     lon: np.ndarray
     speed: np.ndarray            # m/s (2D ground speed)
     per_sample_utc: bool         # GPS9 (exact per fix) vs GPS5 (per payload)
+    #: accelerometer on the VIDEO clock (no GPS latency): times from clip start, and N x 3 m/s^2
+    accl_t: np.ndarray = None
+    accl: np.ndarray = None
 
     @property
     def utc_seconds_of_day(self) -> np.ndarray:
@@ -274,10 +283,14 @@ def read_gopro_gps(path: str) -> Optional[GoProGPS]:
             if trk is None or not trk.offsets:
                 return None
             vt, utc, lat, lon, spd = [], [], [], [], []
+            at, av = [], []
             per_sample = False
             for start, dur, off, sz in zip(trk.starts, trk.durations, trk.offsets, trk.sizes):
                 f.seek(off)
-                samples, payload_utc = _payload_gps(f.read(sz))
+                samples, payload_utc, accl = _payload_gps(f.read(sz))
+                for k, a in enumerate(accl):
+                    at.append(start + (k / len(accl)) * dur)
+                    av.append(a)
                 good = [s for s in samples if s[4] >= 2 and (s[0] or s[1])]   # 2D/3D fix only
                 n = len(samples)
                 for i, s in enumerate(samples):
@@ -300,7 +313,8 @@ def read_gopro_gps(path: str) -> Optional[GoProGPS]:
     if len(vt) < 10:
         return None
     return GoProGPS(path, np.asarray(vt), np.asarray(utc, dtype=float), np.asarray(lat), np.asarray(lon),
-                    np.asarray(spd), per_sample)
+                    np.asarray(spd), per_sample, np.asarray(at, dtype=float),
+                    np.asarray(av, dtype=float).reshape(-1, 3))
 
 
 def find_telemetry(video_path: str) -> List[str]:
@@ -331,14 +345,73 @@ def find_telemetry(video_path: str) -> List[str]:
 @dataclass
 class GpsSyncResult:
     offset_s: float              # session time at which the clip's first frame was recorded
-    method: str                  # 'utc', 'utc+speed', 'speed'
+    method: str                  # 'utc', 'utc+speed', 'speed' — optionally '+imu'
     correlation: Optional[float]
     source: str
+    gps_lag_s: Optional[float] = None    # + = the camera's GPS trailed its video by this much (IMU step)
 
     def describe(self) -> str:
-        how = {"utc": "GPS clock", "utc+speed": "GPS clock + speed match", "speed": "speed match"}[self.method]
+        base, imu = self.method.replace("+imu", ""), self.method.endswith("+imu")
+        how = {"utc": "GPS clock", "utc+speed": "GPS clock + speed match", "speed": "speed match"}[base]
+        if imu:
+            how += " + accelerometer"
         q = f", match {self.correlation:.2f}" if self.correlation is not None else ""
-        return f"GoPro GPS sync from {os.path.basename(self.source)} ({how}{q})"
+        lag = ""
+        if imu and self.gps_lag_s is not None and abs(self.gps_lag_s) >= 0.05:
+            lag = f"; camera GPS ran {abs(self.gps_lag_s):.2f}s {'late' if self.gps_lag_s > 0 else 'early'} — corrected"
+        return f"GoPro GPS sync from {os.path.basename(self.source)} ({how}{q}{lag})"
+
+
+def _smooth(a: np.ndarray, n: int) -> np.ndarray:
+    if n <= 1:
+        return a
+    return np.convolve(a, np.ones(n) / n, mode="same")
+
+
+def _band(a: np.ndarray, hz: float) -> np.ndarray:
+    """Vehicle dynamics band: drop the slow part (gravity, tilt, drift — 4 s) and the fast part
+    (engine and road vibration — 0.3 s)."""
+    return _smooth(a - _smooth(a, int(4.0 * hz)), int(0.3 * hz))
+
+
+def imu_refine(gps: GoProGPS, offset_s: float, log_t: np.ndarray, log_signals: List[np.ndarray],
+               search_s: float = 2.5) -> Optional[Tuple[float, float]]:
+    """Refine a GPS-based offset with the GoPro's accelerometer, which is on the video clock.
+
+    A GoPro's GPS fixes reach its file late — anything from under a tenth of a second to several tenths — so a
+    sync built on its GPS shows the data ahead of the picture by that delay. Accelerations from the log
+    (its own accelerometer channels, or speed change) are matched against each camera axis, either sign,
+    within ±search_s of the GPS offset. Returns (offset, |correlation|), or None when nothing matches well."""
+    if gps.accl is None or len(gps.accl) < 200 or not log_signals:
+        return None
+    hz = 50.0
+    lo = max(log_t[0], offset_s + gps.accl_t[0]) + search_s
+    hi = min(log_t[-1], offset_s + gps.accl_t[-1]) - search_s
+    if hi - lo < 30.0:
+        return None
+    grid = np.arange(lo, hi, 1.0 / hz)
+    logs = [_band(np.interp(grid, log_t, sig), hz) for sig in log_signals]
+    logs = [l for l in logs if np.std(l) > 1e-4]
+    if not logs:
+        return None
+
+    def score(off: float) -> float:
+        best = 0.0
+        vt = grid - off
+        for k in range(3):
+            cam = _band(np.interp(vt, gps.accl_t, gps.accl[:, k]), hz)
+            if np.std(cam) < 1e-4:
+                continue
+            for l in logs:
+                best = max(best, abs(float(np.corrcoef(l, cam)[0, 1])))
+        return best
+
+    coarse = max(((off, score(off)) for off in offset_s + np.arange(-search_s, search_s + 1e-9, 0.04)),
+                 key=lambda p: p[1])
+    if coarse[1] < 0.5:
+        return None
+    fine = max(((off, score(off)) for off in coarse[0] + np.arange(-0.04, 0.0401, 0.004)), key=lambda p: p[1])
+    return float(fine[0]), float(fine[1])
 
 
 def _xcorr_best(log_t: np.ndarray, log_v: np.ndarray, g_t: np.ndarray, g_v: np.ndarray,
@@ -361,9 +434,30 @@ def _xcorr_best(log_t: np.ndarray, log_v: np.ndarray, g_t: np.ndarray, g_v: np.n
     return best
 
 
-def gps_sync(gps: GoProGPS, log_t: np.ndarray, log_speed: np.ndarray) -> Optional[GpsSyncResult]:
+def gps_sync(gps: GoProGPS, log_t: np.ndarray, log_speed: np.ndarray,
+             log_accel: Optional[List[np.ndarray]] = None) -> Optional[GpsSyncResult]:
     """Session time of the clip's first frame. log_t: session seconds (UTC seconds-of-day for .vbo/.fit),
-    log_speed: m/s."""
+    log_speed: m/s, log_accel: the log's own accelerometer channels (g), if it has any."""
+    r = _gps_sync(gps, log_t, log_speed)
+    if r is None:
+        return None
+    # accelerometer step: speed change from the log always, plus its own accelerometer channels
+    t = np.asarray(log_t, dtype=float)
+    v = np.asarray(log_speed, dtype=float)
+    ok = np.isfinite(t) & np.isfinite(v)
+    sigs = [np.gradient(_smooth(v[ok], 5), t[ok])]
+    for a in (log_accel or []):
+        a = np.asarray(a, dtype=float)
+        if a.shape == t.shape:
+            sigs.append(np.nan_to_num(a[ok]))
+    ref = imu_refine(gps, r.offset_s, t[ok], sigs)
+    if ref is not None:
+        new_off, corr = ref
+        return GpsSyncResult(new_off, r.method + "+imu", round(corr, 3), r.source, gps_lag_s=new_off - r.offset_s)
+    return r
+
+
+def _gps_sync(gps: GoProGPS, log_t: np.ndarray, log_speed: np.ndarray) -> Optional[GpsSyncResult]:
     log_t = np.asarray(log_t, dtype=float)
     log_v = np.asarray(log_speed, dtype=float)
     ok = np.isfinite(log_t) & np.isfinite(log_v)
@@ -403,13 +497,14 @@ def gps_sync(gps: GoProGPS, log_t: np.ndarray, log_speed: np.ndarray) -> Optiona
     return GpsSyncResult(fine[0], "speed", round(fine[1], 3), gps.source)
 
 
-def sync_video(video_path: str, log_t: np.ndarray, log_speed: np.ndarray) -> Optional[GpsSyncResult]:
+def sync_video(video_path: str, log_t: np.ndarray, log_speed: np.ndarray,
+               log_accel: Optional[List[np.ndarray]] = None) -> Optional[GpsSyncResult]:
     """Try each telemetry source for this clip (the MP4 itself first, then an .LRV) and return the first sync found."""
     for p in find_telemetry(video_path):
         gps = read_gopro_gps(p)
         if gps is None:
             continue
-        r = gps_sync(gps, log_t, log_speed)
+        r = gps_sync(gps, log_t, log_speed, log_accel)
         if r is not None:
             return r
     return None

@@ -13,6 +13,8 @@ from typing import Callable, Optional
 
 from PySide6 import QtCore, QtWidgets
 
+from .jumpslider import JumpSlider
+
 from ..video import VideoSync
 
 try:                                                    # pragma: no cover
@@ -146,7 +148,7 @@ class VideoPanel(QtWidgets.QWidget):
         # video on its own there is no way to say "this frame is that moment":
         # the video follows the cursor, so any attempt to align them is
         # circular.
-        self.position = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.position = JumpSlider(QtCore.Qt.Horizontal)
         self.position.setRange(0, 1000)
         self.position.setToolTip(
             "Scrub the video on its own, then press Sync to tie the frame you "
@@ -700,6 +702,21 @@ class VideoPanel(QtWidgets.QWidget):
                 and self.player.playbackState()
                 == self.player.PlaybackState.PlayingState)
 
+    def jump_while_playing(self, session_t: float) -> None:
+        """The user moved the playhead (scrub bar, plot, map) during playback: take the video there and
+        keep playing. For a moment afterwards the player's position is not trusted — it can still report
+        the old spot until the seek lands — so the playhead runs on its own clock from the new place
+        instead of being pulled back."""
+        if not self.ready:
+            return
+        self._set_coverage(session_t)
+        target = self.sync.video_ms(session_t)
+        self._suppress = True
+        self.player.setPosition(int(max(target, 0)))
+        self._suppress = False
+        self._show_position(target)
+        self._jump_hold = QtCore.QDeadlineTimer(400)
+
     def current_session_time(self) -> Optional[float]:
         """Where the video actually is, in session seconds.
 
@@ -709,6 +726,9 @@ class VideoPanel(QtWidgets.QWidget):
         removes the periodic seek.
         """
         if not self.ready or not self.is_playing:
+            return None
+        hold = getattr(self, "_jump_hold", None)
+        if hold is not None and not hold.hasExpired():
             return None
         pos = self.player.position()
         if pos <= 0:

@@ -663,7 +663,13 @@ def _extract_lap(vbo: VboFile, number: int,
     ax_g = (vg * dvds) / geo.G
     ay_g = (vg ** 2 * kappa) / geo.G
 
-    t_grid = geo.elapsed_time_from_speed(s_grid, vg)
+    # Time at each grid point comes from the log's own clock, not from integrating ds/v: on the
+    # distance grid a stop (or a crawl) takes no distance, so an integral of ds/v silently drops the
+    # time spent there and every later point in the lap runs ahead of the real time — which shows as
+    # the data running ahead of the video. Distance is non-decreasing; nudge it strictly increasing so
+    # a stop maps to the moment the car moves off again.
+    s_mono = np.maximum.accumulate(s_seg) + np.arange(len(s_seg)) * 1e-9
+    t_grid = np.interp(s_grid, s_mono, t_seg) - t0
 
     extras: Dict[str, np.ndarray] = {}
     for name, col in vbo.channels.items():

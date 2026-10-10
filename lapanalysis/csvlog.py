@@ -61,6 +61,7 @@ CSV_ALIASES = {
     "steering": "steer", "steeringangle": "steer",
     "lapnumber": "lap", "lap": "lap", "laptime": "laptime", "currentlaptime": "laptime",
     "distance": "distance", "lapdistance": "distance",
+    "itow": "itow", "gpsitow": "itow", "timeofweek": "itow",
 }
 
 _UNIT_IN_NAME = re.compile(r"[\(\[\{]\s*([^)\]\}]+?)\s*[\)\]\}]\s*$")
@@ -114,7 +115,7 @@ def _map_name(name: str) -> Optional[str]:
     canon = canonical_name(base)
     known = {"lat", "lon", "speed_kmh", "time", "heading", "height", "sats",
              "ax_g", "ay_g", "brake", "throttle", "rpm", "steer", "gear",
-             "heartrate", "distance", "lap", "laptime"}
+             "heartrate", "distance", "lap", "laptime", "itow"}
     return canon if canon in known else None
 
 
@@ -390,7 +391,7 @@ def parse_csv(path: str, delimiter: Optional[str] = None) -> VboFile:
     vbo.channels["speed_kmh"] = vbo.channels["speed"] * 3.6
 
     for canon in ("heading", "height", "ax_g", "ay_g", "brake", "throttle",
-                  "rpm", "steer", "gear", "heartrate", "sats", "distance", "lap", "laptime"):
+                  "rpm", "steer", "gear", "heartrate", "sats", "distance", "lap", "laptime", "itow"):
         if canon not in columns:
             continue
         values = _fill(np.array([_to_float(v) for v in columns[canon]]))[keep]

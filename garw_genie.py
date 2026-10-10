@@ -89,7 +89,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.14.1"
+APP_VERSION = "5.14.5"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -3825,13 +3825,16 @@ def run_gui(initial_zip: Optional[str] = None):
             enabled = False   # hard lock: without SSH no device feature can work, whatever the monitor says
         elif debug["unlocked"]:
             enabled = True    # hidden debug unlock (4 clicks on the logo) — look around without the device
+        was = nb.select()               # read before disabling: Tk moves the selection off a tab it disables
         for t in DEVICE_TABS:
             nb.tab(t, state="normal" if enabled else "disabled")
         # Once the unit answers, the SSH login / GARW Wi-Fi / Join controls are greyed out —
         # changing them mid-session would only break a working connection.
         for w in (user_ent, pass_ent, show_pw, ssid_ent, wpass_ent, show_wpw, join_btn):
             w.configure(state="disabled" if connected else "normal")
-        if not enabled and nb.select() != str(tab_repo):
+        # Only move off a tab that has just been locked. Repo, Lap Timer and Lap Analysis work without
+        # the unit, so a Wi-Fi blip (e.g. while a file dialog is open) must not yank you off them.
+        if not enabled and was in {str(t) for t in DEVICE_TABS}:
             nb.select(tab_repo)
         lock_hint.configure(text=(PARAMIKO_HINT if paramiko is None else
                                   DEBUG_HINT if (debug["unlocked"] and not connected) else
