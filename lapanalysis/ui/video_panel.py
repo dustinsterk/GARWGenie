@@ -279,10 +279,13 @@ class VideoPanel(QtWidgets.QWidget):
                 self.player.stop()
                 self.player.setSource(QtCore.QUrl())
             self._loaded = False
+            log = getattr(getattr(self, "vbo", None), "path", "") or ""
+            stem = os.path.splitext(os.path.basename(log))[0]
             self._set_message(
-                "No video found next to this .vbo.\n\n"
-                "Use Open video… to pick one. If the file has no embedded "
-                "sync, line it up with the offset buttons.")
+                "No video found.\n\n"
+                "To have it open automatically, name the video like the log, in the same folder:\n"
+                + (f"{stem}.MP4" if stem else "e.g. S0001_house_loop.MP4") +
+                "\n\nOr pick one with Open\u2026 below.")
             return
         self.player.setSource(QtCore.QUrl.fromLocalFile(os.path.abspath(path)))
         self._apply_volume()

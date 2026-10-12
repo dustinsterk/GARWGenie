@@ -927,7 +927,9 @@ class MainWindow(QtWidgets.QMainWindow):
         mode = getattr(self.session, "mode", "laps")
         self.statusBar().showMessage(
             (f"{len(self.session.laps)} runs · {self.session.sf_source}" if mode != "laps" else
-             f"{len(self.session.laps)} laps · start/finish from {self.session.sf_source}")
+             f"{len(self.session.laps)} laps · start/finish "
+             + (self.session.sf_source if str(self.session.sf_source).startswith("from ")
+                else f"from {self.session.sf_source}"))
             + f" · {self.session.vbo.sample_rate:.0f} Hz")
 
     def _top_tab_changed(self, *_) -> None:
@@ -1010,13 +1012,40 @@ class MainWindow(QtWidgets.QMainWindow):
                               else None)
         has = bool(found)
         self.video_wrap.setTabText(0, "VIDEO" if has else "VIDEO (NONE)")
-        # With no video there is nothing to watch, so give the width back to
-        # the map. Ticking `video` reveals the pane and its Open video button.
-        self.video_toggle.setChecked(has)
+        # Keep the pane showing even with no video: its message says how to name the clip so it opens
+        # by itself, and its Open video… button is right there. Untick `video` to give the map the width.
+        self.video_toggle.setChecked(True)
+        self._show_no_video_hint(False, path)
+        self.video_toggle.setToolTip(
+            "No video found next to this log — name the video the same as the log to have it open "
+            "automatically. Untick to give the map the full width." if not has else
+            "Show or hide the video pane.")
         if has and sync.exact:
             self.statusBar().showMessage(
                 f"linked video: {os.path.basename(found)}"
                 + (f" — {sync.gps_note}" if sync.gps_note else ""), 8000)
+
+    def _show_no_video_hint(self, show: bool, log_path: Optional[str]) -> None:
+        """With no video the pane is folded away, so its own message is never seen. Say it in the status
+        bar instead — permanently, not as a timed message the analysis summary would overwrite."""
+        hint = getattr(self, "_no_video_hint", None)
+        if hint is None:
+            hint = QtWidgets.QLabel()
+            hint.setStyleSheet("color:#f59e0b; padding:0 8px;")
+            hint.setCursor(QtCore.Qt.PointingHandCursor)
+            hint.mousePressEvent = lambda _e: (self.video_toggle.setChecked(True), hint.setVisible(False))
+            self.statusBar().addPermanentWidget(hint)
+            self._no_video_hint = hint
+        if show:
+            stem = os.path.splitext(os.path.basename(log_path or ""))[0] or "your log"
+            hint.setText(f"No video found — name it {stem}.MP4 (same name as the log, same folder) "
+                         f"to have it open automatically, or click here to pick one")
+            hint.setToolTip("The video is matched to the log by file name. Click to show the video pane "
+                            "and use Open video… instead.")
+        self.video_toggle.setToolTip(
+            "No video found next to this log — name the video the same as the log to have it open "
+            "automatically." if show else "Show or hide the video pane.")
+        hint.setVisible(bool(show))
 
     def _populate_channels(self) -> None:
         """List every extra channel this file actually carries."""

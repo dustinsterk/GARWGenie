@@ -89,7 +89,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.14.5"
+APP_VERSION = "5.14.6"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -6697,6 +6697,12 @@ def run_gui(initial_zip: Optional[str] = None):
     tab_la.rowconfigure(1, weight=1)
     tab_la.columnconfigure(0, weight=0)
     tab_la.columnconfigure(1, weight=1)
+    la_hint = ttk.Label(tab_la, style="Muted.TLabel", justify="left", wraplength=900,
+              text=("Video: give the video file the same name as the log and keep it in the same folder — e.g. "
+                    "S0001_house_loop.csv + S0001_house_loop.MP4 — and the full analysis window shows it "
+                    "automatically (GoPro clips also sync themselves). Otherwise use Open video… in that window."))
+    la_hint.grid(row=3, column=0, columnspan=2, sticky="w", pady=(6, 0))
+    tab_la.bind("<Configure>", lambda e: la_hint.configure(wraplength=max(300, e.width - 20)), add="+")
 
     la_bot = ttk.Frame(tab_la)
     la_bot.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(8, 0))
