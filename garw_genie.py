@@ -90,7 +90,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.16.0"
+APP_VERSION = "5.17.0"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -405,6 +405,12 @@ def check_asset_file(path: str, kind: str, limit, fname: str = "", fit: str = "l
 CONFIG_REF_RE = re.compile(r"screen_configs/([A-Za-z0-9_.\-]+)")
 CONFIG_PREVIEW_MAX = 64 * 1024
 SOURCE_MARKER = ".garw_source.json"   # written inside each dash folder installed from GitHub
+
+
+def enc_marker_path(name: str) -> str:
+    """Provenance for an encrypted add-on installed from GitHub: a hidden file beside Name.enc (the add-on
+    itself can't hold a marker). Hidden and not ending in .enc, so the firmware never sees it as a screen."""
+    return f"{LIBRARY_DIR}/.{name}.enc{SOURCE_MARKER}"
 CONFIG_DIR = Path.home() / ".garw_genie"
 CONFIG_PATH = CONFIG_DIR / "config.json"
 _OLD_CONFIG_DIRS = (Path.home() / ".garw_v5_manager", Path.home() / ".garw_uploader")  # earlier names, migrated
@@ -445,10 +451,19 @@ class DashPackage:
     warnings: List[str] = field(default_factory=list)  # user must acknowledge
     notes: List[str] = field(default_factory=list)     # informational only
     source: Optional[dict] = None  # GitHub provenance, written as SOURCE_MARKER
+    enc: bool = False              # an encrypted add-on: files == [("<Name>.enc", data)], installed as one file
 
     @property
     def remote_dir(self) -> str:
         return f"{LIBRARY_DIR}/{self.name}"
+
+    @property
+    def remote_enc(self) -> str:
+        return f"{LIBRARY_DIR}/{self.name}.enc"
+
+    @property
+    def label(self) -> str:
+        return f"{self.name}.enc" if self.enc else self.name
 
 
 class ValidationError(Exception):
@@ -1323,6 +1338,19 @@ def packages_from_github_zip(zip_bytes: bytes, source: dict) -> List[DashPackage
             entries = [(p[1:], i) for p, i in entries if len(p) > 1]
         file_entries = [(p, i) for p, i in entries if not i.is_dir()]
 
+        # Encrypted add-ons (<Name>.enc) at the repo root install as single files beside the dash folders —
+        # a repo may hold only that, or ship one alongside its dash(es).
+        enc_pkgs = []
+        for p, i in file_entries:
+            if len(p) == 1 and p[0].lower().endswith(".enc"):
+                ename = p[0][:-4]
+                if not NAME_RE.match(ename):
+                    raise ValidationError(f"Add-on file name '{p[0]}' has invalid characters "
+                                          "(letters, digits, '-' and '_' only).")
+                enc_pkgs.append(DashPackage(source.get("url", "github"), ename,
+                                            files=[(f"{ename}.enc", zf.read(i))], enc=True))
+        file_entries = [(p, i) for p, i in file_entries if not (len(p) == 1 and p[0].lower().endswith(".enc"))]
+
         root_qml = [p[0] for p, _ in file_entries if len(p) == 1 and p[0].lower().endswith(".qml")]
         pairs = [q for q in root_qml if any(len(p) == 1 and p[0] == q + ".png" for p, _ in file_entries)]
         v4_mains = [q for q in root_qml if q.lower().endswith("_main.qml")]
@@ -1342,13 +1370,16 @@ def packages_from_github_zip(zip_bytes: bytes, source: dict) -> List[DashPackage
             name = pairs[0][:-4]
             files = [("/".join(p), zf.read(i)) for p, i in file_entries]
             pkgs = [_check_dash(name, files, origin)]
+        elif enc_pkgs and not any(len(p) >= 2 for p, _ in file_entries):
+            # Layout 3: just encrypted add-on(s) (plus README / LICENSE).
+            pkgs = []
         else:
             # Layout 2: folders of dashes. Loose files at the root (README, LICENSE) are fine here.
             names = sorted({p[0] for p, _ in file_entries if len(p) >= 2})
             if not names:
                 raise ValidationError(
                     "No dash found: expected <Name>.qml and <Name>.qml.png at the repo root, "
-                    "or dash folders.")
+                    "dash folders, or an encrypted add-on <Name>.enc at the root.")
             pkgs, problems = [], []
             for name in names:
                 files = [("/".join(p[1:]), zf.read(i)) for p, i in file_entries if p[0] == name]
@@ -1356,16 +1387,22 @@ def packages_from_github_zip(zip_bytes: bytes, source: dict) -> List[DashPackage
                     pkgs.append(_check_dash(name, files, origin))
                 except ValidationError as e:
                     problems.append(str(e))
-            if problems and not pkgs:
+            if problems and not pkgs and not enc_pkgs:
                 raise ValidationError("\n".join(problems))
             if problems:
-                pkgs[0].notes.append("Ignored non-dash folder(s): " + "; ".join(
+                (pkgs or enc_pkgs)[0].notes.append("Ignored non-dash folder(s): " + "; ".join(
                     p.splitlines()[0] for p in problems))
 
+    clash = sorted({p.name for p in pkgs} & {e.name for e in enc_pkgs})
+    if clash:
+        raise ValidationError("The repo has both a dash and an encrypted add-on called " + ", ".join(clash)
+                              + " — they would claim the same screen. Keep one.")
     for pkg in pkgs:
         pkg.source = dict(source, dash=pkg.name, tool=f"{APP_NAME} {APP_VERSION}")
         pkg.files.append((SOURCE_MARKER, json.dumps(pkg.source, indent=2).encode("utf-8")))
-    return pkgs
+    for pkg in enc_pkgs:
+        pkg.source = dict(source, dash=pkg.name, enc=True, tool=f"{APP_NAME} {APP_VERSION}")
+    return pkgs + enc_pkgs
 
 
 @dataclass
@@ -1464,11 +1501,31 @@ class RepoEntry:
                 names = [n for n in zf.namelist() if n.lower().endswith(".qml.png")
                          and "__MACOSX" not in n and not os.path.basename(n).startswith(".")]
                 if not names:
+                    # an add-on repo: the picture lives inside the .enc, which only the unit can read, so a repo
+                    # may carry an optional <Name>.png / <Name>.enc.png at its root just for this preview
+                    # (it is never copied to the unit)
+                    encs = {os.path.basename(n)[:-4].lower() for n in zf.namelist()
+                            if n.lower().endswith(".enc") and n.count("/") <= 1}
+                    names = [n for n in zf.namelist() if n.count("/") <= 1 and n.lower().endswith(".png")
+                             and os.path.basename(n)[:-4].lower().removesuffix(".enc") in encs]
+                if not names:
                     return None
                 names.sort(key=lambda n: (n.count("/"), n))   # the top-most one is the dash
                 return zf.read(names[0])
         except (OSError, zipfile.BadZipFile):
             return None
+
+    def is_enc_only(self) -> bool:
+        """True when the cached snapshot holds only encrypted add-on(s) (<Name>.enc), no dash."""
+        c = self.cached()
+        if not c:
+            return False
+        try:
+            with zipfile.ZipFile(c[1]) as zf:
+                names = [n for n in zf.namelist() if not n.endswith("/")]
+        except (OSError, zipfile.BadZipFile):
+            return False
+        return any(n.lower().endswith(".enc") for n in names) and not any(n.lower().endswith(".qml") for n in names)
 
     def is_downloaded(self) -> bool:
         """True when the latest known commit is sitting in the cache."""
@@ -2211,7 +2268,9 @@ class IC7Device:
             f"m=''; [ -f \"$d/{SOURCE_MARKER}\" ] && m=$(od -An -tx1 -v \"$d/{SOURCE_MARKER}\" | tr -d ' \\n'); "
             "echo \"$d|$q|$p|$n|$m\"; done; "
             # encrypted add-on dashes (e.g. LapTimer.enc) sit beside the folders and take a screen index like them
-            "for f in *.enc; do [ -f \"$f\" ] && echo \"${f%.enc}|enc|enc|1|\"; done"
+            "for f in *.enc; do [ -f \"$f\" ] || continue; n=${f%.enc}; "
+            f"m=''; [ -f \".$n.enc{SOURCE_MARKER}\" ] && m=$(od -An -tx1 -v \".$n.enc{SOURCE_MARKER}\" | tr -d ' \\n'); "
+            "echo \"$n|enc|enc|1|$m\"; done"
         )
         rc, out, err = self._run(script, timeout=60)
         dashes = []
@@ -2220,15 +2279,15 @@ class IC7Device:
             if len(parts) != 5 or parts[0].startswith("."):
                 continue
             name, q, p, n, m = parts
-            if q == "enc":
-                dashes.append({"name": name, "has_qml": True, "has_png": False, "files": 1, "source": {}, "enc": True})
-                continue
             source = {}
             if m:
                 try:
                     source = json.loads(bytes.fromhex(m).decode("utf-8"))
                 except Exception:
                     source = {"error": "unreadable marker"}
+            if q == "enc":
+                dashes.append({"name": name, "has_qml": True, "has_png": False, "files": 1, "source": source, "enc": True})
+                continue
             dashes.append({"name": name, "has_qml": q == "1", "has_png": p == "1",
                            "files": int(n.strip() or 0), "source": source, "enc": False})
         return dashes
@@ -2238,7 +2297,12 @@ class IC7Device:
         rc, _, err = self._run(f"mkdir -p {_sq(LIBRARY_DIR)}")
         if rc != 0:
             raise RuntimeError(f"Cannot create {LIBRARY_DIR}: {err.strip()}")
-        existing = [p.name for p in pkgs if self._remote_exists(p.remote_dir)]
+        for p in pkgs:
+            if p.enc and self._remote_exists(p.remote_dir):
+                raise RuntimeError(f"There is already a dash folder called '{p.name}' in {LIBRARY_DIR} — the add-on "
+                                   f"{p.name}.enc can't be installed next to it. Delete the '{p.name}' folder first "
+                                   "if the add-on should replace it.")
+        existing = [p.label for p in pkgs if self._remote_exists(p.remote_enc if p.enc else p.remote_dir)]
         if not existing:
             return
         plural = len(existing) > 1
@@ -2329,6 +2393,7 @@ class IC7Device:
         if "OK" not in out:
             self._run(f"rm -f {_sq(tmp)}")
             raise RuntimeError(f"Upload of {fname} failed: {err.strip() or 'size mismatch'}")
+        self._run(f"rm -f {_sq(enc_marker_path(name))}")   # a manual copy isn't tracked to any GitHub commit
         self.log(f"Installed {remote}")
         return name
 
@@ -2337,10 +2402,39 @@ class IC7Device:
         grand_total = sum(len(p.files) for p in pkgs)
         done = 0
         for n, pkg in enumerate(pkgs, 1):
-            self.log(f"--- Dash {n}/{len(pkgs)}: {pkg.name} ---")
-            self.upload(pkg, done, grand_total)
+            self.log(f"--- Dash {n}/{len(pkgs)}: {pkg.label} ---")
+            if pkg.enc:
+                self.upload_enc_data(pkg.name, pkg.files[0][1], pkg.source)
+            else:
+                self.upload(pkg, done, grand_total)
             done += len(pkg.files)
-        self.log(f"All {len(pkgs)} dash(es) uploaded: " + ", ".join(p.name for p in pkgs))
+            self.progress(done, grand_total)
+        self.log(f"All {len(pkgs)} dash(es) uploaded: " + ", ".join(p.label for p in pkgs))
+
+    def upload_enc_data(self, name: str, data: bytes, source: Optional[dict] = None) -> str:
+        """Install Name.enc from bytes (staged upload, size check, rename) and record where it came from in a
+        hidden marker beside it — or clear an old marker when there is no source (a manual install)."""
+        remote = f"{LIBRARY_DIR}/{name}.enc"
+        tmp = f"{LIBRARY_DIR}/.{name}.enc.uploading"
+        self.log(f"Uploading {name}.enc ({len(data):,} bytes) → {remote}")
+        sftp = self.client.open_sftp()
+        try:
+            sftp.putfo(io.BytesIO(data), tmp, file_size=len(data),
+                       callback=lambda done, total: self.progress(done, total or 1))
+        finally:
+            sftp.close()
+        rc, out, err = self._run(f"[ \"$(wc -c < {_sq(tmp)})\" -eq {len(data)} ] && mv -f {_sq(tmp)} {_sq(remote)} "
+                                 f"&& chmod a+r {_sq(remote)} && sync && echo OK")
+        if "OK" not in out:
+            self._run(f"rm -f {_sq(tmp)}")
+            raise RuntimeError(f"Upload of {name}.enc failed: {err.strip() or 'size mismatch'}")
+        marker = enc_marker_path(name)
+        if source:
+            self.write_text_file(marker, json.dumps(source, indent=2).encode("utf-8"), f"{name}.enc source marker")
+        else:
+            self._run(f"rm -f {_sq(marker)}")
+        self.log(f"Installed {remote}")
+        return name
 
     # -- delete --------------------------------------------------------------
     # -- lap timer ------------------------------------------------------------
@@ -2564,10 +2658,12 @@ class IC7Device:
         removed = []
         for n in names:
             path = f"{LIBRARY_DIR}/{n}"
+            extra = ""
             if not self._remote_exists(path) and self._remote_exists(path + ".enc"):
-                path += ".enc"      # encrypted add-on
+                path += ".enc"      # encrypted add-on (and its hidden GitHub source marker, if any)
+                extra = f" {_sq(enc_marker_path(n))}"
             self.log(f"Deleting {path} ...")
-            rc, _, err = self._run(f"rm -rf {_sq(path)} && sync")
+            rc, _, err = self._run(f"rm -rf {_sq(path)}{extra} && sync")
             if rc != 0 or self._remote_exists(path):
                 raise RuntimeError(f"Could not delete {path}: {err.strip() or 'still present'}")
             removed.append(n)
@@ -3682,6 +3778,24 @@ def run_gui(initial_zip: Optional[str] = None):
         root.tk.call("tk", "appname", APP_NAME)
     except tk.TclError:
         pass
+    if platform.system() == "Darwin":
+        # Clicking the Dock icon sends macOS's "reopen" event. Tk doesn't bring a minimised window back
+        # by itself (only right-click → window name did), so handle it: restore, raise and focus.
+        def _mac_reopen(*_a):
+            try:
+                if root.state() in ("iconic", "withdrawn"):
+                    root.deiconify()
+                root.lift()
+                root.focus_force()
+                restore = getattr(root, "_dialog_restore", None)   # an open prompt comes back with it
+                if restore:
+                    root.after(50, restore)
+            except tk.TclError:
+                pass
+        try:
+            root.createcommand("::tk::mac::ReopenApplication", _mac_reopen)
+        except tk.TclError:
+            pass
     root.minsize(960, 660)
     sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
     w, h = min(1380, int(sw * 0.88)), min(900, int(sh * 0.86))
@@ -4488,7 +4602,7 @@ def run_gui(initial_zip: Optional[str] = None):
                                     + "\n".join(warnings) + "\n\nInstall anyway?"):
             raise UploadAborted("Install cancelled.")
         log("=" * 60)
-        log(f"Installing {len(pkgs)} dash(es) from {origin}: " + ", ".join(p.name for p in pkgs))
+        log(f"Installing {len(pkgs)} dash(es) from {origin}: " + ", ".join(p.label for p in pkgs))
         if not gui_preflight():
             raise RuntimeError(f"GARW device not reachable at {HOST}. Join Wi-Fi '{TARGET_SSID}' first.")
         with IC7Device(log, confirm, set_progress) as dev:
@@ -4499,7 +4613,7 @@ def run_gui(initial_zip: Optional[str] = None):
         log("Done.")
         tail = {"restart": "\n\nThe GARW binary was restarted.", "reboot": "\n\nThe unit is rebooting.", "none": ""}[after_mode()]
         ui(lambda: messagebox.showinfo(
-            APP_NAME, f"Installed to {LIBRARY_DIR}/:\n  " + "\n  ".join(p.name for p in pkgs) + tail, parent=root))
+            APP_NAME, f"Installed to {LIBRARY_DIR}/:\n  " + "\n  ".join(p.label for p in pkgs) + tail, parent=root))
 
     # ---------- Install dashes from a .zip (button on the Device Dashes tab) ----------
     def install_zip(path: str):
@@ -4638,7 +4752,10 @@ def run_gui(initial_zip: Optional[str] = None):
         if png:
             set_repo_preview(png, f"{r.dash or r.label}  ·  {r.cached_sha()[:7] if r.cached_sha() else ''}")
         else:
+            enc_only = bool(r.cached_sha()) and r.dash and not png and r.is_enc_only()
             set_repo_preview(None, r.label, "No preview yet — press 'Refresh repos' to fetch this dash." if not r.cached_sha()
+                             else "Encrypted add-on (.enc) — its picture is inside the encrypted file. Add an "
+                                  "optional <Name>.png to the repo root to show a preview here." if enc_only
                              else "This dash has no .qml.png preview.")
     repo_tree.bind("<<TreeviewSelect>>", on_repo_select, add="+")
 
@@ -4661,7 +4778,8 @@ def run_gui(initial_zip: Optional[str] = None):
                           text="Step 1 (on internet): 'Refresh repos' asks GitHub for each repo's latest commit "
                                "and stores the dash in a local cache.   Step 2 (on GARW Wi-Fi, no internet): "
                                "'Install / update selected' pushes the cached dashes to the unit. "
-                               "One dash per repo: <Name>.qml + <Name>.qml.png at the repo root.\n"
+                               "A repo holds one dash (<Name>.qml + <Name>.qml.png at the repo root), dash folders, "
+                               "or an encrypted add-on (<Name>.enc at the repo root, installed as-is).\n"
                                + (f"Default repos are read from {_dr} — edit that file to change the bundled list."
                                   if _dr else f"Put a {DEFAULT_REPOS_FILE} next to the app (one GitHub URL per line) to bundle default repos."))
     repo_hint.grid(row=3, column=0, columnspan=7, sticky="w", pady=(6, 0))
@@ -5052,7 +5170,9 @@ def run_gui(initial_zip: Optional[str] = None):
         for r in device_rows:
             s = r["source"] or {}
             if r.get("enc"):
-                valid, src = "✓ encrypted", "GARW add-on (.enc)"
+                valid = "✓ encrypted"
+                src = (f"{s.get('owner')}/{s.get('repo')} [{s.get('branch')}]  (.enc)" if s.get("repo")
+                       else "GARW add-on (.enc)")
             else:
                 valid = "✓" if (r["has_qml"] and r["has_png"]) else "✗ " + (
                     "no .qml" if not r["has_qml"] else "no .png")
