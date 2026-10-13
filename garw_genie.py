@@ -1322,11 +1322,13 @@ def gh_download_zip(owner: str, repo: str, ref: str, token: str = "") -> bytes:
 
 def packages_from_github_zip(zip_bytes: bytes, source: dict) -> List[DashPackage]:
     """
-    A GitHub zipball is  <repo>-<sha>/<repo contents>.  Two layouts are accepted:
+    A GitHub zipball is  <repo>-<sha>/<repo contents>.  Accepted, and freely combined:
       * one dash per repo: <Name>.qml + <Name>.qml.png at the repo root
         (the dash is named after the .qml, not the repo)
-      * a repo holding several dash folders (same rules as an uploaded zip)
-    Each package gets `source` and a SOURCE_MARKER file for provenance.
+      * dash folders (same rules as an uploaded zip)
+      * encrypted add-ons <Name>.enc — any number, at the repo root and/or one level down in folders that
+        hold no .qml (e.g. RaceX/RaceX.enc, or addons/A.enc + addons/B.enc), so one repo can be a library
+    Each package gets `source` (dash folders also a SOURCE_MARKER file) for provenance.
     """
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
         entries, _ = _read_zip_tree(zf)
@@ -1338,18 +1340,28 @@ def packages_from_github_zip(zip_bytes: bytes, source: dict) -> List[DashPackage
             entries = [(p[1:], i) for p, i in entries if len(p) > 1]
         file_entries = [(p, i) for p, i in entries if not i.is_dir()]
 
-        # Encrypted add-ons (<Name>.enc) at the repo root install as single files beside the dash folders —
-        # a repo may hold only that, or ship one alongside its dash(es).
-        enc_pkgs = []
+        # Encrypted add-ons (<Name>.enc) install as single files beside the dash folders. They may sit at the
+        # repo root or one level down in a folder that is not a dash (no .qml in it) — so a repo can be a whole
+        # library of add-ons, alone or next to dashes. Such add-on folders are not dash folders.
+        qml_folders = {p[0] for p, _ in file_entries if len(p) >= 2 and p[-1].lower().endswith(".qml")}
+        enc_folders = {p[0] for p, _ in file_entries
+                       if len(p) == 2 and p[1].lower().endswith(".enc") and p[0] not in qml_folders}
+        enc_pkgs, seen = [], {}
         for p, i in file_entries:
-            if len(p) == 1 and p[0].lower().endswith(".enc"):
-                ename = p[0][:-4]
+            if p[-1].lower().endswith(".enc") and (len(p) == 1 or (len(p) == 2 and p[0] in enc_folders)):
+                ename = p[-1][:-4]
+                where = "/".join(p)
                 if not NAME_RE.match(ename):
-                    raise ValidationError(f"Add-on file name '{p[0]}' has invalid characters "
+                    raise ValidationError(f"Add-on file name '{where}' has invalid characters "
                                           "(letters, digits, '-' and '_' only).")
+                if ename.lower() in seen:
+                    raise ValidationError(f"Two add-ons are called {ename}.enc ({seen[ename.lower()]} and {where}) — "
+                                          "names must be unique; each one is a screen on the unit.")
+                seen[ename.lower()] = where
                 enc_pkgs.append(DashPackage(source.get("url", "github"), ename,
                                             files=[(f"{ename}.enc", zf.read(i))], enc=True))
-        file_entries = [(p, i) for p, i in file_entries if not (len(p) == 1 and p[0].lower().endswith(".enc"))]
+        file_entries = [(p, i) for p, i in file_entries
+                        if not (len(p) == 1 and p[0].lower().endswith(".enc")) and not (len(p) >= 2 and p[0] in enc_folders)]
 
         root_qml = [p[0] for p, _ in file_entries if len(p) == 1 and p[0].lower().endswith(".qml")]
         pairs = [q for q in root_qml if any(len(p) == 1 and p[0] == q + ".png" for p, _ in file_entries)]
@@ -1420,10 +1432,22 @@ class RepoEntry:
     etag: Optional[str] = None        # ETag of the last commit lookup -> free 304 re-checks
     error: Optional[str] = None       # transient, not persisted
     default: bool = False             # came from the bundled default_repos.txt
+    selection: Optional[List[str]] = None   # for a repo with several dashes/add-ons: the ones this user installs
 
     @property
     def label(self) -> str:
         return f"{self.owner}/{self.repo}"
+
+    def all_names(self) -> List[str]:
+        return [n.strip() for n in (self.dash or "").split(",") if n.strip()]
+
+    def wanted_names(self) -> List[str]:
+        """What this user installs from the repo: everything, or — for a library repo where they ticked
+        some — just those (names that left the repo drop out)."""
+        names = self.all_names()
+        if self.selection is None or len(names) <= 1:
+            return names
+        return [n for n in names if n in self.selection]
 
     @classmethod
     def from_url(cls, url: str) -> "RepoEntry":
@@ -1440,6 +1464,8 @@ class RepoEntry:
             if d.get(k):
                 setattr(e, k, d[k])
         e.default = bool(d.get("default"))
+        if isinstance(d.get("selection"), list):
+            e.selection = [str(x) for x in d["selection"]]
         return e
 
     def to_dict(self) -> dict:
@@ -1448,6 +1474,8 @@ class RepoEntry:
               "latest_message", "last_checked", "etag")}
         if getattr(self, "default", False):
             d["default"] = True
+        if self.selection is not None:
+            d["selection"] = list(self.selection)
         return d
 
     def check(self, token: str = "") -> dict:
@@ -1505,9 +1533,10 @@ class RepoEntry:
                     # may carry an optional <Name>.png / <Name>.enc.png at its root just for this preview
                     # (it is never copied to the unit)
                     encs = {os.path.basename(n)[:-4].lower() for n in zf.namelist()
-                            if n.lower().endswith(".enc") and n.count("/") <= 1}
-                    names = [n for n in zf.namelist() if n.count("/") <= 1 and n.lower().endswith(".png")
+                            if n.lower().endswith(".enc") and n.count("/") <= 2}
+                    names = [n for n in zf.namelist() if n.count("/") <= 2 and n.lower().endswith(".png")
                              and os.path.basename(n)[:-4].lower().removesuffix(".enc") in encs]
+                    names.sort(key=lambda n: (n.count("/"), n.lower()))
                 if not names:
                     return None
                 names.sort(key=lambda n: (n.count("/"), n))   # the top-most one is the dash
@@ -1610,7 +1639,9 @@ def repo_status(entry: RepoEntry, installed: Dict[str, dict]) -> str:
         return entry.error if entry.error.startswith("Not a v5") else f"Error: {entry.error}"
     if not entry.latest_sha:
         return "Not checked"
-    names = [n.strip() for n in (entry.dash or "").split(",") if n.strip()]
+    names = entry.wanted_names()
+    if entry.selection is not None and len(entry.all_names()) > 1 and not names:
+        return "Nothing chosen — right-click → Choose designs…"
     if not names:
         # Never installed by this tool; see if any installed dash claims this repo.
         names = [n for n, m in installed.items() if m.get("url") == entry.url]
@@ -4779,7 +4810,7 @@ def run_gui(initial_zip: Optional[str] = None):
                                "and stores the dash in a local cache.   Step 2 (on GARW Wi-Fi, no internet): "
                                "'Install / update selected' pushes the cached dashes to the unit. "
                                "A repo holds one dash (<Name>.qml + <Name>.qml.png at the repo root), dash folders, "
-                               "or an encrypted add-on (<Name>.enc at the repo root, installed as-is).\n"
+                               "and/or any number of encrypted add-ons (<Name>.enc at the root or in a folder, installed as-is).\n"
                                + (f"Default repos are read from {_dr} — edit that file to change the bundled list."
                                   if _dr else f"Put a {DEFAULT_REPOS_FILE} next to the app (one GitHub URL per line) to bundle default repos."))
     repo_hint.grid(row=3, column=0, columnspan=7, sticky="w", pady=(6, 0))
@@ -4798,7 +4829,10 @@ def run_gui(initial_zip: Optional[str] = None):
                 status += f"  (device as of {_fmt_date(installed_seen['when'])})"
             csha = r.cached_sha()
             cached = ("✓ " + csha[:7]) if csha and csha == r.latest_sha else (csha[:7] + " (old)" if csha else "—")
-            iid = repo_tree.insert("", "end", values=(r.label, r.branch or "(default)", r.dash or "—", latest, cached, status))
+            alln = r.all_names()
+            shown = (f"{len(r.wanted_names())} of {len(alln)}: " + (", ".join(r.wanted_names()) or "none")
+                     if r.selection is not None and len(alln) > 1 else (r.dash or "—"))
+            iid = repo_tree.insert("", "end", values=(r.label, r.branch or "(default)", shown, latest, cached, status))
             if r.label in sel:
                 repo_tree.selection_add(iid)
             tag = ("update" if status.startswith("Update") else
@@ -4973,7 +5007,107 @@ def run_gui(initial_zip: Optional[str] = None):
                 log(f"  {r.label}: {repo_status(r, installed)}")
         start(worker)
 
-    def install_repos(targets: List[RepoEntry]):
+    def choose_items_dialog(r: RepoEntry, pkgs: List[DashPackage], on_done, action: str = "Install"):
+        """Checklist of a library repo's dashes / add-ons. on_done(names) — or on_done(None) if cancelled."""
+        win = tk.Toplevel(root)
+        win.title(f"Choose designs — {r.label}")
+        win.configure(bg=P["panel"])
+        win.transient(root)
+        frm = ttk.Frame(win, padding=16)
+        frm.pack(fill="both", expand=True)
+        ttk.Label(frm, wraplength=520, justify="left",
+                  text=f"{r.label} holds {len(pkgs)} designs. Tick the ones to put on this unit — updates will only "
+                       "touch these. Unticking one doesn't remove it from the unit (Device Dashes → Delete does).").pack(anchor="w")
+        if r.selection is not None:
+            pre = set(r.selection)
+        else:
+            pre = {p.name for p in pkgs if p.name in installed} or {p.name for p in pkgs}
+        box = ttk.Frame(frm)
+        box.pack(fill="both", expand=True, pady=(10, 6))
+        cv = tk.Canvas(box, bg=P["panel"], highlightthickness=0, bd=0, height=min(360, 28 * len(pkgs) + 8), width=520)
+        sb = ttk.Scrollbar(box, orient="vertical", command=cv.yview)
+        cv.configure(yscrollcommand=sb.set)
+        cv.pack(side="left", fill="both", expand=True)
+        if 28 * len(pkgs) + 8 > 360:
+            sb.pack(side="right", fill="y")
+        inner = ttk.Frame(cv)
+        cv.create_window((0, 0), window=inner, anchor="nw")
+        inner.bind("<Configure>", lambda e: cv.configure(scrollregion=cv.bbox("all")))
+        cv.bind("<MouseWheel>", lambda e: cv.yview_scroll(-1 if e.delta > 0 else 1, "units"))
+        vars_ = []
+        for p in sorted(pkgs, key=lambda x: x.name.lower()):
+            v = tk.BooleanVar(value=p.name in pre)
+            on_unit = "on the unit" if p.name in installed else "not on the unit"
+            kind = "encrypted add-on" if p.enc else "dash"
+            ttk.Checkbutton(inner, variable=v, text=f"{p.name}   ·   {kind}   ·   {on_unit}").pack(anchor="w", pady=2)
+            vars_.append((p.name, v))
+        row = ttk.Frame(frm)
+        row.pack(fill="x", pady=(8, 0))
+        go = ttk.Button(row, style="Accent.TButton")
+        done = {"v": False}
+
+        def count(*_):
+            n = sum(v.get() for _, v in vars_)
+            go.configure(text=f"{action} {n}" if action == "Install" else action, state="normal" if (n or action != "Install") else "disabled")
+
+        def finish(val):
+            if done["v"]:
+                return
+            done["v"] = True
+            win.destroy()
+            on_done(val)
+        for _, v in vars_:
+            v.trace_add("write", count)
+        ttk.Button(row, text="All", width=6, command=lambda: [v.set(True) for _, v in vars_]).pack(side="left")
+        ttk.Button(row, text="None", width=6, command=lambda: [v.set(False) for _, v in vars_]).pack(side="left", padx=(6, 0))
+        go.configure(command=lambda: finish([n for n, v in vars_ if v.get()]))
+        go.pack(side="right")
+        ttk.Button(row, text="Cancel", command=lambda: finish(None)).pack(side="right", padx=(0, 8))
+        win.protocol("WM_DELETE_WINDOW", lambda: finish(None))
+        win.bind("<Escape>", lambda e: finish(None))
+        count()
+        win.update_idletasks()
+        x = root.winfo_rootx() + max(0, (root.winfo_width() - win.winfo_reqwidth()) // 2)
+        y = root.winfo_rooty() + max(0, (root.winfo_height() - win.winfo_reqheight()) // 3)
+        win.geometry(f"+{x}+{y}")
+        win.lift()
+        win.focus_force()
+
+    def ask_items(r: RepoEntry, pkgs: List[DashPackage]) -> Optional[List[str]]:
+        """From a worker thread: show the checklist on the Tk thread and wait for the answer."""
+        result, ev = {}, threading.Event()
+
+        def done(val):
+            result["v"] = val
+            ev.set()
+        root.after(0, lambda: choose_items_dialog(r, pkgs, done))
+        ev.wait()
+        return result.get("v")
+
+    def choose_designs(r: RepoEntry):
+        """Right-click → Choose designs…: change what this unit takes from a library repo, without installing."""
+        c = r.cached()
+        if not c:
+            messagebox.showinfo(APP_NAME, "Press 'Refresh repos' while online first, so the repo's contents are known.", parent=root)
+            return
+        try:
+            pkgs = packages_from_github_zip(c[1].read_bytes(), {"url": r.url})
+        except ValidationError as e:
+            messagebox.showerror(APP_NAME, str(e), parent=root)
+            return
+
+        def done(val):
+            if val is None:
+                return
+            r.selection = val
+            log(f"{r.label}: installing {len(val)} of {len(pkgs)} — " + (", ".join(val) or "none"))
+            persist()
+            fill_repo_tree()
+        choose_items_dialog(r, pkgs, done, action="Save")
+
+    def install_repos(targets: List[RepoEntry], ask: bool = True):
+        """ask: show the checklist for every library repo (manual install). Otherwise only for a library repo
+        that has no saved choice yet (Install all updates)."""
         if not targets:
             return
 
@@ -4987,11 +5121,24 @@ def run_gui(initial_zip: Optional[str] = None):
             log("No internet — installing from the local cache." if offline else "Internet available.")
             pkgs: List[DashPackage] = []
             for r in targets:
-                pkgs.extend(r.fetch_packages(token, log, offline=offline))
+                rp = r.fetch_packages(token, log, offline=offline)
+                if len(rp) > 1:
+                    if ask or r.selection is None:
+                        chosen = ask_items(r, rp)
+                        if chosen is None:
+                            log(f"  {r.label}: skipped (checklist cancelled)")
+                            continue
+                        r.selection = chosen
+                    rp = [p for p in rp if p.name in r.selection]
+                    log(f"  {r.label}: {len(rp)} chosen — " + (", ".join(p.label for p in rp) or "none"))
+                pkgs.extend(rp)
             for n in (n for p in pkgs for n in p.notes):
                 log(f"  note: {n}")
             ui(persist)
             ui(fill_repo_tree)
+            if not pkgs:
+                log("Nothing to install.")
+                return
             install_packages(pkgs, "GitHub")
         start(worker)
 
@@ -5009,7 +5156,7 @@ def run_gui(initial_zip: Optional[str] = None):
             log("Nothing to install — every downloaded repo is already up to date on the unit "
                 "(run 'Refresh repos' while online first).")
             return
-        install_repos(todo)
+        install_repos(todo, ask=False)
 
     add_btn.configure(command=add_repo)
     rm_btn.configure(command=remove_repos)
@@ -5052,6 +5199,8 @@ def run_gui(initial_zip: Optional[str] = None):
                                   state="normal" if r.latest_sha else "disabled",
                                   command=lambda: copy_text(r.latest_sha, "commit SHA"))
             repo_menu.add_command(label="Open on GitHub", command=lambda: open_in_browser(r.url))
+            if len(r.all_names()) > 1:
+                repo_menu.add_command(label="Choose designs…", command=lambda: choose_designs(r))
         repo_menu.add_separator()
         repo_menu.add_command(label="Install / update selected", command=install_selected,
                               state="normal" if mon.get("unit") else "disabled")
