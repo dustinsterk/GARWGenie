@@ -89,7 +89,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.14.6"
+APP_VERSION = "5.15.0"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -113,7 +113,14 @@ VERSION_SANE_RANGE = (1.0, 99.0)
 MIN_VERSION = 5.0
 
 SCREEN_CONFIGS_DIR = "/opt/IC7/screen_configs"   # per-dash settings files, named inside each .qml
-SCREEN_ENABLED_FILE = "/opt/IC7/screen_enabled.txt"   # active screens: one 0-based screen index per line
+SCREEN_ENABLED_FILE = "/opt/IC7/screen_enabled.txt"   # active screens, one per line (see below)
+# Two formats, one per line in slot order, padded with blank lines:
+#   * index (older binaries): a 0-based screen index — the model below.
+#   * name (newer binaries): the screen's name exactly as it appears in /opt/IC7/library — the dash folder's
+#     name, or an encrypted add-on's file name without ".enc" (e.g. "GTDash", "LapTimer"). No built-ins.
+# Which one a unit uses is read off its own file: any non-numeric line means names. GARW Genie always writes
+# back in the format the unit already uses.
+SCREEN_FORMAT_INDEX, SCREEN_FORMAT_NAME = "index", "name"
 # Screen index model (v5): 0-4 are the screens built into the GARW binary, in this order. From 5 onwards the
 # firmware takes the dash FOLDERS in /opt/IC7/library sorted by name, then the encrypted add-ons (Name.enc)
 # sorted by name, appended after the folders. Both sorts are case-INSENSITIVE — QDir's default sort is
@@ -130,6 +137,16 @@ def library_order(entries) -> List[str]:
     folders = sorted((e["name"] if isinstance(e, dict) else e for e in entries if not (isinstance(e, dict) and e.get("enc"))), key=key)
     encs = sorted((e["name"] for e in entries if isinstance(e, dict) and e.get("enc")), key=key)
     return folders + encs
+
+
+def parse_enabled_screens(text: str) -> Tuple[list, int, str]:
+    """Parse screen_enabled.txt → (screens in slot order, line count, format). Numbers → index format;
+    any non-numeric line → name format (newer binaries), keeping every non-blank line as a name."""
+    lines = text.split("\n")
+    vals = [ln.strip() for ln in lines if ln.strip()]
+    if any(not v.isdigit() for v in vals):
+        return vals, len(lines), SCREEN_FORMAT_NAME
+    return [int(v) for v in vals], len(lines), SCREEN_FORMAT_INDEX
 
 
 def screen_index_table(entries) -> List[Tuple[int, str, bool]]:
@@ -2188,32 +2205,35 @@ class IC7Device:
         FILE_LOG.debug("SFTP put %s (%d bytes)", remote, len(data))
         self.log(f"Wrote {what}: {remote} ({len(data):,} bytes)")
 
-    def read_enabled_screens(self) -> Tuple[List[int], int]:
-        """(active indices in slot order, total line count of the file). Blank lines are ignored."""
+    def read_enabled_screens(self) -> Tuple[list, int, str]:
+        """(active screens in slot order, total line count of the file, format). Blank lines are ignored.
+        Index-format files give ints; name-format files (newer binaries) give the names as written."""
         rc, out, _ = self._run(f"cat {_sq(SCREEN_ENABLED_FILE)} 2>/dev/null")
         if rc != 0:
-            return [], 0
-        lines = out.split("\n")
-        idx = []
-        for ln in lines:
-            ln = ln.strip()
-            if ln.isdigit():
-                idx.append(int(ln))
-        return idx, len(lines)
+            return [], 0, SCREEN_FORMAT_INDEX
+        return parse_enabled_screens(out)
 
-    def write_enabled_screens(self, indices: List[int], keep_lines: int = 0) -> None:
-        """Rewrite screen_enabled.txt: one index per line, padded with blank lines to the file's
-        previous length so its shape stays exactly as the firmware wrote it."""
-        if not indices or len(indices) > MAX_ACTIVE_SCREENS or any(i < 0 for i in indices):
-            raise RuntimeError(f"Need 1–{MAX_ACTIVE_SCREENS} screen indices.")
-        body = "\n".join(str(i) for i in indices) + "\n"
+    def write_enabled_screens(self, items: list, keep_lines: int = 0, fmt: str = SCREEN_FORMAT_INDEX) -> None:
+        """Rewrite screen_enabled.txt in the unit's own format (indices or names), one per line, padded
+        with blank lines to the file's previous length so its shape stays exactly as the firmware wrote it."""
+        if not items or len(items) > MAX_ACTIVE_SCREENS:
+            raise RuntimeError(f"Need 1–{MAX_ACTIVE_SCREENS} screens.")
+        if fmt == SCREEN_FORMAT_NAME:
+            if any(not isinstance(n, str) or not n.strip() or "\n" in n or "/" in n for n in items):
+                raise RuntimeError("Screen names must be plain library names.")
+            body = "\n".join(n.strip() for n in items) + "\n"
+        else:
+            if any(not isinstance(i, int) or i < 0 for i in items):
+                raise RuntimeError(f"Need 1–{MAX_ACTIVE_SCREENS} screen indices.")
+            body = "\n".join(str(i) for i in items) + "\n"
+        indices = items
         extra = max(0, keep_lines - len(indices) - 1)
         body += "\n" * extra
         tmp = SCREEN_ENABLED_FILE + ".uploading"
         sftp = self.client.open_sftp()
         try:
             with sftp.file(tmp, "wb") as fh:
-                fh.write(body.encode("ascii"))
+                fh.write(body.encode("utf-8"))
         finally:
             sftp.close()
         rc, _, err = self._run(f"mv {_sq(tmp)} {_sq(SCREEN_ENABLED_FILE)} && chmod a+r {_sq(SCREEN_ENABLED_FILE)} && sync")
@@ -4081,7 +4101,7 @@ def run_gui(initial_zip: Optional[str] = None):
         installed.clear()
         installed.update({r["name"]: r["source"] for r in rows})
         try:
-            active_state["indices"], active_state["lines"] = dev.read_enabled_screens()
+            active_state["indices"], active_state["lines"], active_state["format"] = dev.read_enabled_screens()
         except Exception as e:
             log(f"Could not read {SCREEN_ENABLED_FILE}: {e}")
         if _lt:
@@ -4651,13 +4671,26 @@ def run_gui(initial_zip: Optional[str] = None):
         threading.Thread(target=worker, daemon=True).start()
     dev_tree.bind("<<TreeviewSelect>>", on_dev_select, add="+")
 
-    active_state = {"indices": [], "lines": 0}   # from screen_enabled.txt at the last device refresh
+    # from screen_enabled.txt at the last device refresh; "indices" holds ints (index format, older binaries)
+    # or library names (name format, newer binaries) — "format" says which
+    active_state = {"indices": [], "lines": 0, "format": SCREEN_FORMAT_INDEX}
+
+    def by_name() -> bool:
+        return active_state.get("format") == SCREEN_FORMAT_NAME
+
+    def library_name(n: str) -> Optional[str]:
+        """The library entry a name-format line refers to (exact first, then ignoring case)."""
+        names = [r["name"] for r in device_rows]
+        return n if n in names else next((x for x in names if x.lower() == n.lower()), None)
 
     def screen_table():
         return screen_index_table(device_rows)
 
     def active_slots_for(name: str) -> str:
         """'1' / '1, 4' — which active slot(s) show this dash."""
+        if by_name():
+            slots = [str(k + 1) for k, v in enumerate(active_state["indices"]) if library_name(v) == name]
+            return f"● {', '.join(slots)}" if slots else ""
         idx = next((i for i, n, b in screen_table() if n == name and not b), None)
         if idx is None:
             return ""
@@ -4685,7 +4718,11 @@ def run_gui(initial_zip: Optional[str] = None):
         dev_tree.tag_configure("bad", foreground=P["err"])
         dev_tree.tag_configure("active", foreground=P["ok"])
         table = {i: (n, b) for i, n, b in screen_table()}
-        if active_state["indices"]:
+        if active_state["indices"] and by_name():
+            desc = "  ·  ".join(f"{k + 1}: {v}" + ("" if library_name(v) else " (not in library)")
+                               for k, v in enumerate(active_state["indices"]))
+            active_lbl.configure(text=f"Active screens ({len(active_state['indices'])}, by name):  {desc}")
+        elif active_state["indices"]:
             desc = "  ·  ".join(f"{k + 1}: {table[v][0] + (' (built-in)' if table[v][1] else '')}" if v in table else f"{k + 1}: index {v} (?)"
                                for k, v in enumerate(active_state["indices"]))
             active_lbl.configure(text=f"Active screens ({len(active_state['indices'])}):  {desc}")
@@ -4712,9 +4749,23 @@ def run_gui(initial_zip: Optional[str] = None):
             messagebox.showinfo(APP_NAME, "Refresh the device list first.", parent=root)
             return
         table = screen_table()
-        labels = [f"{i}  ·  {n}" + ("  (built-in)" if b else "") for i, n, b in table]
-        by_label = {lab: i for lab, (i, _, _) in zip(labels, table)}
-        current = list(active_state["indices"]) or [table[0][0]]
+        if by_name():
+            # newer binaries: the file lists library names (folders, and .enc add-ons without the extension)
+            enc = {r["name"] for r in device_rows if r.get("enc")}
+            lib = library_order(device_rows)
+            labels = [n + ("  (encrypted add-on)" if n in enc else "") for n in lib]
+            by_label = dict(zip(labels, lib))
+            # names in the file that aren't in the library still show, so applying doesn't silently drop them
+            for v in active_state["indices"]:
+                if library_name(v) is None:
+                    lab = f"{v}  (not in library)"
+                    labels.append(lab)
+                    by_label[lab] = v
+            current = [library_name(v) or v for v in active_state["indices"]] or ([lib[0]] if lib else [])
+        else:
+            labels = [f"{i}  ·  {n}" + ("  (built-in)" if b else "") for i, n, b in table]
+            by_label = {lab: i for lab, (i, _, _) in zip(labels, table)}
+            current = list(active_state["indices"]) or [table[0][0]]
         n_slots = min(max(len(current), 1), MAX_ACTIVE_SCREENS)
         win = tk.Toplevel(root)
         win.title("Active screens")
@@ -4737,7 +4788,10 @@ def run_gui(initial_zip: Optional[str] = None):
             cb.grid(row=k + 1, column=1, sticky="w", pady=2)
             vars_.append(v)
         note = ttk.Label(frm, style="Muted.TLabel", wraplength=520, justify="left",
-                         text=f"Writes {SCREEN_ENABLED_FILE}, then the GARW binary restarts so it reloads the list.")
+                         text=f"Writes {SCREEN_ENABLED_FILE} "
+                              + ("by screen name (this unit's firmware lists screens by name)" if by_name()
+                                 else "by screen index") +
+                              ", then the GARW binary restarts so it reloads the list.")
         note.grid(row=n_slots + 1, column=0, columnspan=2, sticky="w", pady=(10, 0))
         row = ttk.Frame(frm)
         row.grid(row=n_slots + 2, column=0, columnspan=2, sticky="e", pady=(12, 0))
@@ -4762,15 +4816,17 @@ def run_gui(initial_zip: Optional[str] = None):
         if chosen is None or chosen == current:
             return
         names = {i: n for i, n, _ in table}
+        fmt = active_state.get("format", SCREEN_FORMAT_INDEX)
 
         def worker():
             if not gui_preflight():
                 raise RuntimeError(f"GARW device not reachable at {HOST}.")
             log("=" * 60)
-            log("ACTIVE SCREENS: " + "  ·  ".join(f"{k + 1}: {names.get(i, i)}" for k, i in enumerate(chosen)))
+            log("ACTIVE SCREENS" + (" (by name)" if fmt == SCREEN_FORMAT_NAME else "") + ": "
+                + "  ·  ".join(f"{k + 1}: {i if fmt == SCREEN_FORMAT_NAME else names.get(i, i)}" for k, i in enumerate(chosen)))
             with IC7Device(log, confirm) as dev:
                 dev.check_version()
-                dev.write_enabled_screens(chosen, active_state["lines"])
+                dev.write_enabled_screens(chosen, active_state["lines"], fmt)
                 refresh_installed(dev)
                 log("Restarting the GARW binary so it reloads the screen list …")
                 try:
