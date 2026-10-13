@@ -90,7 +90,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.17.5"
+APP_VERSION = "5.17.6"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -6470,8 +6470,22 @@ def run_gui(initial_zip: Optional[str] = None):
     def keys_active() -> bool:
         if not ctl_state["active"]:
             return False
-        w = root.focus_get()
-        return not isinstance(w, (tk.Text, tk.Entry, ttk.Entry))
+        # Ask Tk for the focus path directly: root.focus_get() raises KeyError when the focus is inside a
+        # Tk-internal widget such as an open combobox's drop-down list (".!combobox.popdown.f.l"), which tkinter
+        # has no Python object for. Keys typed there (or in any text field) belong to that widget, not the pad.
+        try:
+            path = str(root.tk.call("focus"))
+        except tk.TclError:
+            return False
+        if not path:
+            return True
+        if "popdown" in path:
+            return False
+        try:
+            w = root.nametowidget(path)
+        except (KeyError, tk.TclError):
+            return False
+        return not isinstance(w, (tk.Text, tk.Entry, ttk.Entry, tk.Listbox, tk.Spinbox))
 
     def on_key_press(e):
         if not keys_active():
