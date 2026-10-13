@@ -39,6 +39,7 @@ import threading
 import time
 import ssl
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from dataclasses import dataclass, field
@@ -89,7 +90,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.15.0"
+APP_VERSION = "5.16.0"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -1075,6 +1076,189 @@ def _http_get(url: str, token: str = "", accept: str = "application/vnd.github+j
 
 def gh_api(path: str, token: str = "") -> dict:
     return json.loads(_http_get(f"{GITHUB_API}{path}", token).decode("utf-8"))
+
+
+# ---------------------------------------------------------------------------------------------------
+# Self-update from GitHub releases
+# ---------------------------------------------------------------------------------------------------
+APP_REPO = "dustinsterk/GARWGenie"     # releases are built by .github/workflows/build.yml on a v* tag
+
+
+def version_tuple(v: str) -> Tuple[int, ...]:
+    """'v5.15.0' / '5.15' / 'GARW Genie 5.15.1' -> (5, 15, 0) / (5, 15, 0) / (5, 15, 1)."""
+    nums = [int(x) for x in re.findall(r"\d+", v or "")[:4]]
+    while len(nums) < 3:
+        nums.append(0)
+    return tuple(nums)
+
+
+def is_newer_version(tag: str, current: str = APP_VERSION) -> bool:
+    return bool(re.search(r"\d", tag or "")) and version_tuple(tag) > version_tuple(current)
+
+
+def latest_app_release(token: str = "") -> Optional[dict]:
+    """The newest published (non-draft, non-prerelease) GARW Genie release, or None if there is none."""
+    try:
+        r = gh_api(f"/repos/{APP_REPO}/releases/latest", token)
+    except GitHubError as e:
+        if "404" in str(e):
+            return None
+        raise
+    return {"tag": r.get("tag_name") or "", "name": r.get("name") or r.get("tag_name") or "",
+            "url": r.get("html_url") or f"https://github.com/{APP_REPO}/releases/latest",
+            "notes": (r.get("body") or "").strip(),
+            "assets": [{"name": a.get("name", ""), "size": int(a.get("size") or 0), "api_url": a.get("url", ""),
+                        "download_url": a.get("browser_download_url", "")} for a in r.get("assets") or []]}
+
+
+def pick_update_asset(assets: List[dict], system: Optional[str] = None) -> Optional[dict]:
+    """The release file for this platform: the Windows .exe, or the macOS .app zip."""
+    system = system or platform.system()
+    if system == "Windows":
+        exes = [a for a in assets if a["name"].lower().endswith(".exe")]
+        return next((a for a in exes if "genie" in a["name"].lower()), exes[0] if exes else None)
+    if system == "Darwin":
+        return next((a for a in assets if a["name"].lower().endswith(".zip") and "mac" in a["name"].lower()), None)
+    return None
+
+
+class _NoAuthOnRedirect(urllib.request.HTTPRedirectHandler):
+    """Release files redirect to a signed storage URL that rejects a second credential: drop the token
+    when the redirect leaves GitHub's API host."""
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is not None and urllib.parse.urlparse(newurl).netloc != urllib.parse.urlparse(req.full_url).netloc:
+            new.headers.pop("Authorization", None)
+            new.unredirected_hdrs.pop("Authorization", None)
+        return new
+
+
+def download_release_asset(asset: dict, dest: Path, token: str = "", progress=None) -> Path:
+    """Stream a release file to `dest` (via a .part file), checking the size GitHub reported."""
+    token = token or os.environ.get("GITHUB_TOKEN", "")
+    if token and asset.get("api_url"):
+        url, accept = asset["api_url"], "application/octet-stream"     # works for private repos too
+    else:
+        url, accept = asset["download_url"], "application/octet-stream"
+    req = urllib.request.Request(url, headers={"User-Agent": f"{APP_NAME}/{APP_VERSION}", "Accept": accept})
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+    opener = urllib.request.build_opener(_NoAuthOnRedirect, urllib.request.HTTPSHandler(context=ssl_context()))
+    part = Path(str(dest) + ".part")
+    total = int(asset.get("size") or 0)
+    got = 0
+    try:
+        with opener.open(req, timeout=60) as resp, open(part, "wb") as fh:
+            total = total or int(resp.headers.get("Content-Length") or 0)
+            while True:
+                chunk = resp.read(1 << 18)
+                if not chunk:
+                    break
+                fh.write(chunk)
+                got += len(chunk)
+                if progress and total:
+                    progress(got / total)
+    except urllib.error.HTTPError as e:
+        part.unlink(missing_ok=True)
+        raise GitHubError(f"Download failed: HTTP {e.code}")
+    except urllib.error.URLError as e:
+        part.unlink(missing_ok=True)
+        raise GitHubError(f"Download failed: {e.reason}")
+    if total and got != total:
+        part.unlink(missing_ok=True)
+        raise GitHubError(f"Download incomplete ({got:,} of {total:,} bytes)")
+    os.replace(part, dest)
+    return dest
+
+
+def swap_windows_exe(exe: Path, new: Path) -> Path:
+    """Put `new` in place of the running `exe`. Windows lets a running .exe be renamed (not deleted), so
+    the old one becomes '<name>.old.exe' and is removed on the next start. Returns the old file's path."""
+    with open(new, "rb") as fh:
+        if fh.read(2) != b"MZ":
+            raise RuntimeError("The downloaded file is not a Windows program.")
+    old = exe.with_name(exe.stem + ".old.exe")
+    if old.exists():
+        old.unlink()
+    os.replace(exe, old)
+    try:
+        os.replace(new, exe)
+    except Exception:
+        os.replace(old, exe)                     # put the running copy back
+        raise
+    return old
+
+
+def _extract_app_zip(zip_path: Path, into: Path) -> None:
+    if shutil.which("ditto"):                    # macOS: keeps symlinks, permissions and the code signature
+        r = subprocess.run(["ditto", "-x", "-k", str(zip_path), str(into)], capture_output=True, text=True)
+        if r.returncode != 0:
+            raise RuntimeError(f"Could not unpack the update: {r.stderr.strip()}")
+        return
+    with zipfile.ZipFile(zip_path) as z:         # elsewhere (tests): plain unzip, keeping exec bits
+        for info in z.infolist():
+            z.extract(info, into)
+            mode = (info.external_attr >> 16) & 0o777
+            if mode:
+                os.chmod(into / info.filename, mode)
+
+
+def swap_macos_app(app: Path, zip_path: Path) -> Path:
+    """Unpack the release zip next to the running .app (same volume), then swap the bundles. The old one is
+    kept as a hidden '.<name>.old' beside it and removed on the next start. Returns the new app path."""
+    staging = app.parent / f".garw_genie_update_{os.getpid()}"
+    if staging.exists():
+        shutil.rmtree(staging, ignore_errors=True)
+    staging.mkdir()
+    try:
+        _extract_app_zip(zip_path, staging)
+        apps = sorted(staging.rglob("*.app"), key=lambda p: len(p.parts))
+        if not apps:
+            raise RuntimeError("The update zip has no .app inside.")
+        new_app = apps[0]
+        subprocess.run(["xattr", "-dr", "com.apple.quarantine", str(new_app)], capture_output=True) \
+            if shutil.which("xattr") else None
+        old = app.parent / f".{app.name}.old"
+        if old.exists():
+            shutil.rmtree(old, ignore_errors=True)
+        os.replace(app, old)
+        try:
+            os.replace(new_app, app)
+        except Exception:
+            os.replace(old, app)
+            raise
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    return app
+
+
+def running_app_path() -> Optional[Path]:
+    """The file or bundle a self-update replaces: the .exe on Windows, the .app on macOS; None from source."""
+    if not getattr(sys, "frozen", False):
+        return None
+    exe = Path(sys.executable).resolve()
+    if platform.system() == "Darwin":
+        for parent in exe.parents:
+            if parent.suffix == ".app":
+                return parent
+        return None
+    return exe if platform.system() == "Windows" else None
+
+
+def cleanup_previous_update() -> None:
+    """Remove what the last self-update left behind (the old .exe / old .app)."""
+    target = running_app_path()
+    if target is None:
+        return
+    try:
+        if platform.system() == "Windows":
+            target.with_name(target.stem + ".old.exe").unlink(missing_ok=True)
+        else:
+            old = target.parent / f".{target.name}.old"
+            if old.exists():
+                shutil.rmtree(old, ignore_errors=True)
+    except Exception:
+        pass
 
 
 def gh_default_branch(owner: str, repo: str, token: str = "") -> str:
@@ -3472,6 +3656,7 @@ def run_gui(initial_zip: Optional[str] = None):
     from tkinter import filedialog, messagebox, ttk
 
     log_path = setup_file_log()
+    cleanup_previous_update()        # the old .exe / .app a self-update left behind
     cfg = load_config()
     added_defaults = merge_default_repos(cfg)
     if added_defaults:
@@ -3737,6 +3922,8 @@ def run_gui(initial_zip: Optional[str] = None):
     progress.pack(side="left", fill="x", expand=True)
     logs_btn = ttk.Button(prow_, text="Logs…", width=7, command=lambda: open_folder(LOG_DIR))
     logs_btn.pack(side="right", padx=(8, 0))
+    upd_btn = ttk.Button(prow_, text="Check for updates", command=lambda: check_app_update(auto=False))
+    upd_btn.pack(side="right", padx=(8, 0))
     log_wrap = ttk.Frame(bottom, style="Bg.TFrame")
     log_wrap.pack(fill="x")
     _sp = {"spacing1": 3, "spacing3": 3} if fonts["retro"] else {}
@@ -3896,6 +4083,166 @@ def run_gui(initial_zip: Optional[str] = None):
     logo_lbl.bind("<Shift-Double-Button-1>", reveal_lap_tab)
     logo_lbl.configure(cursor="hand2")
 
+    # ---------- self-update (GitHub releases of APP_REPO) ----------
+    update_state = {"checking": False}
+
+    def check_app_update(auto: bool):
+        """Look for a newer release. Automatic checks (once per launch, when the internet first answers) stay
+        quiet unless there is something new that hasn't been skipped or put off with 'Later'."""
+        if update_state["checking"]:
+            return
+        update_state["checking"] = True
+        if not auto:
+            log("Checking for a newer GARW Genie …")
+
+        def worker():
+            try:
+                rel = latest_app_release(cfg.get("github_token", ""))
+                if rel is None:
+                    FILE_LOG.info("update check: no published release in %s", APP_REPO)
+                    if not auto:
+                        msg = (f"No published GARW Genie release was found on GitHub ({APP_REPO}). If that repo is "
+                               "private, add a GitHub token (GitHub repos tab → GitHub token…) that can read it.")
+                        log(msg)
+                        ui(lambda: messagebox.showinfo(APP_NAME, msg, parent=root))
+                    return
+                if not is_newer_version(rel["tag"]):
+                    FILE_LOG.info("update check: latest %s, running %s", rel["tag"], APP_VERSION)
+                    if not auto:
+                        log(f"GARW Genie v{APP_VERSION} is the latest version.")
+                        ui(lambda: messagebox.showinfo(APP_NAME, f"You're on the latest version (v{APP_VERSION}).", parent=root))
+                    return
+                if auto and (cfg.get("update_skip") == rel["tag"] or time.time() < float(cfg.get("update_later_until") or 0)):
+                    FILE_LOG.info("update %s available; not prompting (skipped or later)", rel["tag"])
+                    return
+                log(f"GARW Genie {rel['tag']} is available (this is v{APP_VERSION}).")
+                ui(show_update_dialog, rel)
+            except Exception as e:
+                FILE_LOG.warning("update check failed: %s", e)
+                if not auto:
+                    log(f"WARNING: update check failed — {e}")
+                    ui(lambda: messagebox.showerror(APP_NAME, f"Couldn't check for updates:\n{e}", parent=root))
+            finally:
+                update_state["checking"] = False
+        threading.Thread(target=worker, daemon=True).start()
+
+    def show_update_dialog(rel: dict):
+        target, asset = running_app_path(), pick_update_asset(rel["assets"])
+        can_install = target is not None and asset is not None
+        win = tk.Toplevel(root)
+        win.title("Update available")
+        win.configure(bg=P["panel"])
+        win.transient(root)
+        win.resizable(False, False)
+        frm = ttk.Frame(win, padding=16)
+        frm.pack(fill="both", expand=True)
+        ttk.Label(frm, text=f"{APP_NAME} {rel['tag']} is available",
+                  font=(fonts["ui"][0], fonts["ui"][1] + 3, "bold")).pack(anchor="w")
+        ttk.Label(frm, style="Muted.TLabel", text=f"You have v{APP_VERSION}.").pack(anchor="w", pady=(2, 8))
+        if rel["notes"]:
+            notes = tk.Text(frm, height=10, width=70, wrap="word", font=mono, bg=P["field"], fg=P["text"],
+                            relief="flat", bd=0, padx=8, pady=6, highlightthickness=0)
+            notes.insert("1.0", rel["notes"][:6000])
+            notes.configure(state="disabled")
+            notes.pack(fill="both", pady=(0, 8))
+        how = ("Update now downloads it, replaces this copy and restarts GARW Genie." if can_install else
+               "This copy can't update itself (" + ("it's running from the Python source" if target is None
+               else "no download for this computer in the release") + ") — the release page opens instead.")
+        ttk.Label(frm, style="Muted.TLabel", wraplength=520, justify="left", text=how).pack(anchor="w")
+        row = ttk.Frame(frm)
+        row.pack(fill="x", pady=(12, 0))
+
+        def later():
+            cfg["update_later_until"] = time.time() + 24 * 3600
+            save_config(cfg)
+            win.destroy()
+
+        def skip():
+            cfg["update_skip"] = rel["tag"]
+            save_config(cfg)
+            log(f"Skipping GARW Genie {rel['tag']} — 'Check for updates' still offers it.")
+            win.destroy()
+
+        def go():
+            win.destroy()
+            do_app_update(rel)
+        ttk.Button(row, text="Skip this version", command=skip).pack(side="left")
+        ttk.Button(row, text="Update now" if can_install else "Open release page", style="Accent.TButton",
+                   command=go).pack(side="right")
+        ttk.Button(row, text="Later", command=later).pack(side="right", padx=(0, 8))
+        win.bind("<Escape>", lambda e: later())
+        win.protocol("WM_DELETE_WINDOW", later)
+        win.update_idletasks()
+        x = root.winfo_rootx() + max(0, (root.winfo_width() - win.winfo_reqwidth()) // 2)
+        y = root.winfo_rooty() + max(0, (root.winfo_height() - win.winfo_reqheight()) // 3)
+        win.geometry(f"+{x}+{y}")
+        win.lift()
+        win.focus_force()
+
+    def open_release_page(rel: dict):
+        import webbrowser
+        webbrowser.open(rel["url"])
+        log(f"Opened the release page: {rel['url']}")
+
+    def do_app_update(rel: dict):
+        target, asset = running_app_path(), pick_update_asset(rel["assets"])
+        if target is None or asset is None:
+            open_release_page(rel)
+            return
+        if state["busy"]:
+            messagebox.showinfo(APP_NAME, "Wait for the current job to finish, then press 'Check for updates'.", parent=root)
+            return
+        windows = platform.system() == "Windows"
+
+        def worker():
+            log("=" * 60)
+            log(f"UPDATE to {rel['tag']}: downloading {asset['name']} ({asset['size'] / 1e6:.0f} MB) …")
+            # Windows: download beside the .exe so the swap is a rename on the same disk
+            work = target.parent if windows else Path(tempfile.mkdtemp(prefix="garw_genie_update_"))
+            dest = (target.with_name(target.name + ".new") if windows else work / asset["name"])
+            try:
+                download_release_asset(asset, dest, cfg.get("github_token", ""),
+                                       progress=lambda f: set_progress(int(f * 1000), 1000))
+                log("Downloaded. Installing …")
+                if windows:
+                    swap_windows_exe(target, dest)
+                else:
+                    swap_macos_app(target, dest)
+            except (PermissionError, OSError, RuntimeError, GitHubError) as e:
+                for leftover in (dest, Path(str(dest) + ".part")):
+                    try:
+                        leftover.unlink()
+                    except Exception:
+                        pass
+                log(f"ERROR: the update couldn't be installed here — {e}")
+                ui(lambda: (messagebox.showerror(
+                    APP_NAME, f"The update couldn't be installed automatically:\n{e}\n\n"
+                              "The release page will open so you can download it yourself.", parent=root),
+                    open_release_page(rel)))
+                return
+            finally:
+                if not windows:
+                    shutil.rmtree(work, ignore_errors=True)
+            log(f"Installed {rel['tag']} — restarting GARW Genie …")
+            ui(relaunch_after_update, target)
+        start(worker)
+
+    def relaunch_after_update(target: Path):
+        try:
+            if platform.system() == "Windows":
+                env = dict(os.environ)
+                env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"     # a fresh copy, not this one's unpack folder
+                si = subprocess.STARTUPINFO()
+                si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                si.wShowWindow = 1                           # SW_SHOWNORMAL (see the Lap Analysis launch)
+                subprocess.Popen([str(target)], env=env, startupinfo=si, close_fds=True,
+                                 creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
+            else:
+                subprocess.Popen(["open", "-n", str(target)])
+        except Exception as e:
+            messagebox.showinfo(APP_NAME, f"The update is installed. Start GARW Genie again to use it.\n({e})", parent=root)
+        root.after(400, lambda: (root.destroy(), os._exit(0)))
+
     def monitor_apply(ssid, unit, net):
         first = mon["unit"] is None
         if first or bool(unit) != bool(mon["unit"]):
@@ -3922,6 +4269,9 @@ def run_gui(initial_zip: Optional[str] = None):
         if unit_up or (first and unit):
             log(f"GARW device detected at {HOST}" + (f" (Wi-Fi '{ssid}')" if ssid else "") + " — refreshing all tabs …")
             mon["pending_unit"] = True
+        if (net_up or (first and net)) and not mon.get("update_checked"):
+            mon["update_checked"] = True              # one automatic release check per launch
+            check_app_update(auto=True)
         if (net_up or (first and net)) and repos:
             # Automatic GitHub check only on the very first launch (no repo has ever been checked).
             # After that, the 'Refresh repos' button is the only thing that talks to GitHub.
@@ -5701,13 +6051,55 @@ def run_gui(initial_zip: Optional[str] = None):
     ctl = Controller(on_send=on_ctl_send)
     ctl_state = {"active": False, "release_job": {}}
 
-    ttk.Label(tab_ctl, style="Muted.TLabel", wraplength=420, justify="left",
+    # The tab scrolls (both ways, scrollbars only when needed) so small screens can still reach everything.
+    # tab_ctl stays the notebook page — the tab-selection and keyboard code refer to it — and the controls
+    # live in ctl_body inside a canvas.
+    ctl_canvas = tk.Canvas(tab_ctl, bg=P["panel"], highlightthickness=0, bd=0)
+    ctl_vsb = ttk.Scrollbar(tab_ctl, orient="vertical", command=ctl_canvas.yview)
+    ctl_hsb = ttk.Scrollbar(tab_ctl, orient="horizontal", command=ctl_canvas.xview)
+    ctl_canvas.configure(yscrollcommand=ctl_vsb.set, xscrollcommand=ctl_hsb.set)
+    ctl_canvas.grid(row=0, column=0, sticky="nsew")
+    tab_ctl.rowconfigure(0, weight=1)
+    tab_ctl.columnconfigure(0, weight=1)
+    ctl_body = ttk.Frame(ctl_canvas)
+    _ctl_win = ctl_canvas.create_window((0, 0), window=ctl_body, anchor="nw")
+
+    def _ctl_resize(_e=None):
+        cw, ch = ctl_canvas.winfo_width(), ctl_canvas.winfo_height()
+        bw, bh = ctl_body.winfo_reqwidth(), ctl_body.winfo_reqheight()
+        ctl_canvas.itemconfigure(_ctl_win, width=max(cw, bw), height=max(ch, bh))
+        ctl_canvas.configure(scrollregion=(0, 0, max(cw, bw), max(ch, bh)))
+        for bar, need, kw, reset in ((ctl_vsb, bh > ch, dict(row=0, column=1, sticky="ns"), ctl_canvas.yview_moveto),
+                                     (ctl_hsb, bw > cw, dict(row=1, column=0, sticky="ew"), ctl_canvas.xview_moveto)):
+            if need:
+                bar.grid(**kw)
+            else:
+                bar.grid_remove()
+                reset(0)
+    ctl_body.bind("<Configure>", _ctl_resize)
+    ctl_canvas.bind("<Configure>", _ctl_resize)
+
+    def _ctl_wheel(e):
+        horizontal = bool(getattr(e, "state", 0) & 0x1)      # Shift + wheel scrolls sideways
+        step = -1 if (getattr(e, "delta", 0) > 0 or getattr(e, "num", 0) == 4) else 1
+        if horizontal and ctl_body.winfo_reqwidth() > ctl_canvas.winfo_width():
+            ctl_canvas.xview_scroll(step, "units")
+        elif not horizontal and ctl_body.winfo_reqheight() > ctl_canvas.winfo_height():
+            ctl_canvas.yview_scroll(step, "units")
+
+    def _ctl_bind_wheel(w):
+        for ev in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            w.bind(ev, _ctl_wheel, add="+")
+        for c in w.winfo_children():
+            _ctl_bind_wheel(c)
+
+    ttk.Label(ctl_body, style="Muted.TLabel", wraplength=420, justify="left",
               text=f"Drives the dash over Wi-Fi exactly like the old phone app: UDP to {HOST}:{CONTROL_PORT}. "
                    "Click the pad or use the keyboard while this tab is showing — arrow keys move, "
                    "S opens GARW settings, L / R hold Left / Right for 3 s to enter the OS main settings, "
                    "Esc releases everything.").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 12))
 
-    pad = ttk.Frame(tab_ctl)
+    pad = ttk.Frame(ctl_body)
     pad.grid(row=1, column=0, sticky="n", padx=(20, 40))
     pad_btns = {}
     for name, glyph, r, c in (("up", "▲", 0, 1), ("left", "◀", 1, 0), ("right", "▶", 1, 2), ("down", "▼", 2, 1)):
@@ -5717,7 +6109,7 @@ def run_gui(initial_zip: Optional[str] = None):
     centre = ttk.Label(pad, text="GARW", style="Muted.TLabel", anchor="center")
     centre.grid(row=1, column=1)
 
-    seq = ttk.Frame(tab_ctl)
+    seq = ttk.Frame(ctl_body)
     seq.grid(row=2, column=0, sticky="n", padx=(20, 40), pady=(14, 0))
     s_btn = ttk.Button(seq, text="S  ·  GARW settings", takefocus=False)
     s_btn.pack(fill="x", pady=2)
@@ -5728,7 +6120,7 @@ def run_gui(initial_zip: Optional[str] = None):
     cancel_btn = ttk.Button(seq, text="Esc  ·  release", style="Danger.TButton", takefocus=False)
     cancel_btn.pack(fill="x", pady=(8, 2))
 
-    opts = ttk.Frame(tab_ctl)
+    opts = ttk.Frame(ctl_body)
     opts.grid(row=1, column=1, rowspan=2, sticky="nw")
     ctl_active = tk.BooleanVar(value=False)
     ttk.Checkbutton(opts, text="Controller active (sends heartbeat)", variable=ctl_active).pack(anchor="w")
@@ -5751,6 +6143,9 @@ def run_gui(initial_zip: Optional[str] = None):
               text="The unit keeps the last button state until the next packet, so the tool sends "
                    "'no button' every 200 ms while idle — a lost release can never leave a key stuck.").pack(
         anchor="w", pady=(14, 0))
+
+    _ctl_bind_wheel(ctl_canvas)
+    _ctl_bind_wheel(ctl_body)
 
     def set_pad_visual(name: Optional[str]):
         for n, b in pad_btns.items():
