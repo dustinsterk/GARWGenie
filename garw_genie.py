@@ -90,7 +90,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.17.6"
+APP_VERSION = "5.17.7"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -7992,7 +7992,26 @@ def run_lap_analysis(path: Optional[str]) -> int:
         return 1
 
 
+def _quiet_gtk_modules() -> None:
+    """Linux: desktops often put 'atk-bridge' (and 'gail') in GTK_MODULES. Current GTK has that built in and
+    prints 'Not loading module "atk-bridge": The functionality is provided by GTK natively. Please try to not
+    load it.' whenever something loads GTK (the Qt analysis window's GTK theme, file pickers, the browser
+    hand-off). Harmless, but it alarms people — drop those two from this process and its children.
+    Accessibility is unaffected: GTK provides it itself."""
+    if not sys.platform.startswith("linux"):
+        return
+    mods = os.environ.get("GTK_MODULES")
+    if not mods:
+        return
+    keep = [m for m in mods.split(":") if m and m not in ("atk-bridge", "gail")]
+    if keep:
+        os.environ["GTK_MODULES"] = ":".join(keep)
+    else:
+        os.environ.pop("GTK_MODULES", None)
+
+
 def main(argv=None):
+    _quiet_gtk_modules()
     a = list(sys.argv[1:] if argv is None else argv)
     if "--lap-analysis" in a:                       # second process started by the Lap Analysis tab
         rest = a[a.index("--lap-analysis") + 1:]
