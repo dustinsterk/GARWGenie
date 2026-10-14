@@ -90,7 +90,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.17.7"
+APP_VERSION = "5.17.8"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -537,7 +537,7 @@ def _check_dash(name: str, files: List[Tuple[str, bytes]], origin: str) -> DashP
 
 
 # -- settings-file annotation: which QML property does each line feed? --------
-_PROP_DECL_RE = re.compile(r"^\s*(?:readonly\s+)?property\s+(int|real|double|bool|string|color|var)\s+(\w+)\s*:\s*([^\n;]+?)\s*$", re.M)
+_PROP_DECL_RE = re.compile(r"^\s*(?:readonly\s+)?property\s+(int|real|double|bool|string|color|var)\s+(\w+)\s*(?::\s*([^\n;]+?))?\s*;?\s*(?://.*)?$", re.M)
 
 
 def parse_config_map(qml: str) -> Dict[int, dict]:
@@ -548,7 +548,7 @@ def parse_config_map(qml: str) -> Dict[int, dict]:
         configstring[7] = root.x            root.x = configstring_function(7)
         var vals = [root.a, root.b, ...]    (save order == line order)
     """
-    decl = {m.group(2): {"type": m.group(1), "default": re.sub(r"\s*//.*$", "", m.group(3)).strip().rstrip(";")}
+    decl = {m.group(2): {"type": m.group(1), "default": re.sub(r"\s*//.*$", "", m.group(3) or "").strip().rstrip(";")}
             for m in _PROP_DECL_RE.finditer(qml)}
     idx: Dict[int, str] = {}
 
@@ -571,25 +571,32 @@ def parse_config_map(qml: str) -> Dict[int, dict]:
         put(int(m.group(1)), m.group(2))
     for m in re.finditer(r"(?:root\.)?(\w+)\s*=\s*configstring_function\(\s*(\d+)\s*\)", qml):
         put(int(m.group(2)), m.group(1))
-    if not idx:
-        m = re.search(r"var\s+vals\s*=\s*\[(.*?)\];", qml, re.S)
-        if m:
-            depth, item, items = 0, "", []
-            for ch in m.group(1):
-                if ch in "([":
-                    depth += 1
-                elif ch in ")]":
-                    depth -= 1
-                if ch == "," and depth == 0:
-                    items.append(item)
-                    item = ""
-                else:
-                    item += ch
+    # The save list (var vals = [root.a, root.b, "0", ...]) is in file order: it names every line on its own,
+    # and fills the gaps the load code leaves (reserved lines, values read without a property).
+    m = re.search(r"var\s+vals\s*=\s*\[(.*?)\];", qml, re.S)
+    if m:
+        body = re.sub(r"//[^\n]*", "", m.group(1))          # comments may contain commas
+        depth, item, items = 0, "", []
+        for ch in body:
+            if ch in "([":
+                depth += 1
+            elif ch in ")]":
+                depth -= 1
+            if ch == "," and depth == 0:
+                items.append(item)
+                item = ""
+            else:
+                item += ch
+        if item.strip():
             items.append(item)
-            for i, it in enumerate(items):
-                it = re.sub(r"//.*", "", it)
-                mm = re.search(r"root\.(\w+)", it)
-                put(i, mm.group(1) if mm else ("reserved" if re.search(r"[\"']\s*0\s*[\"']", it) else ""))
+        names = []
+        for it in items:
+            mm = re.search(r"root\.(\w+)", it)
+            names.append(mm.group(1) if mm else ("reserved" if re.search(r"[\"']\s*0\s*[\"']", it) else ""))
+        # only trust it when it agrees with what the load code already named
+        if all(names[i] == n for i, n in idx.items() if i < len(names) and names[i] and n != "reserved"):
+            for i, n in enumerate(names):
+                put(i, n)
     out = {}
     for i, name in idx.items():
         d = decl.get(name, {})
@@ -4072,7 +4079,8 @@ def run_gui(initial_zip: Optional[str] = None):
     log_wrap = ttk.Frame(bottom, style="Bg.TFrame")
     log_wrap.pack(fill="x")
     _sp = {"spacing1": 3, "spacing3": 3} if fonts["retro"] else {}
-    log_box = tk.Text(log_wrap, height=8, wrap="word", state="disabled", font=mono,
+    log_box = tk.Text(log_wrap, height=(8 if root.winfo_screenheight() >= 900 else 5),   # short screens: room for the tabs
+                       wrap="word", state="disabled", font=mono,
                       bg=P["field"], fg=P["text"], insertbackground=P["text"],
                       relief="flat", bd=0, padx=10, pady=8, highlightthickness=0, **_sp)
     log_box.pack(side="left", fill="both", expand=True)
@@ -4706,7 +4714,76 @@ def run_gui(initial_zip: Optional[str] = None):
         if path:
             install_zip(path)
 
+    # ---------- scrolling tab pages ----------
+    # Every tab can scroll (both ways; the bars appear only when the window is too small to show it all), so
+    # low-resolution screens still reach every button. The notebook page stays the page — the tab-switching
+    # and device-lock code refers to it — and the tab's content is built in a body frame inside a canvas.
+    # While a body is smaller than the window it is stretched to fill it, so layouts expand exactly as before.
+    _OWN_SCROLL = (tk.Text, tk.Listbox, tk.Canvas, ttk.Treeview)
+
+    def scroll_page(page):
+        cv = tk.Canvas(page, bg=P["panel"], highlightthickness=0, bd=0)
+        vsb = ttk.Scrollbar(page, orient="vertical", command=cv.yview)
+        hsb = ttk.Scrollbar(page, orient="horizontal", command=cv.xview)
+        cv.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        cv.grid(row=0, column=0, sticky="nsew")
+        page.rowconfigure(0, weight=1)
+        page.columnconfigure(0, weight=1)
+        body = ttk.Frame(cv)
+        win = cv.create_window((0, 0), window=body, anchor="nw")
+
+        def resize(_e=None):
+            cw, ch = cv.winfo_width(), cv.winfo_height()
+            bw, bh = body.winfo_reqwidth(), body.winfo_reqheight()
+            cv.itemconfigure(win, width=max(cw, bw), height=max(ch, bh))
+            cv.configure(scrollregion=(0, 0, max(cw, bw), max(ch, bh)))
+            for bar, need, kw, reset in ((vsb, bh > ch, dict(row=0, column=1, sticky="ns"), cv.yview_moveto),
+                                         (hsb, bw > cw, dict(row=1, column=0, sticky="ew"), cv.xview_moveto)):
+                if need:
+                    bar.grid(**kw)
+                else:
+                    bar.grid_remove()
+                    reset(0)
+        body.bind("<Configure>", resize, add="+")
+        cv.bind("<Configure>", resize, add="+")
+        body._page_canvas = cv
+        return body
+
+    def finish_page(page, body):
+        """After a tab is built: mouse-wheel scrolling (except over widgets that scroll themselves) and
+        full-width hint text that re-wraps to the window instead of forcing a minimum width."""
+        cv = body._page_canvas
+
+        def wheel(e):
+            horizontal = bool(getattr(e, "state", 0) & 0x1)
+            step = -1 if (getattr(e, "delta", 0) > 0 or getattr(e, "num", 0) == 4) else 1
+            if horizontal and body.winfo_reqwidth() > cv.winfo_width():
+                cv.xview_scroll(step, "units")
+            elif not horizontal and body.winfo_reqheight() > cv.winfo_height():
+                cv.yview_scroll(step, "units")
+
+        def bind(w):
+            if isinstance(w, _OWN_SCROLL) and w is not cv:
+                return
+            for ev in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+                w.bind(ev, wheel, add="+")
+            for c in w.winfo_children():
+                bind(c)
+        bind(cv)
+        # never wider than designed — only narrower when the window is
+        wide = [(w, int(str(w.cget("wraplength") or 0) or 0)) for w in _walk_widgets(body) if isinstance(w, ttk.Label)]
+        wide = [(w, wl) for w, wl in wide if wl >= 600]
+        if wide:
+            page.bind("<Configure>", lambda e: [w.configure(wraplength=min(wl, max(320, e.width - 60)))
+                                                for w, wl in wide], add="+")
+
+    def _walk_widgets(w):
+        yield w
+        for c in w.winfo_children():
+            yield from _walk_widgets(c)
+
     # ---------- Tab 2: GitHub repos ----------
+    page_repo, tab_repo = tab_repo, scroll_page(tab_repo)
     rcols = ("repo", "branch", "dash", "latest", "cached", "status")
     repo_tree = ttk.Treeview(tab_repo, columns=rcols, show="headings", selectmode="extended", height=8)
     for c, txt, w in (("repo", "Repository", 180), ("branch", "Branch", 64), ("dash", "Dash", 96),
@@ -5216,7 +5293,10 @@ def run_gui(initial_zip: Optional[str] = None):
     repo_tree.bind("<Button-2>", repo_context)          # macOS Tk reports right-click as button 2
     repo_tree.bind("<Control-Button-1>", repo_context)  # macOS ctrl-click
 
+    finish_page(page_repo, tab_repo)
+    tab_repo = page_repo
     # ---------- Tab 3: Device ----------
+    page_dev, tab_dev = tab_dev, scroll_page(tab_dev)
     dcols = ("name", "active", "valid", "files", "source", "commit", "installed")
     dev_tree = ttk.Treeview(tab_dev, columns=dcols, show="headings", selectmode="extended", height=8)
     for c, txt, w in (("name", "Dash", 150), ("active", "Active", 70), ("valid", "Valid", 90), ("files", "Files", 55),
@@ -5540,7 +5620,10 @@ def run_gui(initial_zip: Optional[str] = None):
     reboot_btn.configure(command=do_reboot)
     restart_btn.configure(command=do_restart_app)
 
+    finish_page(page_dev, tab_dev)
+    tab_dev = page_dev
     # ---------- Tab 4: Settings files (/opt/IC7/screen_configs) ----------
+    page_cfg, tab_cfg = tab_cfg, scroll_page(tab_cfg)
     ttk.Label(tab_cfg, style="Muted.TLabel", wraplength=760, justify="left",
               text=f"Per-dash settings live in {SCREEN_CONFIGS_DIR} — each dash names its own file inside its "
                    ".qml. Download them to keep a backup or tweak by hand, then upload to restore.").grid(
@@ -5927,6 +6010,8 @@ def run_gui(initial_zip: Optional[str] = None):
     cfg_save_btn.configure(command=do_cfg_save)
     cfg_revert_btn.configure(command=do_cfg_revert)
 
+    finish_page(page_cfg, tab_cfg)
+    tab_cfg = page_cfg
     # ---------- Tab: Boot & Logo Screens (branding assets) ----------
     # The tab scrolls vertically so nothing is cut off on small screens / big system fonts.
     assets_canvas = tk.Canvas(tab_assets, bg=P["panel"], highlightthickness=0, bd=0)
@@ -6172,6 +6257,7 @@ def run_gui(initial_zip: Optional[str] = None):
     tab_assets = tab_assets_outer   # DEVICE_TABS / nb.tab() refer to the notebook page itself
 
     # ---------- Tab 5: Firmware + system info ----------
+    page_fw, tab_fw = tab_fw, scroll_page(tab_fw)
     ttk.Label(tab_fw, text="System information", style="Muted.TLabel").grid(row=0, column=0, sticky="w")
     sys_tree = ttk.Treeview(tab_fw, columns=("k", "v"), show="", selectmode="none", height=12)
     sys_tree.column("k", width=150, anchor="w", stretch=False)
@@ -6311,6 +6397,8 @@ def run_gui(initial_zip: Optional[str] = None):
     fw_entry.bind("<Return>", lambda e: inspect_firmware(fw_var.get().strip().strip('"')))
     fw_entry.bind("<FocusOut>", lambda e: inspect_firmware(fw_var.get().strip().strip('"')))
 
+    finish_page(page_fw, tab_fw)
+    tab_fw = page_fw
     # ---------- Tab 6: Controller ----------
     ctl_log = {"last": None, "count": 0}
 
@@ -6550,6 +6638,7 @@ def run_gui(initial_zip: Optional[str] = None):
     ctl_tick()
 
     # ---------- Tab: Lap Timer (RaceBox MAC + track database editor) ----------
+    page_lap, tab_lap = tab_lap, scroll_page(tab_lap)
     LOCAL_USER_TRACKS = CONFIG_DIR / "UserTracks.txt"
     lap = {"db": _lt.UserTrackDB() if _lt else None, "lib": _lt.TrackLibrary() if _lt else None,
            "path": str(LOCAL_USER_TRACKS), "server": None, "present": None,
@@ -7375,7 +7464,10 @@ def run_gui(initial_zip: Optional[str] = None):
     else:
         trk_status.configure(text="laptimer.py is missing next to garw_genie.py — the Lap Timer tab is unavailable.")
 
+    finish_page(page_lap, tab_lap)
+    tab_lap = page_lap
     # ---------- Tab: Lap Analysis (lapanalysis package; the full window is its Qt UI in a second process) ----------
+    page_la, tab_la = tab_la, scroll_page(tab_la)
     la = {"session": None, "path": None, "result": None}
 
     def la_full_available() -> Tuple[bool, str]:
@@ -7436,7 +7528,7 @@ def run_gui(initial_zip: Optional[str] = None):
                     "S0001_house_loop.csv + S0001_house_loop.MP4 — and the full analysis window shows it "
                     "automatically (GoPro clips also sync themselves). Otherwise use Open video… in that window."))
     la_hint.grid(row=3, column=0, columnspan=2, sticky="w", pady=(6, 0))
-    tab_la.bind("<Configure>", lambda e: la_hint.configure(wraplength=max(300, e.width - 20)), add="+")
+    page_la.bind("<Configure>", lambda e: la_hint.configure(wraplength=max(300, e.width - 40)), add="+")
 
     la_bot = ttk.Frame(tab_la)
     la_bot.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(8, 0))
@@ -7690,6 +7782,8 @@ def run_gui(initial_zip: Optional[str] = None):
                     "export it as an HTML report or a CSV, or open the full analysis window for plots, the track map, "
                     "3D view, video sync and overlays.")
 
+    finish_page(page_la, tab_la)
+    tab_la = page_la
     # ---------- wiring ----------
     all_buttons = [add_btn, rm_btn, token_btn, join_btn, check_btn, install_sel_btn,
                    install_all_btn, refresh_btn, install_zip_btn, active_btn, dl_sel_btn, dl_all_btn, delete_btn, reboot_btn, restart_btn,
