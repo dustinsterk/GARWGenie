@@ -90,7 +90,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.17.9"
+APP_VERSION = "5.18.0"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -6891,8 +6891,9 @@ def run_gui(initial_zip: Optional[str] = None):
         ttk.Button(btns, text="Erase & prepare", style="Danger.TButton", command=go).pack(side="right", padx=(0, 6))
         ttk.Button(btns, text="Refresh", command=refresh).pack(side="right", padx=(0, 12))
         dlg.grab_set()
-    # not lap data: MAC/track/settings files, the dash's own index.* and probe.* bookkeeping files, dotfiles
-    LAPDATA_KEEP = re.compile(r"(^racebox_mac_address\.txt$|^usertracks\.txt$|^index\.|^probe\.|config|settings|\.cfg$|\.ini$|\.conf$|^\.)", re.I)
+    # not lap data: MAC/track/settings files, the dash's camera settings (Camera.txt), the dash's own index.* and
+    # probe.* bookkeeping files, dotfiles
+    LAPDATA_KEEP = re.compile(r"(^racebox_mac_address\.txt$|^usertracks\.txt$|^camera\.|^index\.|^probe\.|config|settings|\.cfg$|\.ini$|\.conf$|^\.)", re.I)
 
     def do_lapdata_download():
         """List the lap timer's data folder on the device, let the user pick, copy to a folder here."""
