@@ -90,7 +90,7 @@ except ImportError:  # pragma: no cover
     paramiko = None
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.17.8"
+APP_VERSION = "5.17.9"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -2742,11 +2742,25 @@ class IC7Device:
                              "dashes": usage.get(a.filename, [])})
         finally:
             sftp.close()
+        # Files no readable dash claims may belong to an encrypted add-on (its QML can't be searched): match
+        # them by name — LapTimer.enc ↔ laptimer_config.txt / LapTimer.cfg / LapTimer_settings.txt.
+        rc, out, _ = self._run(f"cd {_sq(LIBRARY_DIR)} 2>/dev/null && ls -1 *.enc 2>/dev/null")
+        encs = [ln[:-4] for ln in out.split() if ln.endswith(".enc")]
+        for r in rows:
+            r["enc"] = False
+            if r["dashes"]:
+                continue
+            stem = r["name"].lower()
+            hit = next((e for e in sorted(encs, key=len, reverse=True)
+                        if stem == e.lower() or stem.startswith(e.lower() + "_") or stem.startswith(e.lower() + ".")
+                        or stem.startswith(e.lower() + "-")), None)
+            if hit:
+                r["dashes"], r["enc"] = [hit], True
         # Configs a dash expects but that don't exist yet are worth showing too.
         present = {r["name"] for r in rows}
         for ref, dashes in usage.items():
             if ref not in present:
-                rows.append({"name": ref, "size": None, "mtime": None, "dashes": dashes})
+                rows.append({"name": ref, "size": None, "mtime": None, "dashes": dashes, "enc": False})
         rows.sort(key=lambda r: r["name"].lower())
         return rows
 
@@ -2810,6 +2824,30 @@ class IC7Device:
             self._run(f"rm -f {_sq(tmp)}")
             raise RuntimeError(f"Failed to save {remote}: {err.strip()}")
         self.log(f"Saved {remote}  ({len(data):,} bytes)")
+
+    def delete_configs(self, names: List[str]) -> List[str]:
+        """Delete settings files from SCREEN_CONFIGS_DIR after one confirmation. Returns names removed.
+        A dash that is still installed simply writes a fresh file with its defaults next time it loads."""
+        names = [n for n in names if n and "/" not in n and not n.startswith(".") and re.match(r"^[A-Za-z0-9_.\-]+$", n)]
+        if not names:
+            return []
+        plural = len(names) > 1
+        if not self.confirm("Delete settings file" + ("s?" if plural else "?"),
+                            f"Permanently delete from {SCREEN_CONFIGS_DIR} on the unit:\n\n  " + "\n  ".join(names)
+                            + "\n\nThe dash" + ("es" if plural else "") + " using " + ("them" if plural else "it")
+                            + " will start again from default settings (or recreate the file with defaults).\n"
+                              "Tip: 'Backup all to .zip…' first if you might want them back."):
+            raise UploadAborted("Delete cancelled — nothing was changed on the unit.")
+        removed = []
+        for n in names:
+            path = f"{SCREEN_CONFIGS_DIR}/{n}"
+            self.log(f"Deleting {path} ...")
+            rc, _, err = self._run(f"rm -f {_sq(path)} && sync")
+            if rc != 0 or self._remote_exists(path):
+                raise RuntimeError(f"Could not delete {path}: {err.strip() or 'still present'}")
+            removed.append(n)
+        self.log(f"Deleted {len(removed)} settings file(s): {', '.join(removed)}")
+        return removed
 
     def download_configs(self, names: List[str], local_dir: str) -> List[str]:
         """Copy the named settings files into local_dir. Returns local paths."""
@@ -4079,7 +4117,7 @@ def run_gui(initial_zip: Optional[str] = None):
     log_wrap = ttk.Frame(bottom, style="Bg.TFrame")
     log_wrap.pack(fill="x")
     _sp = {"spacing1": 3, "spacing3": 3} if fonts["retro"] else {}
-    log_box = tk.Text(log_wrap, height=(8 if root.winfo_screenheight() >= 900 else 5),   # short screens: room for the tabs
+    log_box = tk.Text(log_wrap, height=(5 if root.winfo_screenheight() >= 1000 else 4),   # keep the tabs roomy; 'Logs…' has it all
                        wrap="word", state="disabled", font=mono,
                       bg=P["field"], fg=P["text"], insertbackground=P["text"],
                       relief="flat", bd=0, padx=10, pady=8, highlightthickness=0, **_sp)
@@ -4732,9 +4770,33 @@ def run_gui(initial_zip: Optional[str] = None):
         body = ttk.Frame(cv)
         win = cv.create_window((0, 0), window=body, anchor="nw")
 
+        def min_size():
+            """The smallest the tab can usefully be. Rows/columns that stretch (lists, editors) may shrink to
+            a working minimum, the way they did before the tab could scroll; everything else keeps its
+            natural size. Scrolling only starts below this — a slightly short window just gets shorter lists,
+            not a second scrollbar."""
+            rows, cols = {}, {}
+            def pad(v):
+                nums = [int(float(x)) for x in re.findall(r"-?\d+(?:\.\d+)?", str(v if v is not None else 0))]
+                return sum(nums) if len(nums) > 1 else 2 * (nums[0] if nums else 0)
+            for w in body.grid_slaves():
+                gi = w.grid_info()
+                r, c = int(gi["row"]), int(gi["column"])
+                rs, cs = int(gi.get("rowspan", 1)), int(gi.get("columnspan", 1))
+                if rs == 1:
+                    rows[r] = max(rows.get(r, 0), w.winfo_reqheight() + pad(gi.get("pady")))
+                if cs == 1:
+                    cols[c] = max(cols.get(c, 0), w.winfo_reqwidth() + pad(gi.get("padx")))
+            mh = sum(min(h, 150) if int(body.rowconfigure(r)["weight"]) > 0 else h for r, h in rows.items())
+            mw = sum(min(wd, 260) if int(body.columnconfigure(c)["weight"]) > 0 else wd for c, wd in cols.items())
+            return min(mw, body.winfo_reqwidth()), min(mh, body.winfo_reqheight())
+
         def resize(_e=None):
             cw, ch = cv.winfo_width(), cv.winfo_height()
-            bw, bh = body.winfo_reqwidth(), body.winfo_reqheight()
+            try:
+                bw, bh = min_size()
+            except Exception:                       # never let layout maths break the tab
+                bw, bh = body.winfo_reqwidth(), body.winfo_reqheight()
             cv.itemconfigure(win, width=max(cw, bw), height=max(ch, bh))
             cv.configure(scrollregion=(0, 0, max(cw, bw), max(ch, bh)))
             for bar, need, kw, reset in ((vsb, bh > ch, dict(row=0, column=1, sticky="ns"), cv.yview_moveto),
@@ -4757,9 +4819,9 @@ def run_gui(initial_zip: Optional[str] = None):
         def wheel(e):
             horizontal = bool(getattr(e, "state", 0) & 0x1)
             step = -1 if (getattr(e, "delta", 0) > 0 or getattr(e, "num", 0) == 4) else 1
-            if horizontal and body.winfo_reqwidth() > cv.winfo_width():
+            if horizontal and body.winfo_width() > cv.winfo_width() + 1:
                 cv.xview_scroll(step, "units")
-            elif not horizontal and body.winfo_reqheight() > cv.winfo_height():
+            elif not horizontal and body.winfo_height() > cv.winfo_height() + 1:
                 cv.yview_scroll(step, "units")
 
         def bind(w):
@@ -5659,7 +5721,8 @@ def run_gui(initial_zip: Optional[str] = None):
 
     def _sync_scroll(*a):
         edit_sb.set(*a)
-        gutter.yview_moveto(a[0])
+        if not gutter_message():               # a message in the left panel stays put
+            gutter.yview_moveto(a[0])
     preview.configure(yscrollcommand=_sync_scroll)
     gutter.configure(yscrollcommand=lambda *a: preview.yview_moveto(a[0]))
     cfg_map: Dict[str, Dict[int, dict]] = {}        # dash name -> parsed line map (session cache)
@@ -5690,6 +5753,8 @@ def run_gui(initial_zip: Optional[str] = None):
     cfg_restore_btn.pack(side="left", padx=(6, 0))
     cfg_up_btn = ttk.Button(crow, text="Upload files…", style="Accent.TButton")
     cfg_up_btn.pack(side="left", padx=(18, 0))
+    cfg_del_btn = ttk.Button(crow, text="Delete settings file…", style="Danger.TButton")
+    cfg_del_btn.pack(side="left", padx=(18, 0))
     cfg_status = ttk.Label(tab_cfg, style="Muted.TLabel", text="Press Refresh to read settings files from the unit.")
     cfg_status.grid(row=5, column=0, columnspan=7, sticky="w", pady=(6, 0))
     tab_cfg.rowconfigure(1, weight=1)
@@ -5701,7 +5766,7 @@ def run_gui(initial_zip: Optional[str] = None):
         for r in config_rows:
             missing = r["size"] is None
             iid = cfg_tree.insert("", "end", values=(
-                r["name"], ", ".join(r["dashes"]) or "—",
+                r["name"], (", ".join(r["dashes"]) + ("  (encrypted)" if r.get("enc") else "")) or "—",
                 "missing" if missing else f"{r['size']:,} B",
                 "" if missing else datetime.fromtimestamp(r["mtime"]).strftime("%Y-%m-%d %H:%M")))
             if missing:
@@ -5723,6 +5788,21 @@ def run_gui(initial_zip: Optional[str] = None):
                 text=f"{edit_state['name']}  ·  {lines} value(s)" + ("  ·  edited" if edit_state["dirty"] else ""),
                 style="Warn.TLabel" if edit_state["dirty"] else "Muted.TLabel")
 
+    def gutter_message() -> Optional[Tuple[str, List[str]]]:
+        """(title, paragraphs) when the left panel can't name the lines, else None."""
+        if not edit_state.get("name"):
+            return None
+        if edit_state.get("enc"):
+            return ("Encrypted dash",
+                    ["Setting labels are encrypted with the dash. Use the UP arrow on your controller to enter the "
+                     "dash settings and update the values there.",
+                     "The values on the right can still be edited if you know the order."])
+        if not current_map():
+            return ("Setting labels unknown",
+                    ["Use the UP arrow on your controller to enter the dash settings and update the values there.",
+                     "The values on the right can still be edited if you know the order."])
+        return None
+
     def current_map() -> Dict[int, dict]:
         dash = edit_state.get("dash")
         return cfg_map.get(dash, {}) if dash else {}
@@ -5732,6 +5812,17 @@ def run_gui(initial_zip: Optional[str] = None):
         n = int(preview.index("end-1c").split(".")[0])
         gutter.configure(state="normal")
         gutter.delete("1.0", "end")
+        msg = gutter_message()
+        if msg:
+            # no line names to show: say why and what to do instead (the message stays put while values scroll)
+            import textwrap
+            title, body = msg
+            gutter.insert("end", title + "\n\n", "name")
+            for para in body:
+                gutter.insert("end", "\n".join(textwrap.wrap(para, 26)) + "\n\n", "idx")
+            gutter.configure(state="disabled")
+            highlight_current_line()
+            return
         for i in range(n):
             info = cmap.get(i)
             label = info["name"] if info else ("" if not cmap else "?")
@@ -5744,12 +5835,16 @@ def run_gui(initial_zip: Optional[str] = None):
         if not edit_state["name"]:
             return
         line = int(preview.index("insert").split(".")[0])
-        for w in (preview, gutter):
+        for w in ((preview,) if gutter_message() else (preview, gutter)):
             w.tag_remove("cur", "1.0", "end")
             w.tag_add("cur", f"{line}.0", f"{line}.0 lineend+1c")
         cmap = current_map()
         info = cmap.get(line - 1)
         value = preview.get(f"{line}.0", f"{line}.0 lineend").strip()
+        if edit_state.get("enc"):
+            detail_lbl.configure(text=f"line {line - 1}   ·   value: {value or '(empty)'}   "
+                                      f"({edit_state.get('dash')} is an encrypted dash — its setting labels are encrypted with it)")
+            return
         if info:
             typ = f" ({info['type']})" if info["type"] else ""
             dflt = f"   default {info['default']}" if info["default"] else ""
@@ -5757,16 +5852,15 @@ def run_gui(initial_zip: Optional[str] = None):
         elif cmap:
             detail_lbl.configure(text=f"line {line - 1}: not read by {edit_state.get('dash')}.qml (reserved / unused)")
         else:
-            detail_lbl.configure(text=f"line {line - 1}   ·   value: {value or '(empty)'}   "
-                                      "(no dash on the unit reads this file, so lines can't be named)")
+            detail_lbl.configure(text=f"line {line - 1}   ·   value: {value or '(empty)'}   (setting labels unknown)")
 
-    def show_preview(name: str, text: str, dash: Optional[str] = None):
+    def show_preview(name: str, text: str, dash: Optional[str] = None, enc: bool = False):
         preview.configure(state="normal")
         preview.delete("1.0", "end")
         preview.insert("end", text)
         preview.edit_reset()
         preview.edit_modified(False)
-        edit_state.update(name=name, orig=text, dirty=False, dash=dash)
+        edit_state.update(name=name, orig=text, dirty=False, dash=dash, enc=enc)
         render_gutter()
         preview.mark_set("insert", "1.0")
         highlight_current_line()
@@ -5853,10 +5947,14 @@ def run_gui(initial_zip: Optional[str] = None):
 
         row = next((r for r in config_rows if r["name"] == name), None)
         dash = row["dashes"][0] if row and row["dashes"] else None
+        enc = bool(row and row.get("enc"))
 
         def worker():
             with IC7Device(log, confirm) as dev:
                 text = dev.read_config(name)
+                if enc:
+                    ui(show_preview, name, text, dash, True)
+                    return
                 if dash and dash not in cfg_map:
                     try:
                         cfg_map[dash] = parse_config_map(dev.read_dash_qml(dash))
@@ -5993,6 +6091,40 @@ def run_gui(initial_zip: Optional[str] = None):
             log("Done.")
         start(worker)
 
+    def do_cfg_delete():
+        names = selected_cfg_names()
+        if not names:
+            messagebox.showinfo(APP_NAME, "Select one or more settings files to delete (files marked 'missing' "
+                                          "aren't on the unit).", parent=root)
+            return
+        if edit_state["name"] in names and edit_state["dirty"] and not discard_edits_ok():
+            return
+
+        def worker():
+            if not gui_preflight():
+                raise RuntimeError(f"GARW device not reachable at {HOST}.")
+            with IC7Device(log, confirm) as dev:
+                dev.check_version()
+                removed = dev.delete_configs(names)
+                refresh_configs(dev)
+            if edit_state["name"] in removed:
+                def clear():
+                    preview.configure(state="normal")
+                    preview.delete("1.0", "end")
+                    preview.edit_modified(False)
+                    edit_state.update(name=None, orig="", dirty=False, dash=None, enc=False)
+                    preview.configure(state="disabled")
+                    gutter.configure(state="normal")
+                    gutter.delete("1.0", "end")
+                    gutter.configure(state="disabled")
+                    preview_title.configure(text="Select a file to edit it")
+                    detail_lbl.configure(text="Select a file: each line is shown with the dash property it feeds.")
+                    update_edit_buttons()
+                ui(clear)
+            log("Done.")
+        start(worker)
+
+    cfg_del_btn.configure(command=do_cfg_delete)
     cfg_refresh_btn.configure(command=do_cfg_refresh)
     cfg_dl_btn.configure(command=lambda: do_cfg_download(False))
     cfg_dl_all_btn.configure(command=lambda: do_cfg_download(True))
@@ -6643,7 +6775,9 @@ def run_gui(initial_zip: Optional[str] = None):
     lap = {"db": _lt.UserTrackDB() if _lt else None, "lib": _lt.TrackLibrary() if _lt else None,
            "path": str(LOCAL_USER_TRACKS), "server": None, "present": None,
            # admin track editing: a Tracks.txt (full library) next to TrackList.txt takes over the library rows
-           "admin": None, "admin_path": None, "admin_server": None, "admin_backed_up": False, "tl_backed_up": False}
+           "admin": None, "admin_path": None, "admin_server": None, "admin_backed_up": False, "tl_backed_up": False,
+           # what the device holds, from the last read (None = not read yet; "missing" = no file on the unit)
+           "device_db": None, "device_tracks": None, "mac_device": None}
 
     # -- RaceBox --
     mac_box = ttk.LabelFrame(tab_lap, text="  RaceBox  ", padding=(10, 2, 10, 6))
@@ -6894,6 +7028,42 @@ def run_gui(initial_zip: Optional[str] = None):
                f"LapTimer dash on device: ✗ not installed — {_lt.LAPTIMER_FILE} is missing. The RaceBox and track buttons "
                "that touch the device will refuse until the LapTimer add-on is installed. Local track editing still works.")
         ui(lap_presence.configure, {"text": txt, "style": "Ok.TLabel" if (present and data_dir) else "Warn.TLabel"})
+        if present and data_dir:
+            lap_read_device(dev)
+
+    def lap_read_device(dev: IC7Device):
+        """Read the RaceBox MAC and UserTracks.txt from the unit (read only — nothing is created here) and show
+        them: the MAC fills in, and the tracks table marks which custom tracks the unit has."""
+        mac = dev.read_text_file(_lt.RACEBOX_MAC_FILE)
+        trk = dev.read_text_file(_lt.USER_TRACKS_FILE)
+        value = _lt.racebox_parse(mac)[0] if mac is not None else None
+        lap["device_tracks"] = "missing" if trk is None else _lt.UserTrackDB.parse(trk)
+
+        def show():
+            # fill the MAC in unless the user has typed something of their own since the last read
+            cur = "off" if mac_off_var.get() else mac_normalise(mac_var.get() or "") or (mac_var.get().strip() or None)
+            if mac is not None and (cur in (None, lap["mac_device"])):
+                mac_off_var.set(value == "off")
+                mac_off_toggle()
+                mac_var.set("" if value in (None, "off") else value)
+            lap["mac_device"] = value if mac is not None else None
+            mac_info.configure(text=("On device: " + ("RaceBox off" if value == "off" else value or "— no MAC (default used)"))
+                               if mac is not None else f"On device: no {os.path.basename(_lt.RACEBOX_MAC_FILE)} yet")
+            fill_trk_tree()
+        ui(show)
+        n = 0 if trk is None else len(lap["device_tracks"].tracks)
+        log(f"Lap timer on device: RaceBox {'not set' if mac is None else (value or 'default')}, "
+            + (f"no {os.path.basename(_lt.USER_TRACKS_FILE)}" if trk is None else f"{n} custom track(s) in {os.path.basename(_lt.USER_TRACKS_FILE)}"))
+
+    def do_lap_refresh():
+        def worker():
+            if not gui_preflight():
+                raise RuntimeError(f"GARW device not reachable at {HOST}.")
+            with IC7Device(log, confirm) as dev:
+                lap_refresh_presence(dev)
+                if not lap.get("present"):
+                    log("LapTimer isn't installed on the device — nothing to read.")
+        start(worker)
 
     def mac_normalise(v: str) -> Optional[str]:
         v = v.strip().upper().replace("-", ":")
@@ -6922,6 +7092,7 @@ def run_gui(initial_zip: Optional[str] = None):
                 mac_off_toggle()
                 mac_var.set("" if value in (None, "off") else value)
                 mac_info.configure(text="On device: " + ("RaceBox off" if value == "off" else value or "— no MAC (default used)"))
+                lap["mac_device"] = value
             ui(show)
             log(f"RaceBox file on device: {status}" + (f" — {value}" if value and value != "off" else ""))
         start(worker)
@@ -6945,6 +7116,7 @@ def run_gui(initial_zip: Optional[str] = None):
                 existing = dev.read_text_file(_lt.RACEBOX_MAC_FILE)   # keep the file's comment lines
                 dev.write_text_file(_lt.RACEBOX_MAC_FILE, _lt.racebox_render(value, existing), "RaceBox setting")
                 ui(mac_info.configure, {"text": "On device: " + ("RaceBox off" if value == "off" else value)})
+                lap["mac_device"] = value
             # the dash re-reads the file whenever a dash loads — a screen flip is enough, no restart needed
             reload_dash_settings()
             log("Done." + ("" if value == "off" else " A different MAC connects right away; the same MAC reconnects on the next power cycle."))
@@ -7043,12 +7215,12 @@ def run_gui(initial_zip: Optional[str] = None):
     trk_q_ent.pack(side="left")
     trk_show_lib = tk.BooleanVar(value=True)
     ttk.Checkbutton(trow0, text="Show GARW library", variable=trk_show_lib, command=lambda: fill_trk_tree()).pack(side="left", padx=(12, 0))
-    tcols = ("name", "source", "type", "region", "country", "sf", "sectors", "radius")
+    tcols = ("name", "source", "device", "type", "region", "country", "sf", "sectors", "radius")
     trk_tree = ttk.Treeview(trk_box, columns=tcols, show="headings", selectmode="extended", height=10)
-    for c, txt, w in (("name", "Track", 240), ("source", "Source", 150), ("type", "Type", 120), ("region", "Region", 130),
+    for c, txt, w in (("name", "Track", 240), ("source", "Source", 150), ("device", "On device", 110), ("type", "Type", 120), ("region", "Region", 130),
                       ("country", "Country", 140), ("sf", "Start", 170), ("sectors", "Sectors", 60), ("radius", "Radius m", 70)):
         trk_tree.heading(c, text=txt)
-        trk_tree.column(c, width=w, anchor="w" if c in ("name", "region", "country", "source") else "center", stretch=(c == "name"))
+        trk_tree.column(c, width=w, anchor="w" if c in ("name", "region", "country", "source", "device") else "center", stretch=(c == "name"))
     trk_tree.grid(row=1, column=0, columnspan=2, sticky="nsew", pady=(4, 0))
     trk_sb = ttk.Scrollbar(trk_box, command=trk_tree.yview)
     trk_sb.grid(row=1, column=2, sticky="ns", pady=(4, 0))
@@ -7071,6 +7243,8 @@ def run_gui(initial_zip: Optional[str] = None):
     trk_upload_btn.pack(side="right")
     trk_download_btn = ttk.Button(trow, text="Download from device")
     trk_download_btn.pack(side="right", padx=(0, 6))
+    trk_refresh_btn = ttk.Button(trow, text="Refresh from device")
+    trk_refresh_btn.pack(side="right", padx=(0, 6))
     trk_saveas_btn = ttk.Button(trow0, text="Save copy as…")
     trk_saveas_btn.pack(side="right")
     trk_open_btn = ttk.Button(trow0, text="Open file…")
@@ -7169,24 +7343,33 @@ def run_gui(initial_zip: Optional[str] = None):
 
         def kind_of(t):
             return ("Point-to-point" + (f" {t.start_hdg}°" if t.start_hdg is not None else "")) if t.point_to_point else "Circuit"
+        dev_t = lap.get("device_tracks")
+        dev_lines = {} if not dev_t or dev_t == "missing" else {t.name: t.to_line() for t in dev_t.tracks}
+
+        def on_device(t):
+            if dev_t is None:
+                return "? (refresh)"
+            if t.name not in dev_lines:
+                return "✗ not on device"
+            return "✓ on device" if dev_lines[t.name] == t.to_line() else "≠ differs"
         if adb and trk_show_lib.get():
             for i, t in enumerate(adb.tracks):
-                rows.append((f"a:{i}", t.country, t.name, (t.name, "GARW library (Tracks.txt)", kind_of(t), t.region,
+                rows.append((f"a:{i}", t.country, t.name, (t.name, "GARW library (Tracks.txt)", "built in", kind_of(t), t.region,
                                                            f"{t.country} ({t.cc})" if t.cc else t.country, _lt.fmt_pt(t.sf),
                                                            len(t.sectors), t.radius), "admin"))
         for i, t in enumerate(db.tracks):
             kind = kind_of(t)
             src = "Custom (replaces library)" if t.name in lib_names else "Custom"
-            rows.append((f"u:{i}", t.country, t.name, (t.name, src, kind, t.region, f"{t.country} ({t.cc})" if t.cc else t.country,
+            rows.append((f"u:{i}", t.country, t.name, (t.name, src, on_device(t), kind, t.region, f"{t.country} ({t.cc})" if t.cc else t.country,
                                                        _lt.fmt_pt(t.sf), len(t.sectors), t.radius), "user"))
         if lib and trk_show_lib.get() and not adb:
             for e in lib.entries:
                 if e.name in user_names:
                     continue   # the custom one replaces it on the device
-                rows.append((f"l:{e.name}", e.country, e.name, (e.name, "GARW library", "—", e.region, f"{e.country} ({e.cc})" if e.cc else e.country,
+                rows.append((f"l:{e.name}", e.country, e.name, (e.name, "GARW library", "built in", "—", e.region, f"{e.country} ({e.cc})" if e.cc else e.country,
                                                                  "(not editable here)", "", ""), "lib"))
         for iid, country, name, vals, tag in sorted(rows, key=lambda r: (r[4] != "user", r[1].lower(), r[2].lower())):
-            if q and not any(q in str(v).lower() for v in vals[:5]):
+            if q and not any(q in str(v).lower() for v in vals[:6]):
                 continue
             trk_tree.insert("", "end", iid=iid, values=vals, tags=(tag,))
         trk_tree.tag_configure("user", foreground=P["ok"])
@@ -7199,6 +7382,13 @@ def run_gui(initial_zip: Optional[str] = None):
                                         f"   ·   {len(db.tracks)} custom")
         else:
             trk_file_lbl.configure(text=f"{len(db.tracks)} custom track(s) in {shown}   ·   {n_lib} in the GARW library")
+        local_names = {t.name for t in db.tracks}
+        extra = sorted(n for n in dev_lines if n not in local_names)
+        if dev_t == "missing":
+            trk_file_lbl.configure(text=trk_file_lbl.cget("text") + "   ·   device: no UserTracks.txt yet")
+        elif extra:
+            trk_file_lbl.configure(text=trk_file_lbl.cget("text") + f"   ·   device also has {len(extra)} not here: "
+                                   + ", ".join(extra[:4]) + ("…" if len(extra) > 4 else "") + " (Download from device)")
         if db.tracks:
             trk_status.configure(text=f"Custom tracks (green) save to {shown} as you edit; nothing reaches the device until 'Upload UserTracks.txt to device'. "
                                       "A custom track named like a library track replaces it. The map editor opens in your browser (needs internet).")
@@ -7403,6 +7593,7 @@ def run_gui(initial_zip: Optional[str] = None):
                 log("Download cancelled — local custom tracks unchanged.")
                 return
             lap["db"] = db
+            lap["device_tracks"] = _lt.UserTrackDB.parse(data)
             lap["path"] = str(LOCAL_USER_TRACKS)
             trk_save_local()
             ui(fill_trk_tree)
@@ -7438,6 +7629,8 @@ def run_gui(initial_zip: Optional[str] = None):
                     bak.write_bytes(old)
                     log(f"  previous UserTracks.txt from the device backed up → {bak}")
                 dev.write_text_file(_lt.USER_TRACKS_FILE, db.serialize(), "UserTracks.txt")
+                lap["device_tracks"] = _lt.UserTrackDB.parse(db.serialize())
+                ui(fill_trk_tree)
                 log("Restarting the GARW binary so the lap timer reloads the tracks …")
                 try:
                     dev.restart_dash_app()
@@ -7454,6 +7647,7 @@ def run_gui(initial_zip: Optional[str] = None):
     trk_gmaps_btn.configure(command=do_trk_gmaps)
     trk_open_btn.configure(command=do_trk_open)
     trk_saveas_btn.configure(command=do_trk_saveas)
+    trk_refresh_btn.configure(command=do_lap_refresh)
     trk_download_btn.configure(command=do_trk_download)
     trk_upload_btn.configure(command=do_trk_upload)
     trk_tree.bind("<Double-1>", lambda e: do_trk_edit())
@@ -7788,7 +7982,7 @@ def run_gui(initial_zip: Optional[str] = None):
     all_buttons = [add_btn, rm_btn, token_btn, join_btn, check_btn, install_sel_btn,
                    install_all_btn, refresh_btn, install_zip_btn, active_btn, dl_sel_btn, dl_all_btn, delete_btn, reboot_btn, restart_btn,
                    mac_read_btn, mac_save_btn, lapdata_btn, trk_download_btn, trk_upload_btn,
-                   cfg_refresh_btn, cfg_dl_btn, cfg_dl_all_btn, cfg_backup_btn, cfg_restore_btn, cfg_up_btn, sys_btn, fw_browse_btn]
+                   cfg_refresh_btn, cfg_dl_btn, cfg_dl_all_btn, cfg_backup_btn, cfg_restore_btn, cfg_up_btn, cfg_del_btn, sys_btn, fw_browse_btn]
 
     def set_buttons():
         busy = state["busy"]
