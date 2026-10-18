@@ -3662,6 +3662,9 @@ def apply_theme(root, tk, ttk, retro: bool = True) -> dict:
     s.configure("Title.TLabel", background=P["bg"], foreground=P["text"], font=title_font)
     s.configure("Muted.TLabel", background=P["panel"], foreground=P["muted"])
     s.configure("BgMuted.TLabel", background=P["bg"], foreground=P["muted"])
+    s.configure("BgOk.TLabel", background=P["bg"], foreground=P["ok"])
+    s.configure("BgWarn.TLabel", background=P["bg"], foreground=P["warn"])
+    s.configure("BgErr.TLabel", background=P["bg"], foreground=P["err"])
     s.configure("Ok.TLabel", background=P["panel"], foreground=P["ok"])
     s.configure("Warn.TLabel", background=P["panel"], foreground=P["warn"])
     s.configure("Err.TLabel", background=P["panel"], foreground=P["err"])
@@ -3872,8 +3875,10 @@ def run_gui(initial_zip: Optional[str] = None):
             root.createcommand("::tk::mac::ReopenApplication", _mac_reopen)
         except tk.TclError:
             pass
-    root.minsize(960, 660)
     sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
+    # Never insist on more than the screen has: a fixed 960x660 minimum pushed the bottom of the window (and so
+    # the tabs' scrollbars and buttons) off small / scaled laptop screens. The tabs scroll when space runs out.
+    root.minsize(min(960, int(sw * 0.7)), min(560, int(sh * 0.6)))
     w, h = min(1380, int(sw * 0.88)), min(900, int(sh * 0.86))
     root.geometry(f"{w}x{h}+{(sw - w) // 2}+{max(0, (sh - h) // 3)}")   # fallback size if zoom fails
 
@@ -4129,6 +4134,30 @@ def run_gui(initial_zip: Optional[str] = None):
     log_box.tag_configure("ok", foreground=P["ok"])
     log_box.tag_configure("warn", foreground=P["warn"])
     log_box.tag_configure("muted", foreground=P["muted"])
+    # The log can be hidden to give the tabs the room (small screens); the latest line stays visible underneath
+    # the progress bar, and 'Logs…' still opens the full log file. The choice is remembered.
+    log_tail = ttk.Label(bottom, style="BgMuted.TLabel", text="", anchor="w")
+
+    def set_log_hidden(hidden: bool):
+        if hidden:
+            log_wrap.pack_forget()
+            log_tail.pack(fill="x", padx=(2, 0), pady=(0, 2))
+        else:
+            log_tail.pack_forget()
+            log_wrap.pack(fill="x")
+            log_box.see("end")
+        log_toggle_btn.configure(text="Show log" if hidden else "Hide log")
+        if bool(cfg.get("log_hidden")) != hidden:
+            cfg["log_hidden"] = hidden
+            try:
+                save_config(cfg)
+            except OSError:
+                pass
+    log_toggle_btn = ttk.Button(prow_, text="Hide log", width=9,
+                                command=lambda: set_log_hidden(log_wrap.winfo_manager() == "pack"))
+    log_toggle_btn.pack(side="right", padx=(8, 0))
+    if cfg.get("log_hidden"):
+        set_log_hidden(True)
     nb.pack(fill="both", expand=True, pady=(12, 8))
 
     def set_status(text: str, tone: str = "muted"):
@@ -4556,6 +4585,8 @@ def run_gui(initial_zip: Optional[str] = None):
                            else "warn" if payload.startswith(("WARNING", "  warning")) or "cancelled" in payload
                            else "ok" if payload.startswith(("Done", "Connected", "Uploaded", "All ", "Deleted", "Downloaded", "Installed", "Connection test OK"))
                            else "muted" if payload.startswith(("  [", "  note", "Checking", "Settings:", "=")) else "")
+                    log_tail.configure(text=payload.splitlines()[0][:220] if payload.strip() else log_tail.cget("text"),
+                                       style={"err": "BgErr.TLabel", "warn": "BgWarn.TLabel", "ok": "BgOk.TLabel"}.get(tag, "BgMuted.TLabel"))
                     log_box.configure(state="normal")
                     log_box.insert("end", payload + "\n", tag)
                     log_box.see("end")
@@ -4771,50 +4802,110 @@ def run_gui(initial_zip: Optional[str] = None):
         win = cv.create_window((0, 0), window=body, anchor="nw")
 
         def min_size():
-            """The smallest the tab can usefully be. Rows/columns that stretch (lists, editors) may shrink to
-            a working minimum, the way they did before the tab could scroll; everything else keeps its
-            natural size. Scrolling only starts below this — a slightly short window just gets shorter lists,
-            not a second scrollbar."""
-            rows, cols = {}, {}
+            """The smallest the tab can usefully be. Lists and text boxes in stretching rows/columns may shrink
+            (to a few lines); buttons, labels and fields keep their natural size — including ones that span
+            several columns, like a row of buttons. Scrolling only starts below this, so a slightly short
+            window just gets shorter lists, but nothing is ever cut off without a scrollbar."""
             def pad(v):
                 nums = [int(float(x)) for x in re.findall(r"-?\d+(?:\.\d+)?", str(v if v is not None else 0))]
                 return sum(nums) if len(nums) > 1 else 2 * (nums[0] if nums else 0)
-            for w in body.grid_slaves():
-                gi = w.grid_info()
-                r, c = int(gi["row"]), int(gi["column"])
-                rs, cs = int(gi.get("rowspan", 1)), int(gi.get("columnspan", 1))
-                if rs == 1:
-                    rows[r] = max(rows.get(r, 0), w.winfo_reqheight() + pad(gi.get("pady")))
-                if cs == 1:
-                    cols[c] = max(cols.get(c, 0), w.winfo_reqwidth() + pad(gi.get("padx")))
-            mh = sum(min(h, 150) if int(body.rowconfigure(r)["weight"]) > 0 else h for r, h in rows.items())
-            mw = sum(min(wd, 260) if int(body.columnconfigure(c)["weight"]) > 0 else wd for c, wd in cols.items())
-            return min(mw, body.winfo_reqwidth()), min(mh, body.winfo_reqheight())
+
+            def give(w, horizontal):
+                best, stack = 0, [w]
+                while stack:
+                    x = stack.pop()
+                    if isinstance(x, _OWN_SCROLL) and x is not cv:
+                        best = max(best, (x.winfo_reqwidth() - 220) if horizontal else (x.winfo_reqheight() - 90))
+                    else:
+                        stack.extend(x.winfo_children())
+                return max(best, 0)
+
+            def axis(horizontal):
+                key, skey = ("column", "columnspan") if horizontal else ("row", "rowspan")
+                conf = body.columnconfigure if horizontal else body.rowconfigure
+                size = (lambda w: w.winfo_reqwidth()) if horizontal else (lambda w: w.winfo_reqheight())
+                pk = "padx" if horizontal else "pady"
+                single, spans = {}, []
+                for w in body.grid_slaves():
+                    gi = w.grid_info()
+                    a, n = int(gi[key]), int(gi.get(skey, 1))
+                    cells = range(a, a + n)
+                    stretch = any(int(conf(c)["weight"]) > 0 for c in cells)
+                    need = size(w) + pad(gi.get(pk)) - (give(w, horizontal) if stretch else 0)
+                    if n == 1:
+                        single[a] = max(single.get(a, 0), need)
+                    else:
+                        spans.append((set(cells), need))
+                total = sum(single.values())
+                for cells, need in spans:
+                    total = max(total, need + sum(v for c, v in single.items() if c not in cells))
+                return total
+
+            return (min(axis(True) + 16, body.winfo_reqwidth()), min(axis(False) + 8, body.winfo_reqheight()))
 
         def resize(_e=None):
             cw, ch = cv.winfo_width(), cv.winfo_height()
             try:
                 bw, bh = min_size()
+                # optional side panels (dash previews) step aside on narrow windows rather than forcing a
+                # sideways scroll, and come back once there is room
+                hidden = body._collapsed            # 0, or the width the tab needed with the panels shown
+                if body._collapse and not hidden and bw > cw > 1:
+                    for w in body._collapse:
+                        w.grid_remove()
+                    body._collapsed = bw
+                    body.update_idletasks()
+                    bw, bh = min_size()
+                elif hidden and cw >= hidden + 24:   # clear margin, so it can't flip back and forth
+                    for w in body._collapse:
+                        w.grid()
+                    body._collapsed = 0
+                    body.update_idletasks()
+                    bw, bh = min_size()
             except Exception:                       # never let layout maths break the tab
                 bw, bh = body.winfo_reqwidth(), body.winfo_reqheight()
-            cv.itemconfigure(win, width=max(cw, bw), height=max(ch, bh))
-            cv.configure(scrollregion=(0, 0, max(cw, bw), max(ch, bh)))
-            for bar, need, kw, reset in ((vsb, bh > ch, dict(row=0, column=1, sticky="ns"), cv.yview_moveto),
-                                         (hsb, bw > cw, dict(row=1, column=0, sticky="ew"), cv.xview_moveto)):
+            # Decide both bars from the space the page has *without* them, so showing one can't flip the other
+            # (or itself) back and forth.
+            sbw = 14
+            full_w = cw + (vsb.winfo_width() if vsb.winfo_ismapped() else 0)
+            full_h = ch + (hsb.winfo_height() if hsb.winfo_ismapped() else 0)
+            need_v = bh > full_h
+            need_h = bw > full_w - (sbw if need_v else 0)
+            need_v = bh > full_h - (sbw if need_h else 0)
+            view_w = full_w - (sbw if need_v else 0)
+            view_h = full_h - (sbw if need_h else 0)
+            cv.itemconfigure(win, width=max(view_w, bw), height=max(view_h, bh))
+            cv.configure(scrollregion=(0, 0, max(view_w, bw), max(view_h, bh)))
+            for bar, need, kw, reset in ((vsb, need_v, dict(row=0, column=1, sticky="ns"), cv.yview_moveto),
+                                         (hsb, need_h, dict(row=1, column=0, sticky="ew"), cv.xview_moveto)):
                 if need:
-                    bar.grid(**kw)
-                else:
+                    if not bar.winfo_ismapped():
+                        bar.grid(**kw)
+                elif bar.winfo_ismapped() or bar.winfo_manager():
                     bar.grid_remove()
                     reset(0)
-        body.bind("<Configure>", resize, add="+")
-        cv.bind("<Configure>", resize, add="+")
+        last = {"v": None}
+
+        def settle(_e=None):
+            # run now, and once more when Tk has finished laying out: the canvas size it reports during a
+            # window resize can lag a step behind, which left a stale size with no scrollbar
+            resize()
+            key = (cv.winfo_width(), cv.winfo_height(), body.winfo_reqwidth(), body.winfo_reqheight())
+            if key != last["v"]:
+                last["v"] = key
+                cv.after(80, resize)
+        body.bind("<Configure>", settle, add="+")
+        cv.bind("<Configure>", settle, add="+")
+        page.bind("<Configure>", settle, add="+")
         body._page_canvas = cv
+        body._collapse, body._collapsed = (), 0
         return body
 
-    def finish_page(page, body):
+    def finish_page(page, body, collapse=()):
         """After a tab is built: mouse-wheel scrolling (except over widgets that scroll themselves) and
         full-width hint text that re-wraps to the window instead of forcing a minimum width."""
         cv = body._page_canvas
+        body._collapse = tuple(collapse)
 
         def wheel(e):
             horizontal = bool(getattr(e, "state", 0) & 0x1)
@@ -5355,7 +5446,7 @@ def run_gui(initial_zip: Optional[str] = None):
     repo_tree.bind("<Button-2>", repo_context)          # macOS Tk reports right-click as button 2
     repo_tree.bind("<Control-Button-1>", repo_context)  # macOS ctrl-click
 
-    finish_page(page_repo, tab_repo)
+    finish_page(page_repo, tab_repo, collapse=(repo_preview,))
     tab_repo = page_repo
     # ---------- Tab 3: Device ----------
     page_dev, tab_dev = tab_dev, scroll_page(tab_dev)
@@ -5682,7 +5773,7 @@ def run_gui(initial_zip: Optional[str] = None):
     reboot_btn.configure(command=do_reboot)
     restart_btn.configure(command=do_restart_app)
 
-    finish_page(page_dev, tab_dev)
+    finish_page(page_dev, tab_dev, collapse=(dev_preview,))
     tab_dev = page_dev
     # ---------- Tab 4: Settings files (/opt/IC7/screen_configs) ----------
     page_cfg, tab_cfg = tab_cfg, scroll_page(tab_cfg)
