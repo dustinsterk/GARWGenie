@@ -92,7 +92,7 @@ except Exception as _e:  # pragma: no cover — not just ImportError: a broken d
     PARAMIKO_ERROR = f"{type(_e).__name__}: {_e}"
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.18.3"
+APP_VERSION = "5.18.4"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -8415,6 +8415,10 @@ def run_lap_analysis(path: Optional[str]) -> int:
         except Exception:                            # noqa: BLE001
             pass
         from lapanalysis.ui import app as la_app
+        from lapanalysis.ui import qtfixes as _qtfixes
+        if _qtfixes.applied:
+            print("PySide6 leaks a reference to None on every void call with this Python; applied the work-around "
+                  "(Python 3.12+ or a fixed PySide6 doesn't need it)", flush=True)
         from lapanalysis import trackmatch
         trackmatch.register_tracks(load_course_tracks())
         # Fires once the event loop runs, i.e. after the window has been built and shown — the tab then
