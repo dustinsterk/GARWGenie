@@ -425,7 +425,14 @@ def qimage_to_array(data: bytes) -> Optional[np.ndarray]:
     """Decode tile bytes to an (h, w, 3) uint8 array, or None."""
     img = QtGui.QImage()
     if not img.loadFromData(data):
-        return None
+        # Qt's JPEG plugin missing from a packaged build would otherwise drop every (JPEG) aerial tile
+        try:
+            import io
+            from PIL import Image
+            with Image.open(io.BytesIO(data)) as im:
+                return np.asarray(im.convert("RGB"), dtype=np.uint8).copy()
+        except Exception:                            # noqa: BLE001
+            return None
     img = img.convertToFormat(QtGui.QImage.Format_RGB888)
     w, h = img.width(), img.height()
     if w == 0 or h == 0:
@@ -451,6 +458,8 @@ class TrackMap(ClickToggleMixin, pg.PlotWidget):
     #: traffic to the tile server
     tileReady = QtCore.Signal(object, float, float, float, float)
     basemapCleared = QtCore.Signal()
+    #: no imagery at all arrived for this map — carries a short reason for the status bar
+    imageryFailed = QtCore.Signal(str)
 
     def __init__(self, cursor: DistanceCursor) -> None:
         super().__init__()
@@ -558,14 +567,22 @@ class TrackMap(ClickToggleMixin, pg.PlotWidget):
             # Offline, or the provider is unreachable. Without this, a hundred
             # queued requests each sit out their timeout for no possible gain.
             if self._hits == 0 and self._fails >= 8:
+                if not self._tile_signals.abort:
+                    self.imageryFailed.emit(bm.LAST_ERROR or "the imagery server can't be reached")
                 self._tile_signals.abort = True
+            elif self._hits == 0 and self._pending == 0:
+                self.imageryFailed.emit(bm.LAST_ERROR or "the imagery server can't be reached")
             return
         if self._project is None or self._provider is None:
             return
-        self._hits += 1
         arr = qimage_to_array(bytes(data))
         if arr is None:
+            self._fails += 1
+            bm.LAST_ERROR = "the downloaded tiles couldn't be decoded"
+            if self._hits == 0 and self._pending == 0:
+                self.imageryFailed.emit(bm.LAST_ERROR)
             return
+        self._hits += 1
         left, bottom, w, h = bm.tile_rect_local(z, x, y, self._project)
 
         # Hand the 3D view the *raw* tile, row 0 = north. It has its own axis

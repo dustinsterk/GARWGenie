@@ -4,10 +4,21 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-python3 -m venv .venv-build
+# Which Python to build with: PYTHON=/opt/homebrew/bin/python3.14 ./build.sh  (default: python3 on PATH).
+# The build venv is recreated whenever it was made with a different Python, so switching interpreters
+# (e.g. to Homebrew's 3.14) never mixes packages built for another version.
+PYTHON="${PYTHON:-python3}"
+WANT="$("$PYTHON" -c 'import sys; print(sys.executable, sys.version.split()[0])')"
+if [ -x .venv-build/bin/python ] && [ "$(cat .venv-build/.made-with 2>/dev/null)" != "$WANT" ]; then
+  echo "Build venv was made with another Python — recreating it for: $WANT"
+  rm -rf .venv-build
+fi
+[ -d .venv-build ] || { "$PYTHON" -m venv .venv-build && echo "$WANT" > .venv-build/.made-with; }
 source .venv-build/bin/activate
+python -c "import tkinter" 2>/dev/null || { echo "ERROR: this Python has no tkinter. Homebrew: brew install python-tk@$("$PYTHON" -c 'import sys; print(f"{sys.version_info[0]}.{sys.version_info[1]}")')"; exit 1; }
 pip install --upgrade pip >/dev/null
 pip install -r requirements.txt pyinstaller >/dev/null
+python -c "import paramiko, cryptography, bcrypt, nacl" || { echo "ERROR: paramiko (SSH) does not import in the build venv"; exit 1; }
 
 rm -rf build dist
 # App icon: build an .icns from assets/garw_genie_icon.png (macOS tools only)
@@ -33,6 +44,10 @@ pyinstaller --noconfirm --clean \
   --hidden-import PIL._tkinter_finder \
   --collect-all imageio_ffmpeg \
   --collect-all bleak \
+  --collect-all paramiko \
+  --collect-all cryptography \
+  --collect-all bcrypt \
+  --collect-all nacl \
   --collect-submodules lapanalysis \
   --collect-submodules pyqtgraph \
   --hidden-import PySide6.QtMultimedia \
@@ -70,6 +85,9 @@ pyinstaller --noconfirm --clean \
   "dist/GARW Genie.app/Contents/Info.plist" 2>/dev/null || true
 codesign --force --deep --sign - "dist/GARW Genie.app"
 codesign --verify --deep --strict "dist/GARW Genie.app" && echo "ad-hoc signature OK"
+
+# Never ship a build that can't talk to the unit: the finished app must load its SSH library.
+"dist/GARW Genie.app/Contents/MacOS/GARW Genie" --self-check || { echo "ERROR: the built app failed its self-check"; exit 1; }
 
 cp default_repos.txt dist/ 2>/dev/null || true   # editable list of default dash repos, shipped beside the app
 rm -rf "dist/GARW Genie"                         # PyInstaller's raw onedir output; the .app already contains it

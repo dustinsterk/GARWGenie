@@ -84,13 +84,15 @@ if platform.system() == "Windows":
 
     subprocess.run, subprocess.Popen = _run_hidden, _PopenHidden
 
+PARAMIKO_ERROR: Optional[str] = None
 try:
     import paramiko
-except ImportError:  # pragma: no cover
-    paramiko = None
+except Exception as _e:  # pragma: no cover — not just ImportError: a broken dependency (cryptography, bcrypt,
+    paramiko = None      # PyNaCl) raises its own errors, and the message is what tells us which one
+    PARAMIKO_ERROR = f"{type(_e).__name__}: {_e}"
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.18.1"
+APP_VERSION = "5.18.2"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -8092,11 +8094,19 @@ def run_gui(initial_zip: Optional[str] = None):
 
     after_box.bind("<<ComboboxSelected>>", lambda e: persist(), add="+")
     if paramiko is None:
-        log("ERROR: paramiko is not installed — every device tab stays locked. Install it with:  pip install paramiko")
-        root.after(600, lambda: messagebox.showerror(
-            APP_NAME, "GARW Genie needs the Python package 'paramiko' to talk to the GARW device over SSH, "
-                      "and it isn't installed.\n\nOpen a terminal and run:\n\n    pip install paramiko\n\n"
-                      "then start GARW Genie again. Until then only the GitHub repos tab works.", parent=root))
+        log(f"ERROR: the SSH library (paramiko) could not be loaded — {PARAMIKO_ERROR}. Every device tab stays locked.")
+        if getattr(sys, "frozen", False):
+            msg = ("This copy of GARW Genie couldn't load its SSH library (paramiko), so it can't talk to the GARW "
+                   "device. The build is missing part of it — it is not something you can install yourself.\n\n"
+                   f"Details: {PARAMIKO_ERROR}\n\n"
+                   "Please download the latest release (or use 'Check for updates'), and report this message if it "
+                   "keeps happening. Until then only the GitHub repos tab works.")
+        else:
+            msg = ("GARW Genie needs the Python package 'paramiko' to talk to the GARW device over SSH, and it "
+                   f"couldn't be loaded:\n\n    {PARAMIKO_ERROR}\n\nOpen a terminal and run:\n\n"
+                   f"    {os.path.basename(sys.executable)} -m pip install --upgrade paramiko\n\n"
+                   "then start GARW Genie again. Until then only the GitHub repos tab works.")
+        root.after(600, lambda: messagebox.showerror(APP_NAME, msg, parent=root))
     log(f"Settings: {CONFIG_PATH}")
     log(f"Log file: {log_path}  (every action and every SSH command; 30 days kept — 'Logs…' button opens the folder)"
         if log_path else "Log file could not be created.")
@@ -8390,9 +8400,46 @@ def _quiet_gtk_modules() -> None:
         os.environ.pop("GTK_MODULES", None)
 
 
+def self_check(report: Optional[str] = None) -> int:
+    """`--self-check [report.txt]`: print whether every library the app needs loads in THIS build/interpreter
+    (and write it to report.txt — a windowed Windows build has no console to print to). The build scripts
+    run it on the finished app, so a build that can't load paramiko never ships."""
+    import importlib
+    lines: List[str] = []
+
+    def print(*a):                                  # noqa: A001 — console when there is one, and the report
+        lines.append(" ".join(str(x) for x in a))
+        if sys.stdout is not None:
+            try:
+                sys.stdout.write(lines[-1] + "\n")
+            except Exception:                       # noqa: BLE001
+                pass
+    ok = True
+    for mod, required in (("paramiko", True), ("cryptography", True), ("bcrypt", True), ("nacl", True),
+                          ("certifi", True), ("PIL", True), ("numpy", False), ("PySide6", False),
+                          ("pyqtgraph", False), ("bleak", False)):
+        try:
+            m = importlib.import_module(mod)
+            print(f"ok      {mod} {getattr(m, '__version__', '')}")
+        except Exception as e:                      # noqa: BLE001
+            print(f"{'MISSING' if required else 'missing'} {mod}: {type(e).__name__}: {e}")
+            ok = ok and not required
+    if paramiko is None:
+        ok = False
+        print(f"MISSING paramiko at startup: {PARAMIKO_ERROR}")
+    print("SELF-CHECK", "OK" if ok else "FAILED")
+    if report:
+        with open(report, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(lines) + "\n")
+    return 0 if ok else 1
+
+
 def main(argv=None):
     _quiet_gtk_modules()
     a = list(sys.argv[1:] if argv is None else argv)
+    if "--self-check" in a:
+        rest = a[a.index("--self-check") + 1:]
+        return self_check(rest[0] if rest and not rest[0].startswith("-") else None)
     if "--lap-analysis" in a:                       # second process started by the Lap Analysis tab
         rest = a[a.index("--lap-analysis") + 1:]
         return run_lap_analysis(rest[0] if rest and not rest[0].startswith("-") else None)

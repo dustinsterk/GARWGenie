@@ -427,6 +427,9 @@ class MainWindow(QtWidgets.QMainWindow):
         # the 3D ground plane is textured from the map's tile fetch, so imagery
         # is downloaded once and shown in both views
         self.map.tileReady.connect(self.view3d.add_tile)
+        self.map.imageryFailed.connect(
+            lambda why: self.statusBar().showMessage(
+                f"Satellite imagery didn't load — {why}. The analysis works without it; it needs internet.", 20000))
         self.map.basemapCleared.connect(self.view3d.clear_tiles)
         self.map.gatePlaced.connect(self._on_gate_placed)
 

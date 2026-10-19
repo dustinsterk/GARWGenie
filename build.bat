@@ -8,6 +8,7 @@ python -m venv .venv-build || goto :fail
 call .venv-build\Scripts\activate.bat
 python -m pip install --upgrade pip >nul
 pip install -r requirements.txt pyinstaller >nul || goto :fail
+python -c "import paramiko, cryptography, bcrypt, nacl" || goto :fail
 
 if exist build rmdir /s /q build
 if exist dist rmdir /s /q dist
@@ -26,6 +27,10 @@ pyinstaller --noconfirm --clean ^
   --hidden-import PIL._tkinter_finder ^
   --collect-all imageio_ffmpeg ^
   --collect-all bleak ^
+  --collect-all paramiko ^
+  --collect-all cryptography ^
+  --collect-all bcrypt ^
+  --collect-all nacl ^
   --collect-submodules lapanalysis ^
   --collect-submodules pyqtgraph ^
   --hidden-import PySide6.QtMultimedia ^
@@ -57,6 +62,10 @@ pyinstaller --noconfirm --clean ^
   garw_genie.py || goto :fail
 
 echo.
+REM Never ship a build that can't talk to the unit: the finished exe must load its SSH library.
+start /wait "" "dist\GARW Genie.exe" --self-check selfcheck.txt
+type selfcheck.txt
+findstr /C:"SELF-CHECK OK" selfcheck.txt >nul || goto :fail
 copy /Y default_repos.txt dist\ >nul
 echo Built: dist\GARW Genie.exe  (+ default_repos.txt beside it)
 echo.

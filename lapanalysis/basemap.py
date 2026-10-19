@@ -20,6 +20,8 @@ from __future__ import annotations
 import hashlib
 import math
 import os
+import ssl
+import sys
 import urllib.request
 from dataclasses import dataclass
 from typing import Callable, Iterator, List, Optional, Tuple
@@ -32,6 +34,48 @@ CACHE_DIR = os.path.join(
     os.path.expanduser("~/.garw_genie"), "cache", "tiles")
 
 USER_AGENT = "GARW-Genie-LapAnalysis/1.0 (lap analysis)"
+
+#: why the most recent tile download failed (shown to the user when no imagery arrives at all)
+LAST_ERROR: Optional[str] = None
+_SSL_CTX: Optional[ssl.SSLContext] = None
+
+
+def _ssl_context() -> ssl.SSLContext:
+    """A context that can verify the imagery server. A packaged app (and python.org Python on macOS) has no
+    CA bundle of its own, so the default context fails every HTTPS request with CERTIFICATE_VERIFY_FAILED —
+    which silently left the map without tiles. Order: SSL_CERT_FILE, certifi (bundled), OS bundles, the
+    macOS system keychain, then the default."""
+    global _SSL_CTX
+    if _SSL_CTX is not None:
+        return _SSL_CTX
+    cafile = os.environ.get("SSL_CERT_FILE")
+    if not (cafile and os.path.isfile(cafile)):
+        cafile = None
+        try:
+            import certifi
+            cafile = certifi.where()
+        except Exception:                            # noqa: BLE001
+            for cand in ("/etc/ssl/cert.pem", "/etc/ssl/certs/ca-certificates.crt",
+                         "/etc/pki/tls/certs/ca-bundle.crt"):
+                if os.path.isfile(cand):
+                    cafile = cand
+                    break
+    try:
+        ctx = ssl.create_default_context(cafile=cafile)
+    except Exception:                                # noqa: BLE001
+        ctx = ssl.create_default_context()
+    if sys.platform == "darwin" and not cafile:
+        try:
+            import subprocess
+            pem = subprocess.run(["security", "find-certificate", "-a", "-p",
+                                  "/System/Library/Keychains/SystemRootCertificates.keychain"],
+                                 capture_output=True, text=True, timeout=10).stdout
+            if "BEGIN CERTIFICATE" in pem:
+                ctx.load_verify_locations(cadata=pem)
+        except Exception:                            # noqa: BLE001
+            pass
+    _SSL_CTX = ctx
+    return ctx
 
 
 @dataclass(frozen=True)
@@ -185,16 +229,22 @@ def fetch_tile(provider: Provider, z: int, x: int, y: int,
     cached = load_cached(provider, z, x, y)
     if cached is not None:
         return cached
+    global LAST_ERROR
     req = urllib.request.Request(tile_url(provider, z, x, y),
                                  headers={"User-Agent": USER_AGENT})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout, context=_ssl_context()) as resp:
             if resp.status != 200:
+                LAST_ERROR = f"the imagery server answered HTTP {resp.status}"
                 return None
             data = resp.read()
-    except Exception:                            # noqa: BLE001
+    except Exception as e:                       # noqa: BLE001
+        reason = getattr(e, "reason", e)
+        LAST_ERROR = ("this computer can't verify the imagery server's certificate"
+                      if "CERTIFICATE_VERIFY_FAILED" in str(reason) else f"{reason}")
         return None
     if not data:
+        LAST_ERROR = "the imagery server sent an empty tile"
         return None
     store_cached(provider, z, x, y, data)
     return data
