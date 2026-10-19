@@ -92,7 +92,7 @@ except Exception as _e:  # pragma: no cover — not just ImportError: a broken d
     PARAMIKO_ERROR = f"{type(_e).__name__}: {_e}"
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.18.2"
+APP_VERSION = "5.18.3"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -4322,6 +4322,8 @@ def run_gui(initial_zip: Optional[str] = None):
                 rel = latest_app_release(cfg.get("github_token", ""))
                 if rel is None:
                     FILE_LOG.info("update check: no published release in %s", APP_REPO)
+                    if auto:
+                        log(f"Update check: no published release found on GitHub ({APP_REPO}).")
                     if not auto:
                         msg = (f"No published GARW Genie release was found on GitHub ({APP_REPO}). If that repo is "
                                "private, add a GitHub token (GitHub repos tab → GitHub token…) that can read it.")
@@ -4330,17 +4332,23 @@ def run_gui(initial_zip: Optional[str] = None):
                     return
                 if not is_newer_version(rel["tag"]):
                     FILE_LOG.info("update check: latest %s, running %s", rel["tag"], APP_VERSION)
+                    if auto:
+                        log(f"Update check: v{APP_VERSION} is the latest version.")
                     if not auto:
                         log(f"GARW Genie v{APP_VERSION} is the latest version.")
                         ui(lambda: messagebox.showinfo(APP_NAME, f"You're on the latest version (v{APP_VERSION}).", parent=root))
                     return
                 if auto and (cfg.get("update_skip") == rel["tag"] or time.time() < float(cfg.get("update_later_until") or 0)):
                     FILE_LOG.info("update %s available; not prompting (skipped or later)", rel["tag"])
+                    why = "you chose to skip it" if cfg.get("update_skip") == rel["tag"] else "you chose 'Later'"
+                    log(f"Update check: {rel['tag']} is available ({why}) — 'Check for updates' installs it.")
                     return
                 log(f"GARW Genie {rel['tag']} is available (this is v{APP_VERSION}).")
                 ui(show_update_dialog, rel)
             except Exception as e:
                 FILE_LOG.warning("update check failed: %s", e)
+                if auto:
+                    log(f"Update check: couldn't reach GitHub — {str(e).splitlines()[0]}")
                 if not auto:
                     log(f"WARNING: update check failed — {e}")
                     ui(lambda: messagebox.showerror(APP_NAME, f"Couldn't check for updates:\n{e}", parent=root))
@@ -4476,6 +4484,10 @@ def run_gui(initial_zip: Optional[str] = None):
         net_up = net and not mon["net"]
         mon.update(ssid=ssid, unit=unit, net=net)
         set_net(net, ssid)
+        # once per launch, as soon as there is internet (on GARW Wi-Fi that's when you're back on a normal network)
+        if (net_up or (first and net)) and not mon.get("update_checked"):
+            mon["update_checked"] = True
+            check_app_update(auto=True)
         if paramiko is None:
             set_status("● paramiko missing — run: pip install paramiko, then restart", "err")
             return
@@ -4491,9 +4503,6 @@ def run_gui(initial_zip: Optional[str] = None):
         if unit_up or (first and unit):
             log(f"GARW device detected at {HOST}" + (f" (Wi-Fi '{ssid}')" if ssid else "") + " — refreshing all tabs …")
             mon["pending_unit"] = True
-        if (net_up or (first and net)) and not mon.get("update_checked"):
-            mon["update_checked"] = True              # one automatic release check per launch
-            check_app_update(auto=True)
         if (net_up or (first and net)) and repos:
             # Automatic GitHub check only on the very first launch (no repo has ever been checked).
             # After that, the 'Refresh repos' button is the only thing that talks to GitHub.
@@ -7978,6 +7987,7 @@ def run_gui(initial_zip: Optional[str] = None):
                                                  "If you can't see it, close that one and open a fresh window?", parent=root):
                 return
             try:
+                la_proc["closing"] = la_proc["p"]          # our kill — not a crash to report
                 la_proc["p"].kill()
                 la_proc["p"].wait(timeout=5)
             except Exception:
@@ -7993,6 +8003,8 @@ def run_gui(initial_zip: Optional[str] = None):
         if safe_gl:
             env["QT_OPENGL"] = "software"            # Qt's bundled software renderer (Windows) — no GPU driver needed
             env["LAPANALYSIS_SAFE_GL"] = "1"
+            if platform.system() == "Linux":
+                env["LIBGL_ALWAYS_SOFTWARE"] = "1"   # Mesa's CPU renderer instead of the GPU driver
         try:
             LA_LOG.parent.mkdir(parents=True, exist_ok=True)
             out = open(LA_LOG, "w", encoding="utf-8", errors="replace")
@@ -8036,6 +8048,7 @@ def run_gui(initial_zip: Optional[str] = None):
             if ready:
                 ui(la_status.configure, {"text": "Full analysis window open."})
                 log("Lap Analysis: full analysis window is open.")
+                watch_running()
                 return
             rc = p.poll()
             if rc is None:          # still starting after 3 minutes — leave it, just stop waiting
@@ -8053,7 +8066,61 @@ def run_gui(initial_zip: Optional[str] = None):
                 messagebox.showerror(APP_NAME, "The full analysis window couldn't start, even in software graphics mode.\n\n"
                                                f"Last output (also in {LA_LOG}):\n\n{tail[-1500:] or '(nothing)'}", parent=root)
             ui(fail)
+        def watch_running():
+            """After it opened: if the window later dies on its own (a crash rather than being closed), say so
+            and keep the evidence — otherwise it just vanishes with nothing in the main log."""
+            while p.poll() is None:
+                time.sleep(1.0)
+            rc = p.returncode
+            if rc == 0 or la_proc.get("closing") is p or rc in (-2, -15, -1):   # closed, or SIGINT/SIGTERM/SIGHUP
+                log("Lap Analysis: full analysis window closed.")
+                return
+            why = la_exit_reason(rc)
+            try:
+                txt = LA_LOG.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                txt = ""
+            lines = [ln for ln in txt.splitlines() if ln.strip() and "LAPANALYSIS_READY" not in ln]
+            tail = "\n".join(lines[-25:])
+            # keep a copy: the next launch starts lap_analysis.log afresh
+            saved = LA_LOG.with_name("lap_analysis_crash.log")
+            try:
+                saved.write_text(txt, encoding="utf-8")
+            except OSError:
+                saved = LA_LOG
+            log(f"Lap Analysis: the full analysis window closed unexpectedly ({why}). "
+                f"Full details in {saved}. Last output:\n{tail or '(nothing)'}")
+            if la_proc["p"] is not p:
+                return                          # a newer window is already open
+
+            def ask():
+                la_status.configure(text=f"The full analysis window closed unexpectedly ({why}).")
+                extra = ""
+                if not safe_gl:
+                    extra = ("\n\nReopen it with software graphics? That avoids the graphics driver, which is the "
+                             "usual cause of this, at some cost in smoothness.")
+                msg = (f"The full analysis window closed unexpectedly ({why}).\n\n"
+                       f"Details were saved to {saved} (Logs… button) — please include that file "
+                       f"when reporting this.{extra}")
+                if safe_gl:
+                    messagebox.showerror(APP_NAME, msg, parent=root)
+                elif messagebox.askyesno(APP_NAME, msg, parent=root):
+                    la_open_full(True)
+            ui(ask)
+
         threading.Thread(target=watch, daemon=True).start()
+
+    def la_exit_reason(rc) -> str:
+        if rc is not None and rc < 0:
+            import signal as _sig
+            try:
+                name = _sig.Signals(-rc).name
+            except (ValueError, AttributeError):
+                name = f"signal {-rc}"
+            hint = {"SIGKILL": "killed — often the system running out of memory",
+                    "SIGSEGV": "crashed", "SIGABRT": "aborted", "SIGBUS": "crashed"}.get(name, "stopped")
+            return f"{hint}, {name}"
+        return f"exit code {rc}"
 
     la_open_btn.configure(command=la_open)
     la_full_btn.configure(command=lambda: la_open_full(False))
@@ -8338,6 +8405,15 @@ def run_lap_analysis(path: Optional[str]) -> int:
         if os.environ.get("LAPANALYSIS_SAFE_GL"):     # must be set before the QApplication exists
             QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_UseSoftwareOpenGL)
         qapp = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
+        try:                                         # what a crash report needs to be useful
+            import PySide6
+            import pyqtgraph
+            print(f"environment: {platform.system()} {platform.release()}, Python {platform.python_version()}, "
+                  f"PySide6 {PySide6.__version__} (Qt {QtCore.qVersion()}), pyqtgraph {pyqtgraph.__version__}, "
+                  f"Qt platform {qapp.platformName()}, session {os.environ.get('XDG_SESSION_TYPE', '-')}"
+                  f"{', software GL' if os.environ.get('LAPANALYSIS_SAFE_GL') else ''}", flush=True)
+        except Exception:                            # noqa: BLE001
+            pass
         from lapanalysis.ui import app as la_app
         from lapanalysis import trackmatch
         trackmatch.register_tracks(load_course_tracks())

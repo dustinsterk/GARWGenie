@@ -190,7 +190,9 @@ class View3D(QtWidgets.QWidget):
             self.view.setMinimumHeight(80)
             self.view.setBackgroundColor(QtGui.QColor("#0e1013"))
             self.view.installEventFilter(self)
-            lay.addWidget(self.view, 1)
+            # Not put in the window yet — see showEvent. Items can be added to
+            # it meanwhile; they initialise when it first gets a GL context.
+            self._view_attached = False
         else:
             self.view = None
             msg = QtWidgets.QLabel(
@@ -260,6 +262,18 @@ class View3D(QtWidgets.QWidget):
         bar.addWidget(self.pitch_slider)
         bar.addStretch(1)
         lay.addLayout(bar)
+
+    def showEvent(self, ev) -> None:                      # noqa: N802
+        # The GL widget joins the window only when the 3D tab is first opened.
+        # A QOpenGLWidget anywhere in a window switches Qt's drawing of the
+        # *whole* window to OpenGL composition, so every repaint of the 2D map
+        # — dozens a second while zooming over aerial tiles — goes through the
+        # GPU driver too. Some Linux drivers fall over under that (the window
+        # just vanishes), and nobody who never looks at 3D should pay for it.
+        if self.view is not None and not getattr(self, "_view_attached", True):
+            self._view_attached = True
+            self.layout().insertWidget(0, self.view, 1)
+        super().showEvent(ev)
 
     def eventFilter(self, obj, event):                    # noqa: N802
         if self.view is not None and obj is self.view:

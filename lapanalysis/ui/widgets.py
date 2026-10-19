@@ -678,6 +678,13 @@ class TrackMap(ClickToggleMixin, pg.PlotWidget):
         my = max((y1 - y0) * padding, 12.0)
         vb = self.getPlotItem().vb
         vb.disableAutoRange()
+        # Keep zoom within sensible bounds: down to a few car lengths, out to
+        # a few times the circuit. Beyond that there is nothing to see, and
+        # the extremes only stress the painter (huge scale factors on the
+        # aerial tiles and on the racing line's path).
+        span = max(x1 - x0, y1 - y0, 50.0)
+        vb.setLimits(minXRange=15.0, minYRange=15.0,
+                     maxXRange=span * 8, maxYRange=span * 8)
         self._frame = (x0 - mx, x1 + mx, y0 - my, y1 + my)
         vb.setRange(xRange=(x0 - mx, x1 + mx), yRange=(y0 - my, y1 + my),
                     padding=0)
