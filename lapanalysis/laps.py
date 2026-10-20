@@ -79,6 +79,9 @@ class LapTrack:
     length: float = 0.0
     valid: bool = True
     note: str = ""
+    #: a run that started but never reached the finish (or the line again): lap_time is the time it had
+    #: run when the log ended, not a lap time
+    unfinished: bool = False
 
     @property
     def speed_kmh(self) -> np.ndarray:
@@ -126,8 +129,12 @@ class Session:
     def valid_laps(self) -> List[LapTrack]:
         return [l for l in self.laps if l.valid]
 
+    @property
+    def finished_laps(self) -> List[LapTrack]:
+        return [l for l in self.laps if not l.unfinished]
+
     def best_lap(self) -> Optional[LapTrack]:
-        pool = self.valid_laps or self.laps
+        pool = self.valid_laps or self.finished_laps or self.laps
         if self.mode == "runs" and pool:
             # runs differ in length: the quickest is the one that covers the shared distance soonest
             common = min(l.length for l in pool)
@@ -304,13 +311,23 @@ def sf_from_lap_column(vbo: VboFile, x: np.ndarray, y: np.ndarray, speed: np.nda
     n = min(len(lap), len(x))
     lt = vbo.channels.get("laptime")
     t = vbo.channels["t"]
+    pre = vbo.channels.get("pre")
     steps = [i for i in range(1, n) if np.isfinite(lap[i]) and np.isfinite(lap[i - 1])
              and lap[i] - lap[i - 1] == 1 and speed[i] > 3.0]
     if lt is not None:
         # the running lap time restarting is a crossing too — including the first one, out of the pre-lap
         steps = sorted(set(steps) | {i for i in range(1, n) if np.isfinite(lt[i]) and np.isfinite(lt[i - 1])
                                      and lt[i] < lt[i - 1] - 1.0 and speed[i] > 3.0})
-    if len(steps) < 2:
+    if pre is not None:
+        # a PRE row is the dash not timing yet: nothing it does is a crossing. The first timed row after
+        # PRE is the start, and counts.
+        steps = [i for i in steps if pre[i] < 0.5]
+    # One crossing is enough when the dash itself says so: its Lap Time restarted out of PRE (a run that
+    # never came back to the line — a point-to-point drive, or a single lap cut short). Without the PRE
+    # marker a lone step could be a launch anywhere, so two that agree are still required.
+    single_ok = (pre is not None and lt is not None and len(steps) == 1
+                 and pre[steps[0] - 1] > 0.5)
+    if len(steps) < 2 and not single_ok:
         return None
     # Where exactly was the line? Between sample i-1 and i. A logger that also records its running lap
     # time says how long before sample i the crossing happened — use it; otherwise take the midpoint.
@@ -331,6 +348,8 @@ def sf_from_lap_column(vbo: VboFile, x: np.ndarray, y: np.ndarray, speed: np.nda
     # The logger's line need not be square to the road. Exact crossings that spread across the road and
     # sit on one straight line ARE that line: fit it, so a lap that crosses at the far side is timed the
     # same way the logger timed it.
+    if len(steps) == 1:
+        return _line_through(cx, cy, hx, hy, half_width)
     if lt is not None and len(pts) >= 3:
         P = np.column_stack([px, py])
         c = P.mean(axis=0)
@@ -427,7 +446,8 @@ def build_session(vbo: VboFile,
         from_laps = sf_from_lap_column(vbo, x, y, speed, sf_half_width)
         if from_laps is not None:
             sf = from_laps
-            sf_source = "from the logger's lap changes (its own start/finish)"
+            sf_source = ("from the dash's timing (where its Lap Time restarts)" if vbo.channels.get("pre") is not None
+                         else "from the logger's lap changes (its own start/finish)")
     if sf is None:
         sf, auto_label = auto_start_finish(x, y, speed, t,
                                            half_width=sf_half_width,
@@ -437,6 +457,11 @@ def build_session(vbo: VboFile,
 
     # ---- crossings --------------------------------------------------------
     valid_steps = geo.plausible_steps(x, y, t, speed)
+    pre = _pre_mask(vbo, len(t))
+    if pre is not None:
+        # the dash wasn't timing yet: driving through the line on the way to the start isn't a lap.
+        # A step from the last PRE row into the first timed one is the start itself, so it stays.
+        valid_steps = valid_steps & ~(pre[:-1] & pre[1:])
     crossings = geo.segment_crossings(x, y, *sf, require_forward=True,
                                       valid_steps=valid_steps)
     # de-duplicate: enforce a minimum time gap between accepted crossings
@@ -473,6 +498,15 @@ def build_session(vbo: VboFile,
             laps.append(lap)
 
     mode = "laps"
+    finish = None
+    if not laps and accepted and pre is not None:
+        # The dash started timing and the car never came back to the line — a point-to-point drive, or a
+        # session that ended mid-lap. Show what was driven as one unfinished run, not as a lap.
+        run = _unfinished_run(vbo, 1, x, y, lat, lon, t, speed, accepted[-1], pre, ds, curv_smooth_m,
+                              lat0, lon0)
+        if run is not None:
+            laps, mode = [run], "p2p"
+            sf_source = (f"{sf_source}; the run never reached the finish (unfinished)")
     if not laps and vbo.channels.get("lap") is not None:
         runs = _runs_from_column(vbo, x, y, lat, lon, t, speed, ds, curv_smooth_m, lat0, lon0)
         if runs:
@@ -482,8 +516,48 @@ def build_session(vbo: VboFile,
         _flag_outliers(laps)
 
     sess = Session(vbo=vbo, lat0=lat0, lon0=lon0, laps=laps, start_finish=sf,
-                   ds=ds, x=x, y=y, t=t, speed=speed, sf_source=sf_source, mode=mode)
+                   ds=ds, x=x, y=y, t=t, speed=speed, sf_source=sf_source, mode=mode, finish=finish)
     return sess
+
+
+def _pre_mask(vbo: VboFile, n: int) -> Optional[np.ndarray]:
+    """Rows the dash logged before it started timing (Lap Tag PRE), or None when the log has none."""
+    pre = vbo.channels.get("pre")
+    if pre is None:
+        return None
+    m = np.zeros(n, dtype=bool)
+    k = min(n, len(pre))
+    m[:k] = np.asarray(pre[:k], dtype=float) > 0.5
+    return m if m.any() else None
+
+
+def _unfinished_run(vbo: VboFile, number: int, x, y, lat, lon, t, speed, start, pre,
+                    ds: float, curv_smooth_m: float, lat0: float, lon0: float) -> Optional[LapTrack]:
+    """From a start crossing to where the log stops — a run that never reached the finish.
+
+    Ends at the last timed row where the car was still moving, so parking at the destination doesn't add
+    minutes of standstill to the elapsed time. Marked unfinished and invalid: it is shown and can be
+    analysed, but never ranked against real laps."""
+    i0, f0, t0 = start
+    last = len(t) - 1
+    if pre is not None:
+        timed = np.where(~pre[i0:])[0]
+        if timed.size:
+            last = i0 + int(timed[-1])
+    moving = np.where(speed[i0:last + 1] > LAUNCH_MS * 3)[0]
+    if moving.size:
+        last = min(len(t) - 1, i0 + int(moving[-1]) + 1)
+    if last - i0 < 20:
+        return None
+    run = _extract_lap(vbo, number, x, y, lat, lon, t, speed,
+                       i0, f0, t0, last, 0.0, float(t[last]), ds, curv_smooth_m, lat0, lon0,
+                       min_length=RUN_MIN_M)
+    if run is None:
+        return None
+    run.unfinished = True
+    run.valid = False
+    run.note = "unfinished — never reached the finish"
+    return run
 
 
 def _build_p2p(vbo: VboFile, start_ll: Sequence[float], finish_ll: Sequence[float],
@@ -530,6 +604,14 @@ def _build_p2p(vbo: VboFile, start_ll: Sequence[float], finish_ll: Sequence[floa
             laps.append(lap)
         last_s = None
     _flag_outliers(laps)
+    if last_s is not None:
+        # started (in the start direction) and the log ended before the finish: an unfinished run
+        fwd = {i for i, _ in geo.segment_crossings(x, y, *sg, require_forward=True, valid_steps=valid_steps)}
+        if last_s[0] in fwd:
+            run = _unfinished_run(vbo, len(laps) + 1, x, y, lat, lon, t, speed, last_s,
+                                  _pre_mask(vbo, len(t)), ds, curv_smooth_m, lat0, lon0)
+            if run is not None:
+                laps.append(run)
     src = f"point-to-point{(' — ' + course_name) if course_name else ''}: start + finish gates"
     return Session(vbo=vbo, lat0=lat0, lon0=lon0, laps=laps, start_finish=sg, ds=ds,
                    x=x, y=y, t=t, speed=speed, sf_source=src, mode="p2p", finish=fg)
@@ -574,8 +656,12 @@ def _runs_from_column(vbo: VboFile, x, y, lat, lon, t, speed, ds, curv_smooth_m,
     n = min(len(lap), len(t))
     out: List[LapTrack] = []
     values = [v for v in np.unique(lap[:n][np.isfinite(lap[:n])])]
+    pre = _pre_mask(vbo, n)
     for val in values:
-        idx = np.where(lap[:n] == val)[0]
+        sel = lap[:n] == val
+        if pre is not None:
+            sel &= ~pre                  # not timed yet: the drive to the start is not part of a run
+        idx = np.where(sel)[0]
         # a run is a contiguous block; tolerate a few corrupted rows inside it, split on real gaps
         pieces = np.split(idx, np.where(np.diff(idx) > 5)[0] + 1)
         for piece in pieces:

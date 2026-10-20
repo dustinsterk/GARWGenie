@@ -92,7 +92,7 @@ except Exception as _e:  # pragma: no cover — not just ImportError: a broken d
     PARAMIKO_ERROR = f"{type(_e).__name__}: {_e}"
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.18.4"
+APP_VERSION = "5.18.5"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -7874,14 +7874,16 @@ def run_gui(initial_zip: Optional[str] = None):
             if getattr(session, "mode", "laps") == "runs":
                 log(f"Lap Analysis: {len(session.laps)} straight-line run(s) (taken from the log's run column).")
             elif getattr(session, "mode", "laps") == "p2p":
-                log(f"Lap Analysis: {len(session.laps)} start-to-finish run(s).")
+                done = [l for l in session.laps if not getattr(l, "unfinished", False)]
+                log(f"Lap Analysis: {len(done)} start-to-finish run(s)"
+                    + (f", {len(session.laps) - len(done)} unfinished (never reached the finish)." if len(done) < len(session.laps) else "."))
             else:
                 log(f"Lap Analysis: {len(session.laps)} lap(s), {len(session.valid_laps)} clean.")
             ui(la_fill)
         start(worker)
 
     def la_fill():
-        from lapanalysis.report import fmt_time, fmt_delta, session_summary
+        from lapanalysis.report import fmt_time, fmt_delta, session_summary, lap_time_text, delta_text
         s = la["session"]
         la_tree.delete(*la_tree.get_children())
         la_file_lbl.configure(text=os.path.basename(la["path"] or ""))
@@ -7901,8 +7903,10 @@ def run_gui(initial_zip: Optional[str] = None):
             status = ("★ fastest" if best is lap else "") if lap.valid else ("excluded" + (f" — {lap.note}" if lap.note else ""))
             if runs:
                 status = ("★ quickest  " if best is lap else "") + lap.note
-            la_tree.insert("", "end", iid=str(lap.number), values=(lap.number, fmt_time(lap.lap_time),
-                                                                     "" if best is lap else fmt_delta(d), status),
+            if getattr(lap, "unfinished", False):
+                status = f"{lap.note} ({fmt_time(lap.lap_time)} driven)"
+            la_tree.insert("", "end", iid=str(lap.number), values=(lap.number, lap_time_text(lap),
+                                                                     "" if best is lap else delta_text(lap, best, d), status),
                            tags=("best",) if best is lap else ("bad",) if not lap.valid else ())
         la_tree.tag_configure("best", foreground=P["ok"])
         la_tree.tag_configure("bad", foreground=P["muted"])

@@ -24,6 +24,19 @@ def fmt_delta(sec: float) -> str:
     return f"{sec:+.3f}"
 
 
+def lap_time_text(lap) -> str:
+    """A lap's time for display — or 'unfinished' for a run that never reached the finish, whose elapsed
+    time is not a lap time and must not read like one."""
+    return "unfinished" if getattr(lap, "unfinished", False) else fmt_time(lap.lap_time)
+
+
+def delta_text(lap, best, d: float) -> str:
+    """Delta column: blank against itself, '—' for an unfinished run (nothing to compare)."""
+    if getattr(lap, "unfinished", False) or getattr(best, "unfinished", False):
+        return "—"
+    return fmt_delta(d)
+
+
 def session_summary(session: Session) -> str:
     lines: List[str] = []
     best = session.best_lap()
@@ -39,8 +52,10 @@ def session_summary(session: Session) -> str:
     if runs:
         lines.append(f"Runs found    : {len(session.laps)} straight-line run(s)")
     elif p2p:
-        lines.append(f"Runs found    : {len(session.laps)} start-to-finish run(s) "
-                     f"({len(session.valid_laps)} clean)")
+        done = [l for l in session.laps if not l.unfinished]
+        lines.append(f"Runs found    : {len(done)} start-to-finish run(s) "
+                     f"({len(session.valid_laps)} clean)"
+                     + (f", {len(session.laps) - len(done)} unfinished" if len(done) < len(session.laps) else ""))
     else:
         lines.append(f"Laps detected : {len(session.laps)} "
                      f"({len(session.valid_laps)} clean)")
@@ -54,8 +69,10 @@ def session_summary(session: Session) -> str:
         else:
             d = lap.lap_time - best.lap_time if best else 0.0
         flag = (f"  {lap.note}" if runs else "") if lap.valid else f"  [{lap.note}]"
-        lines.append(f"{lap.number:>4}  {fmt_time(lap.lap_time):>10}  "
-                     f"{fmt_delta(d):>8}  {lap.length:>7.0f}{flag}")
+        if lap.unfinished:
+            flag = f"  [{lap.note}; {fmt_time(lap.lap_time)} driven]"
+        lines.append(f"{lap.number:>4}  {lap_time_text(lap):>10}  "
+                     f"{delta_text(lap, best, d):>8}  {lap.length:>7.0f}{flag}")
     return "\n".join(lines)
 
 
@@ -169,9 +186,12 @@ def insight_report(analysis: LapAnalysis, session: Optional[Session] = None,
 
     lines.append("=" * 70)
     if ref is not None and ref is not lap:
-        lines.append(f"LAP {lap.number}  {fmt_time(lap.lap_time)}   vs reference "
-                     f"lap {ref.number}  {fmt_time(ref.lap_time)}   "
-                     f"({fmt_delta(lap.lap_time - ref.lap_time)})")
+        lines.append(f"LAP {lap.number}  {lap_time_text(lap)}   vs reference "
+                     f"lap {ref.number}  {lap_time_text(ref)}   "
+                     f"({delta_text(lap, ref, lap.lap_time - ref.lap_time)})")
+    elif lap.unfinished:
+        lines.append(f"RUN {lap.number}  unfinished — never reached the finish "
+                     f"({fmt_time(lap.lap_time)} driven)")
     else:
         lines.append(f"LAP {lap.number}  {fmt_time(lap.lap_time)}   "
                      f"(reference lap — absolute analysis)")
@@ -234,15 +254,16 @@ def insight_report(analysis: LapAnalysis, session: Optional[Session] = None,
         lines.append(sector_block(session, analysis, units))
         tb, owner = theoretical_best(pool, analysis.corners)
         best = session.best_lap()
-        lines.append("")
-        lines.append("SESSION POTENTIAL")
-        lines.append(f"  Best actual lap    : {fmt_time(best.lap_time)} "
-                     f"(lap {best.number})")
-        lines.append(f"  Theoretical best   : {fmt_time(tb)}  "
-                     f"({fmt_delta(tb - best.lap_time)} vs best)")
-        contributors = sorted(set(owner.values()))
-        lines.append(f"  Built from laps    : "
-                     f"{', '.join(str(n) for n in contributors)}")
+        if not best.unfinished:          # no finished lap, no lap time to improve on
+            lines.append("")
+            lines.append("SESSION POTENTIAL")
+            lines.append(f"  Best actual lap    : {fmt_time(best.lap_time)} "
+                         f"(lap {best.number})")
+            lines.append(f"  Theoretical best   : {fmt_time(tb)}  "
+                         f"({fmt_delta(tb - best.lap_time)} vs best)")
+            contributors = sorted(set(owner.values()))
+            lines.append(f"  Built from laps    : "
+                         f"{', '.join(str(n) for n in contributors)}")
 
         env = GripEnvelope.from_laps(pool)
         use = limit_usage(analysis.lap, env)
@@ -378,7 +399,8 @@ def sector_block(session, analysis, units=None) -> str:
     if sec.count < 2 or not pool:
         return ""
 
-    origin = ("split lines declared in the file" if sec.source == "file"
+    origin = (("splits from the dash's Sector column" if getattr(session.vbo, "split_source", "") == "sector"
+               else "split lines declared in the file") if sec.source == "file"
               else f"{sec.count} equal sectors (the file declares no splits)")
     lines = [f"SECTORS  ({origin})"]
     hdr = f"{'Lap':>4}  " + "  ".join(f"{sec.label(i):>9}"
@@ -394,12 +416,12 @@ def sector_block(session, analysis, units=None) -> str:
             mark = "*" if i < len(owner) and owner[i] == lap.number else " "
             cells.append(f"{fmt_time(t):>8}{mark}")
         lines.append(f"{lap.number:>4}  " + "  ".join(cells)
-                     + f"  {fmt_time(lap.lap_time):>10}")
+                     + f"  {lap_time_text(lap):>10}")
     lines.append("")
     lines.append(f"{'best':>4}  "
                  + "  ".join(f"{fmt_time(t):>8} " for t in best)
                  + f"  {fmt_time(sum(best)):>10}  "
-                 + f"(from laps {', '.join(str(o) for o in owner)})")
+                 + f"(from laps {', '.join(str(o) for o in owner if o >= 0)})")
 
     embedded = comment_sectors(session)
     if embedded:

@@ -20,7 +20,7 @@ from .corners import GripEnvelope
 from .insights import (LapAnalysis, consistency_insights, limit_usage,
                        theoretical_best)
 from .laps import LapTrack, Session
-from .report import fmt_time
+from .report import fmt_time, lap_time_text
 from .units import METRIC, UnitSystem
 
 REF_COLOUR = "#1f7a8c"
@@ -275,12 +275,12 @@ def session_html(analysis: LapAnalysis, session: Session,
     doc: List[str] = [
         "<!doctype html><html lang='en'><head><meta charset='utf-8'>",
         "<meta name='viewport' content='width=device-width,initial-scale=1'>",
-        f"<title>Lap {lap.number} — {_esc(fmt_time(lap.lap_time))}</title>",
+        f"<title>Lap {lap.number} — {_esc(lap_time_text(lap))}</title>",
         f"<style>{CSS}</style></head><body>",
-        f"<h1>Lap {lap.number} &mdash; {_esc(fmt_time(lap.lap_time))}</h1>",
+        f"<h1>{'Run' if lap.unfinished else 'Lap'} {lap.number} &mdash; {_esc(lap_time_text(lap))}</h1>",
     ]
 
-    if ref is not None and ref is not lap:
+    if ref is not None and ref is not lap and not lap.unfinished and not ref.unfinished:
         delta = lap.lap_time - ref.lap_time
         cls = "loss" if delta > 0 else "gain"
         doc.append(f"<div class='sub'>versus reference lap {ref.number} "
@@ -323,7 +323,7 @@ def session_html(analysis: LapAnalysis, session: Session,
                      ("braking", f"{use['braking_pct']:.0f}%"),
                      ("at limit", f"{use['at_limit_pct']:.0f}%"),
                      ("peak g", f"{use['peak_combined_g']:.2f}"),
-                     ("theoretical best", fmt_time(tb))):
+                     ("theoretical best", "—" if best is None or best.unfinished else fmt_time(tb))):
         doc.append(f"<div class='stat'><div class='k'>{key}</div>"
                    f"<div class='v'>{_esc(val)}</div></div>")
     doc.append("</div>")
@@ -446,8 +446,11 @@ def session_html(analysis: LapAnalysis, session: Session,
     for l in session.laps:
         d = l.lap_time - best.lap_time if best else 0.0
         note = "" if l.valid else _esc(l.note)
-        doc.append(f"<tr><td>{l.number}</td><td>{_esc(fmt_time(l.lap_time))}</td>"
-                   f"<td>{'&mdash;' if l is best else f'{d:+.3f}'}</td>")
+        if l.unfinished:
+            note = _esc(f"{l.note} ({fmt_time(l.lap_time)} driven)")
+        dcell = '&mdash;' if (l is best or l.unfinished or best.unfinished) else f'{d:+.3f}'
+        doc.append(f"<tr><td>{l.number}</td><td>{_esc(lap_time_text(l))}</td>"
+                   f"<td>{dcell}</td>")
         if show_sectors:
             for i, t in enumerate(sector_times(l, sec)):
                 purple = i < len(owner) and owner[i] == l.number
@@ -456,7 +459,8 @@ def session_html(analysis: LapAnalysis, session: Session,
         doc.append(f"<td>{_esc(u.length_s(l.length))}</td><td>{note}</td></tr>")
     doc.append("</table>")
     if show_sectors:
-        origin = ("split lines declared in the file" if sec.source == "file"
+        origin = (("splits from the dash's Sector column" if getattr(session.vbo, "split_source", "") == "sector"
+                   else "split lines declared in the file") if sec.source == "file"
                   else f"{sec.count} equal sectors — the file declares no splits")
         doc.append(f"<p class='legend'>Sectors: {origin}. Purple is the "
                    f"fastest time in that sector across the session.</p>")

@@ -20,7 +20,7 @@ from ..corners import GripEnvelope
 from ..laps import Session, build_session, channel_label
 from ..parser import open_log, parse_vbo
 from ..export import session_html
-from ..report import fmt_time, insight_report
+from ..report import fmt_time, insight_report, lap_time_text
 from ..units import IMPERIAL, METRIC, UnitSystem
 from ..video import VideoSync, find_video
 from .video_panel import VideoPanel
@@ -769,8 +769,8 @@ class MainWindow(QtWidgets.QMainWindow):
             box.blockSignals(True)
             box.clear()
             for lap in session.laps:
-                mark = "" if lap.valid else "  (out)"
-                box.addItem(f"Lap {lap.number} — {fmt_time(lap.lap_time)}{mark}",
+                mark = "" if lap.valid or lap.unfinished else "  (out)"
+                box.addItem(f"{'Run' if lap.unfinished else 'Lap'} {lap.number} — {lap_time_text(lap)}{mark}",
                             lap.number)
             box.blockSignals(False)
             fit_combo(box)
@@ -784,7 +784,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _second_best(self):
         pool = [l for l in (self.session.valid_laps or self.session.laps)]
         best = self.session.best_lap()
-        others = [l for l in pool if l is not best]
+        others = [l for l in pool if l is not best and not l.unfinished]
         return min(others, key=lambda l: l.lap_time) if others else best
 
     def _populate_laps(self) -> None:
@@ -808,8 +808,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.lap_table.setRowCount(len(laps))
         for r, lap in enumerate(laps):
             d = lap.lap_time - best.lap_time
-            cells = [str(lap.number), fmt_time(lap.lap_time),
-                     "—" if lap is best else f"{d:+.3f}"]
+            cells = [str(lap.number), lap_time_text(lap),
+                     "—" if (lap is best or lap.unfinished or best.unfinished) else f"{d:+.3f}"]
             purple = set()
             if sec is not None and sec.count >= 2:
                 times = sector_times(lap, sec)
@@ -817,7 +817,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     cells.append(fmt_time(t))
                     if i < len(owner) and owner[i] == lap.number:
                         purple.add(len(cells) - 1)
-            cells.append("" if lap.valid else "out")
+            cells.append("unfinished" if lap.unfinished else "" if lap.valid else "out")
             for c, text in enumerate(cells):
                 item = QtWidgets.QTableWidgetItem(text)
                 if c > 0:
@@ -919,14 +919,23 @@ class MainWindow(QtWidgets.QMainWindow):
         tb, _ = theoretical_best(self.session.valid_laps or self.session.laps,
                                  a.corners)
         best = self.session.best_lap()
-        self.summary.setText(
-            f"<b>Lap {lap.number}</b> {fmt_time(lap.lap_time)} &nbsp; vs ref "
-            f"<b>lap {ref.number}</b> {fmt_time(ref.lap_time)} "
-            f"&nbsp;<span style='color:{CMP_COLOUR}'>"
-            f"{lap.lap_time - ref.lap_time:+.3f}s</span><br>"
-            f"<span style='color:#6b7280'>{len(a.corners)} corners · "
-            f"{self.units.length_s(lap.length)} · theoretical best {fmt_time(tb)} "
-            f"({tb - best.lap_time:+.3f} vs best)</span>")
+        if lap.unfinished or ref.unfinished or best.unfinished:
+            # a run that never reached the finish has no lap time: say so, and what it covered
+            self.summary.setText(
+                f"<b>{'Run' if lap.unfinished else 'Lap'} {lap.number}</b> {lap_time_text(lap)}"
+                + (f" &nbsp;<span style='color:#6b7280'>(never reached the finish — "
+                   f"{fmt_time(lap.lap_time)} driven)</span>" if lap.unfinished else "")
+                + f"<br><span style='color:#6b7280'>{len(a.corners)} corners · "
+                f"{self.units.length_s(lap.length)}</span>")
+        else:
+            self.summary.setText(
+                f"<b>Lap {lap.number}</b> {fmt_time(lap.lap_time)} &nbsp; vs ref "
+                f"<b>lap {ref.number}</b> {fmt_time(ref.lap_time)} "
+                f"&nbsp;<span style='color:{CMP_COLOUR}'>"
+                f"{lap.lap_time - ref.lap_time:+.3f}s</span><br>"
+                f"<span style='color:#6b7280'>{len(a.corners)} corners · "
+                f"{self.units.length_s(lap.length)} · theoretical best {fmt_time(tb)} "
+                f"({tb - best.lap_time:+.3f} vs best)</span>")
         mode = getattr(self.session, "mode", "laps")
         self.statusBar().showMessage(
             (f"{len(self.session.laps)} runs · {self.session.sf_source}" if mode != "laps" else

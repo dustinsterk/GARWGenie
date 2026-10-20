@@ -95,6 +95,8 @@ class VboFile:
     #: names for those splits where the file gives them — RaceChrono writes
     #: the real sector names, which beat "S1, S2, S3" by a distance
     split_names: List[str] = field(default_factory=list)
+    #: where `splits` came from when the file didn't declare lines: "sector" = the log's Sector column
+    split_source: str = ""
     sample_rate: float = 0.0
 
     def has(self, *names: str) -> bool:

@@ -130,6 +130,13 @@ def sector_times(lap: LapTrack, sectors: SectorSet) -> List[float]:
     measured lap time. Sectors that do not sum to the lap are simply wrong,
     however defensible the arithmetic behind them.
     """
+    if getattr(lap, "unfinished", False):
+        # No finish, so no lap time to scale to — and the sector the log ended in was never completed.
+        if not sectors.boundaries:
+            return [float("nan")]
+        edges = sectors.edges(lap.length)
+        out = [lap.window_time(a, b) for a, b in edges[:-1] if b < lap.length - 1.0]
+        return out + [float("nan")] * (len(edges) - len(out))
     if not sectors.boundaries:
         return [lap.lap_time]
     raw = [lap.window_time(min(a, lap.length), min(b, lap.length))
@@ -156,7 +163,11 @@ def best_sectors(laps: Sequence[LapTrack], sectors: SectorSet
     best, owner = [], []
     for i in range(n):
         pairs = [(times[i], num) for num, times in table.items()
-                 if i < len(times)]
+                 if i < len(times) and np.isfinite(times[i])]
+        if not pairs:
+            best.append(float("nan"))
+            owner.append(-1)
+            continue
         t, num = min(pairs)
         best.append(t)
         owner.append(num)

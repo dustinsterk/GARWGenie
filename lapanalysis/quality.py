@@ -353,6 +353,14 @@ def assess(session: Session, corners: Sequence[Corner] = (),
         q.checks.append(_timing_line_check(session))
         q.checks.append(_closure_check(session, u))
         q.checks.append(_continuity_check(session))
+    elif mode == "p2p" and session.laps and all(l.unfinished for l in session.laps):
+        # the dash started timing and the log ended before any finish
+        q.checks.append(Check("clean laps", POOR, "no finished run",
+                              "The run never reached the finish, so there is no run time to compare — "
+                              "only absolute technique notes are available."))
+        q.checks.append(Check("start/finish", GOOD, "start line from the dash's timing",
+                              "Where the dash's Lap Time restarted, out of its pre-start (PRE) rows."))
+        q.checks.append(_continuity_check(session))
     elif mode == "p2p":
         # start and finish are different places, so there is no lap closure to check
         q.checks.append(_lap_count_check(session))

@@ -62,6 +62,9 @@ CSV_ALIASES = {
     "lapnumber": "lap", "lap": "lap", "laptime": "laptime", "currentlaptime": "laptime",
     "distance": "distance", "lapdistance": "distance",
     "itow": "itow", "gpsitow": "itow", "timeofweek": "itow",
+    "sector": "sector", "currentsector": "sector", "sectornumber": "sector",
+    # text, not a number: the GARW LapTimer writes PRE on rows before the first timed start
+    "laptag": "laptag",
 }
 
 _UNIT_IN_NAME = re.compile(r"[\(\[\{]\s*([^)\]\}]+?)\s*[\)\]\}]\s*$")
@@ -115,7 +118,7 @@ def _map_name(name: str) -> Optional[str]:
     canon = canonical_name(base)
     known = {"lat", "lon", "speed_kmh", "time", "heading", "height", "sats",
              "ax_g", "ay_g", "brake", "throttle", "rpm", "steer", "gear",
-             "heartrate", "distance", "lap", "laptime", "itow"}
+             "heartrate", "distance", "lap", "laptime", "itow", "sector"}
     return canon if canon in known else None
 
 
@@ -391,7 +394,8 @@ def parse_csv(path: str, delimiter: Optional[str] = None) -> VboFile:
     vbo.channels["speed_kmh"] = vbo.channels["speed"] * 3.6
 
     for canon in ("heading", "height", "ax_g", "ay_g", "brake", "throttle",
-                  "rpm", "steer", "gear", "heartrate", "sats", "distance", "lap", "laptime", "itow"):
+                  "rpm", "steer", "gear", "heartrate", "sats", "distance", "lap", "laptime", "itow",
+                  "sector"):
         if canon not in columns:
             continue
         values = _fill(np.array([_to_float(v) for v in columns[canon]]))[keep]
@@ -401,9 +405,23 @@ def parse_csv(path: str, delimiter: Optional[str] = None) -> VboFile:
                 values = values * factor
         vbo.channels[canon] = values
 
+    if "laptag" in columns:
+        # 1 where the dash had not started timing yet (PRE): those rows are the drive to the line
+        tags = np.array([v.strip().strip("\x1e").upper() for v in columns["laptag"]], dtype=object)
+        pre = (tags == "PRE").astype(float)[keep]
+        if pre.any():
+            vbo.channels["pre"] = pre
+            notes.append(f"{int(pre.sum())} pre-start row(s) (Lap Tag PRE) not timed")
+
     dtv = np.diff(vbo.channels["t"])
     dtv = dtv[(dtv > 1e-6) & (dtv < 30.0)]
     vbo.sample_rate = float(1.0 / np.median(dtv)) if dtv.size else 1.0
+
+    if not vbo.splits and "sector" in vbo.channels:
+        vbo.splits = split_lines_from_sector_column(vbo)
+        if vbo.splits:
+            vbo.split_source = "sector"
+            notes.append(f"{len(vbo.splits)} split line(s) from the log's Sector column")
 
     vbo.comments = notes + [f"Columns: {', '.join(vbo.raw_columns)}"]
     return vbo
@@ -429,3 +447,54 @@ def _speed_from_positions(t: np.ndarray, lat: np.ndarray,
     dtv = np.gradient(t)
     dtv[dtv <= 0] = np.nan
     return _fill(np.hypot(dx, dy) / dtv)
+
+
+def split_lines_from_sector_column(vbo: VboFile, half_width_m: float = 20.0,
+                                   max_spread_m: float = 30.0
+                                   ) -> List[Tuple[float, float, float, float]]:
+    """Split gates from where the logger's Sector counter steps up (the GARW LapTimer writes it).
+
+    The counter going from k to k+1 is the car crossing the dash's k-th split. Each boundary's position is
+    the median over every lap that crossed it — a boundary whose crossings scatter is left out rather than
+    guessed — and the gate is laid square to the direction of travel there. Pre-start rows and the step
+    back to sector 1 at the start/finish don't count."""
+    from . import geometry as geo
+    sec = np.asarray(vbo.channels.get("sector"), dtype=float)
+    lat, lon = vbo.channels["lat_deg"], vbo.channels["lon_deg"]
+    n = min(len(sec), len(lat))
+    if n < 3:
+        return []
+    pre = vbo.channels.get("pre")
+    speed = vbo.channels.get("speed")
+    x, y, lat0, lon0 = geo.project_local(lat[:n], lon[:n])
+    found: Dict[int, List[int]] = {}
+    for i in range(1, n):
+        a, b = sec[i - 1], sec[i]
+        if not (np.isfinite(a) and np.isfinite(b)) or a < 1 or b != a + 1:
+            continue
+        if pre is not None and (pre[i] > 0.5 or pre[i - 1] > 0.5):
+            continue
+        if speed is not None and speed[i] < 1.0:
+            continue
+        found.setdefault(int(a), []).append(i)
+    gates = []
+    for k in sorted(found):
+        idx = found[k]
+        px = np.array([(x[i - 1] + x[i]) / 2.0 for i in idx])
+        py = np.array([(y[i - 1] + y[i]) / 2.0 for i in idx])
+        cx, cy = float(np.median(px)), float(np.median(py))
+        near = np.hypot(px - cx, py - cy) <= max_spread_m
+        if near.sum() * 2 <= len(idx):
+            continue                        # no consistent place: better no split than a wrong one
+        use = [i for i, ok in zip(idx, near) if ok]
+        cx, cy = float(np.mean(px[near])), float(np.mean(py[near]))
+        hx = float(np.mean([x[min(i + 2, n - 1)] - x[max(i - 3, 0)] for i in use]))
+        hy = float(np.mean([y[min(i + 2, n - 1)] - y[max(i - 3, 0)] for i in use]))
+        h = math.hypot(hx, hy)
+        if h < 1e-6:
+            continue
+        ux, uy = -hy / h, hx / h            # across the road
+        la1, lo1 = geo.unproject_local(cx - ux * half_width_m, cy - uy * half_width_m, lat0, lon0)
+        la2, lo2 = geo.unproject_local(cx + ux * half_width_m, cy + uy * half_width_m, lat0, lon0)
+        gates.append((float(la1), float(lo1), float(la2), float(lo2)))
+    return gates
