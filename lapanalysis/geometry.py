@@ -9,7 +9,7 @@ scipy.signal.savgol_filter with mode='nearest'/'wrap'.
 from __future__ import annotations
 
 import math
-from typing import Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 
@@ -133,17 +133,40 @@ def unproject_local(x: np.ndarray, y: np.ndarray, lat0: float, lon0: float):
 # --------------------------------------------------------------------------
 
 
-def distance_from_speed(t: np.ndarray, speed: np.ndarray) -> np.ndarray:
+def gap_threshold(t: np.ndarray) -> float:
+    """Rows further apart than this are a hole in the recording, not the next sample.
+
+    Just under a second for a fast logger (the GARW LapTimer leaves no rows while the unit is off or its screen
+    is away, and after a power cycle on a circuit its clock moves on by only 1 s); three sample periods for
+    a slow one, so a 1 Hz watch log isn't all gaps."""
+    t = np.asarray(t, dtype=float)
+    d = np.diff(t)
+    d = d[(d > 1e-6) & (d < 30.0)]
+    period = float(np.median(d)) if d.size else 1.0
+    # just under a second: the clock's 1 s step after a power cycle must count, a few dropped rows needn't
+    return max(0.9, 3.0 * period)
+
+
+def gap_steps(t: np.ndarray, threshold: Optional[float] = None) -> np.ndarray:
+    """Mask over steps (len(t) - 1): True where consecutive rows are a recording gap apart."""
+    t = np.asarray(t, dtype=float)
+    thr = gap_threshold(t) if threshold is None else threshold
+    return np.diff(t) > thr
+
+
+def distance_from_speed(t: np.ndarray, speed: np.ndarray,
+                        gap: Optional[float] = None) -> np.ndarray:
     """Cumulative distance by trapezoidal integration of GPS speed.
 
     Preferred over integrating position: VBOX ground speed is Doppler-derived
     and far less noisy than differentiated position, so distance stays smooth
-    and laps line up properly.
+    and laps line up properly. Steps longer than `gap` (a hole in the
+    recording) add nothing: what the car did while nothing was logged is unknown.
     """
     t = np.asarray(t, dtype=float)
     v = np.clip(np.asarray(speed, dtype=float), 0.0, None)
     dt = np.diff(t)
-    dt = np.where((dt > 0) & (dt < 5.0), dt, 0.0)
+    dt = np.where((dt > 0) & (dt < (5.0 if gap is None else gap)), dt, 0.0)
     ds = 0.5 * (v[:-1] + v[1:]) * dt
     return np.concatenate([[0.0], np.cumsum(ds)])
 

@@ -97,6 +97,9 @@ class VboFile:
     split_names: List[str] = field(default_factory=list)
     #: where `splits` came from when the file didn't declare lines: "sector" = the log's Sector column
     split_source: str = ""
+    #: GARW LapTimer session summary, {dash lap number: row dict} (csvlog.read_summary), and its path
+    lap_summary: Dict[int, dict] = field(default_factory=dict)
+    summary_path: str = ""
     sample_rate: float = 0.0
 
     def has(self, *names: str) -> bool:

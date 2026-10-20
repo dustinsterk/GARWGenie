@@ -769,7 +769,9 @@ class MainWindow(QtWidgets.QMainWindow):
             box.blockSignals(True)
             box.clear()
             for lap in session.laps:
-                mark = "" if lap.valid or lap.unfinished else "  (out)"
+                mark = ("  (resumed)" if lap.resumed else
+                        "" if lap.valid or lap.unfinished else
+                        f"  ({lap.note})" if lap.note in ("in lap", "out lap") else "  (excluded)")
                 box.addItem(f"{'Run' if lap.unfinished else 'Lap'} {lap.number} — {lap_time_text(lap)}{mark}",
                             lap.number)
             box.blockSignals(False)
@@ -782,9 +784,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._refresh()
 
     def _second_best(self):
-        pool = [l for l in (self.session.valid_laps or self.session.laps)]
+        pool = [l for l in (self.session.stats_laps)]
         best = self.session.best_lap()
-        others = [l for l in pool if l is not best and not l.unfinished]
+        others = [l for l in pool if l is not best and l.comparable]
         return min(others, key=lambda l: l.lap_time) if others else best
 
     def _populate_laps(self) -> None:
@@ -795,7 +797,7 @@ class MainWindow(QtWidgets.QMainWindow):
         sec = None
         try:
             sec = build_sectors(self.session, best)
-            pool = self.session.valid_laps or laps
+            pool = self.session.stats_laps
             _best_times, owner = best_sectors(pool, sec)
         except Exception:                                 # noqa: BLE001
             owner = []
@@ -809,7 +811,7 @@ class MainWindow(QtWidgets.QMainWindow):
         for r, lap in enumerate(laps):
             d = lap.lap_time - best.lap_time
             cells = [str(lap.number), lap_time_text(lap),
-                     "—" if (lap is best or lap.unfinished or best.unfinished) else f"{d:+.3f}"]
+                     "—" if (lap is best or not lap.comparable or not best.comparable) else f"{d:+.3f}"]
             purple = set()
             if sec is not None and sec.count >= 2:
                 times = sector_times(lap, sec)
@@ -817,7 +819,10 @@ class MainWindow(QtWidgets.QMainWindow):
                     cells.append(fmt_time(t))
                     if i < len(owner) and owner[i] == lap.number:
                         purple.add(len(cells) - 1)
-            cells.append("unfinished" if lap.unfinished else "" if lap.valid else "out")
+            cells.append("unfinished" if lap.unfinished else "Resumed" if lap.resumed
+                         else "" if lap.valid
+                         else lap.note if lap.note in ("in lap", "out lap")     # the dash's IN / OUT
+                         else "excluded")
             for c, text in enumerate(cells):
                 item = QtWidgets.QTableWidgetItem(text)
                 if c > 0:
@@ -916,10 +921,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self._fill_usage()
         self._fill_quality()
         self._fill_keys()
-        tb, _ = theoretical_best(self.session.valid_laps or self.session.laps,
+        tb, _ = theoretical_best(self.session.stats_laps,
                                  a.corners)
         best = self.session.best_lap()
-        if lap.unfinished or ref.unfinished or best.unfinished:
+        if lap.resumed:
+            self.summary.setText(
+                f"<b>Lap {lap.number}</b> {fmt_time(lap.lap_time)} &nbsp;<span style='color:#d29922'>"
+                f"Resumed</span> <span style='color:#6b7280'>— carried on across a restart; the recording "
+                f"has a gap, so it isn't lined up against another lap</span><br>"
+                f"<span style='color:#6b7280'>{len(a.corners)} corners · "
+                f"{self.units.length_s(lap.length)} recorded</span>")
+        elif lap.unfinished or not ref.comparable or not best.comparable:
             # a run that never reached the finish has no lap time: say so, and what it covered
             self.summary.setText(
                 f"<b>{'Run' if lap.unfinished else 'Lap'} {lap.number}</b> {lap_time_text(lap)}"
@@ -1557,7 +1569,7 @@ class MainWindow(QtWidgets.QMainWindow):
         a = self.analysis
         if a is None:
             return
-        pool = self.session.valid_laps or self.session.laps
+        pool = self.session.stats_laps
         env = GripEnvelope.from_laps(pool)
         use = limit_usage(a.lap, env)
         self._usage_cells["turning"].setText(f"{use['turning_pct']:.0f}%")
@@ -1579,7 +1591,7 @@ class MainWindow(QtWidgets.QMainWindow):
         from ..insights import corner_summaries
         u = self.units
         d, sp = u.dist_label, u.speed_label
-        pool = self.session.valid_laps or self.session.laps
+        pool = self.session.stats_laps
         summaries = {c.corner.index: c for c in
                      corner_summaries(pool, a.corners)} if len(pool) > 1 else {}
         cols = ["Cnr", "dT s"]
@@ -1718,7 +1730,7 @@ class MainWindow(QtWidgets.QMainWindow):
             html.append(self._insight_block("WHAT CAUSED IT", a.comparative[:12]))
             html.append(self._insight_block("TECHNIQUE NOTES", a.absolute[:12]))
             cons = consistency_insights(
-                self.session.valid_laps or self.session.laps, a.corners, u=u)
+                self.session.stats_laps, a.corners, u=u)
             if cons:
                 html.append(self._insight_block("CONSISTENCY", cons[:8]))
 

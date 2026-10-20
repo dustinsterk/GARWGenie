@@ -266,7 +266,7 @@ def session_html(analysis: LapAnalysis, session: Session,
     """Render a complete session report as one standalone HTML document."""
     u = units
     lap, ref = analysis.lap, analysis.reference
-    pool = session.valid_laps or session.laps
+    pool = session.stats_laps
     best = session.best_lap()
     env = GripEnvelope.from_laps(pool)
     use = limit_usage(lap, env)
@@ -280,7 +280,7 @@ def session_html(analysis: LapAnalysis, session: Session,
         f"<h1>{'Run' if lap.unfinished else 'Lap'} {lap.number} &mdash; {_esc(lap_time_text(lap))}</h1>",
     ]
 
-    if ref is not None and ref is not lap and not lap.unfinished and not ref.unfinished:
+    if ref is not None and ref is not lap and lap.comparable and ref.comparable:
         delta = lap.lap_time - ref.lap_time
         cls = "loss" if delta > 0 else "gain"
         doc.append(f"<div class='sub'>versus reference lap {ref.number} "
@@ -323,7 +323,7 @@ def session_html(analysis: LapAnalysis, session: Session,
                      ("braking", f"{use['braking_pct']:.0f}%"),
                      ("at limit", f"{use['at_limit_pct']:.0f}%"),
                      ("peak g", f"{use['peak_combined_g']:.2f}"),
-                     ("theoretical best", "—" if best is None or best.unfinished else fmt_time(tb))):
+                     ("theoretical best", "—" if best is None or not best.comparable else fmt_time(tb))):
         doc.append(f"<div class='stat'><div class='k'>{key}</div>"
                    f"<div class='v'>{_esc(val)}</div></div>")
     doc.append("</div>")
@@ -448,7 +448,7 @@ def session_html(analysis: LapAnalysis, session: Session,
         note = "" if l.valid else _esc(l.note)
         if l.unfinished:
             note = _esc(f"{l.note} ({fmt_time(l.lap_time)} driven)")
-        dcell = '&mdash;' if (l is best or l.unfinished or best.unfinished) else f'{d:+.3f}'
+        dcell = '&mdash;' if (l is best or not l.comparable or not best.comparable) else f'{d:+.3f}'
         doc.append(f"<tr><td>{l.number}</td><td>{_esc(lap_time_text(l))}</td>"
                    f"<td>{dcell}</td>")
         if show_sectors:

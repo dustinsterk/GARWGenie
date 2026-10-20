@@ -843,7 +843,7 @@ def analyse(session: Session,
             units: UnitSystem = METRIC,
             **corner_kw) -> LapAnalysis:
     """Full analysis of one lap, optionally against a reference lap."""
-    pool = session.valid_laps or session.laps
+    pool = session.stats_laps
     if not pool:
         raise ValueError("No laps detected in this session")
 
@@ -870,7 +870,9 @@ def analyse(session: Session,
     res = LapAnalysis(lap=lap, corners=corners, metrics=metrics, reference=ref)
     absolutes = absolute_insights(lap, corners, metrics, env, units)
 
-    if ref is not None and lap is not ref:
+    # A resumed or unfinished lap has a hole in its trace (or no end): lining it up against another lap
+    # would compare different stretches of road, so it gets the absolute analysis only.
+    if ref is not None and lap is not ref and lap.comparable and ref.comparable:
         comps, s_grid, dvec = compare_laps(ref, lap, corners, units)
         res.comparisons = comps
         res.s_delta, res.delta = s_grid, dvec

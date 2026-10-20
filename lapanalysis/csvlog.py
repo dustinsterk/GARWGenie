@@ -25,6 +25,7 @@ from __future__ import annotations
 import csv
 import io
 import math
+import os
 import re
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -311,6 +312,9 @@ def parse_csv(path: str, delimiter: Optional[str] = None) -> VboFile:
     delim = delimiter or sniff_delimiter(text)
     rows = [r for r in csv.reader(io.StringIO(text), delimiter=delim)]
     rows = [r for r in rows if any(c.strip() for c in r)]
+    # '#' lines are comments — the GARW LapTimer writes '# dropped malformed row #N' markers
+    n_comments = sum(1 for r in rows if r and r[0].lstrip().startswith("#"))
+    rows = [r for r in rows if not (r and r[0].lstrip().startswith("#"))]
     if len(rows) < 3:
         raise CsvFormatError("too few rows to be a data log")
 
@@ -356,6 +360,8 @@ def parse_csv(path: str, delimiter: Optional[str] = None) -> VboFile:
                         f"header on line {head_idx + 1})"]
     if dropped:
         notes.append(f"{dropped} corrupted row{'s' if dropped != 1 else ''} skipped (binary junk in the file)")
+    if n_comments:
+        notes.append(f"{n_comments} comment line{'s' if n_comments != 1 else ''} (#) skipped")
     vbo = VboFile(path=path, source_format="csv")
     vbo.raw_columns = [h.strip() for h in header]
 
@@ -412,10 +418,23 @@ def parse_csv(path: str, delimiter: Optional[str] = None) -> VboFile:
         if pre.any():
             vbo.channels["pre"] = pre
             notes.append(f"{int(pre.sum())} pre-start row(s) (Lap Tag PRE) not timed")
+        res = (tags == "RES").astype(float)[keep]
+        if res.any():
+            vbo.channels["res"] = res               # rows of a lap the dash carried on across a restart
 
     dtv = np.diff(vbo.channels["t"])
     dtv = dtv[(dtv > 1e-6) & (dtv < 30.0)]
     vbo.sample_rate = float(1.0 / np.median(dtv)) if dtv.size else 1.0
+
+    summary = find_summary(path)
+    if summary:
+        try:
+            vbo.lap_summary = read_summary(summary)
+            vbo.summary_path = summary
+            notes.append(f"lap summary read from {os.path.basename(summary)} "
+                         f"({len(vbo.lap_summary)} lap row{'s' if len(vbo.lap_summary) != 1 else ''})")
+        except (OSError, ValueError) as exc:
+            notes.append(f"lap summary {os.path.basename(summary)} couldn't be read ({exc})")
 
     if not vbo.splits and "sector" in vbo.channels:
         vbo.splits = split_lines_from_sector_column(vbo)
@@ -467,8 +486,12 @@ def split_lines_from_sector_column(vbo: VboFile, half_width_m: float = 20.0,
     pre = vbo.channels.get("pre")
     speed = vbo.channels.get("speed")
     x, y, lat0, lon0 = geo.project_local(lat[:n], lon[:n])
+    t = np.asarray(vbo.channels["t"], dtype=float)
+    thr = geo.gap_threshold(t)
     found: Dict[int, List[int]] = {}
     for i in range(1, n):
+        if t[i] - t[i - 1] > thr:
+            continue                        # across a recording gap: the change happened somewhere unseen
         a, b = sec[i - 1], sec[i]
         if not (np.isfinite(a) and np.isfinite(b)) or a < 1 or b != a + 1:
             continue
@@ -498,3 +521,118 @@ def split_lines_from_sector_column(vbo: VboFile, half_width_m: float = 20.0,
         la2, lo2 = geo.unproject_local(cx + ux * half_width_m, cy + uy * half_width_m, lat0, lon0)
         gates.append((float(la1), float(lo1), float(la2), float(lo2)))
     return gates
+
+
+# --------------------------------------------------------------------------
+# GARW LapTimer session summary (<session>_summary.csv): one row per lap
+# --------------------------------------------------------------------------
+
+
+def find_summary(path: str) -> Optional[str]:
+    """The `…_summary.csv` written beside a GARW LapTimer session log, or None.
+
+    Tried as `<log stem>_summary.csv`, then without a `laptimer_` prefix the download may have added (in
+    either direction), then any `*_summary.csv` in the folder whose name contains the log's stem."""
+    folder, name = os.path.split(os.path.abspath(path))
+    stem, _ext = os.path.splitext(name)
+    if stem.lower().endswith("_summary"):
+        return None                                   # this IS a summary
+    cands = [stem]
+    if stem.lower().startswith("laptimer_"):
+        cands.append(stem[len("laptimer_"):])
+    else:
+        cands.append("laptimer_" + stem)
+    for c in cands:
+        for suffix in ("_summary.csv", "_summary.CSV"):
+            p = os.path.join(folder, c + suffix)
+            if os.path.isfile(p):
+                return p
+    core = cands[-1] if stem.lower().startswith("laptimer_") else stem
+    try:
+        for f in sorted(os.listdir(folder)):
+            if f.lower().endswith("_summary.csv") and core.lower() in f.lower():
+                return os.path.join(folder, f)
+    except OSError:
+        pass
+    return None
+
+
+_SECTOR_COL = re.compile(r"^(?:s|sec|sector|split)(\d+)(?:time|ms|s)?$")
+
+
+def parse_duration(text: str, unit_ms: bool = False) -> Optional[float]:
+    """'1:23.456', '1:02:03.4', '83.456' (seconds) or, with unit_ms, '83456' -> seconds; blank -> None."""
+    v = (text or "").strip().strip('"')
+    if not v or v in ("-", "--", "nan", "NaN"):
+        return None
+    try:
+        if ":" in v:
+            parts = [float(p) for p in v.split(":")]
+            sec = 0.0
+            for p in parts:
+                sec = sec * 60.0 + p
+            return sec
+        f = float(v)
+    except ValueError:
+        return None
+    return f / 1000.0 if unit_ms else f
+
+
+def read_summary(path: str) -> Dict[int, dict]:
+    """{dash lap number: {"time", "tag", "pit", "valid", "best", "sectors"}} from a lap summary.
+
+    Column names are matched loosely (lap / lap #, time / lap time / lap time (ms), tag, pit, valid, best,
+    S1… / Sector 1…). Times may be m:ss.sss, seconds or milliseconds. An empty sector field (a sector
+    missed while the unit was off) reads as None."""
+    with open(path, "r", encoding="utf-8-sig", errors="replace") as fh:
+        lines = [ln for ln in fh.read().splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+    if len(lines) < 2:
+        return {}
+    delim = sniff_delimiter("\n".join(lines[:20]))
+    rows = list(csv.reader(lines, delimiter=delim))
+    header = [h.strip() for h in rows[0]]
+
+    def key(h: str) -> str:
+        return re.sub(r"[^a-z0-9]", "", h.lower())
+    keys = [key(h) for h in header]
+    raw = [h.lower() for h in header]
+
+    def col(*names) -> Optional[int]:
+        for n in names:
+            if n in keys:
+                return keys.index(n)
+        return None
+    c_lap = col("lap", "lapnumber", "lapno", "lapnum", "number", "n")
+    # milliseconds first when the file has them (the GARW summary writes time_ms beside a formatted time)
+    c_time = col("timems", "laptimems", "laptime", "time", "laptimes", "laptimesec", "laptimeseconds")
+    if c_lap is None or c_time is None:
+        raise ValueError("no lap / time columns")
+    time_ms = "ms" in raw[c_time].replace("(", " ").replace(")", " ").split() or keys[c_time].endswith("ms")
+    c_tag, c_pit, c_valid, c_best = col("tag", "laptag"), col("pit"), col("valid"), col("best")
+    secs = []
+    for i, k in enumerate(keys):
+        m = _SECTOR_COL.match(k)
+        if m and i not in (c_lap, c_time):
+            secs.append((int(m.group(1)), i, "ms" in raw[i]))
+    secs.sort()
+
+    def flag(r, c) -> Optional[bool]:
+        if c is None or c >= len(r) or not r[c].strip():
+            return None
+        return r[c].strip().lower() in ("1", "true", "yes", "y")
+
+    out: Dict[int, dict] = {}
+    for r in rows[1:]:
+        if c_lap >= len(r):
+            continue
+        try:
+            n = int(float(r[c_lap]))
+        except ValueError:
+            continue
+        out[n] = {
+            "time": parse_duration(r[c_time] if c_time < len(r) else "", time_ms),
+            "tag": (r[c_tag].strip().upper() if c_tag is not None and c_tag < len(r) else ""),
+            "pit": flag(r, c_pit), "valid": flag(r, c_valid), "best": flag(r, c_best),
+            "sectors": [parse_duration(r[i], ms) if i < len(r) else None for _n, i, ms in secs],
+        }
+    return out

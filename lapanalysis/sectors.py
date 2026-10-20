@@ -42,6 +42,8 @@ class SectorSet:
     boundaries: List[float] = field(default_factory=list)
     source: str = "none"                # 'file' | 'auto' | 'none'
     names: List[str] = field(default_factory=list)
+    #: the boundaries are the dash's own (its Sector column), so its summary's sector times apply
+    from_dash: bool = False
 
     @property
     def count(self) -> int:
@@ -115,7 +117,8 @@ def build_sectors(session: Session, lap: LapTrack,
             names = [n for n in session.vbo.split_names if n]
             if len(names) == len(session.vbo.splits):
                 labels = [""] + names
-            return SectorSet(boundaries=declared, source="file", names=labels)
+            return SectorSet(boundaries=declared, source="file", names=labels,
+                             from_dash=getattr(session.vbo, "split_source", "") == "sector")
     return SectorSet(boundaries=auto_boundaries(lap.length, auto_count),
                      source="auto")
 
@@ -130,6 +133,19 @@ def sector_times(lap: LapTrack, sectors: SectorSet) -> List[float]:
     measured lap time. Sectors that do not sum to the lap are simply wrong,
     however defensible the arithmetic behind them.
     """
+    row = getattr(lap, "summary", None) or {}
+    given = row.get("sectors") or []
+    if sectors.from_dash and given and len(given) == sectors.count and not getattr(lap, "resumed", False):
+        # the dash timed these sectors itself, to the millisecond, from its own split lines
+        return [float(v) if v is not None else float("nan") for v in given]
+    if getattr(lap, "resumed", False):
+        # The trace has a hole, so its own sector times can't be measured. The dash's summary has them
+        # (the sector spanning the restart holds the gap; one missed while away is empty).
+        row = getattr(lap, "summary", None) or {}
+        given = row.get("sectors") or []
+        if given and len(given) == sectors.count:
+            return [float(v) if v is not None else float("nan") for v in given]
+        return [float("nan")] * max(1, sectors.count)
     if getattr(lap, "unfinished", False):
         # No finish, so no lap time to scale to — and the sector the log ended in was never completed.
         if not sectors.boundaries:

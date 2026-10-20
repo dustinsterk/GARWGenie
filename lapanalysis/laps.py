@@ -82,6 +82,21 @@ class LapTrack:
     #: a run that started but never reached the finish (or the line again): lap_time is the time it had
     #: run when the log ended, not a lap time
     unfinished: bool = False
+    #: the dash carried this lap on across a restart (summary tag RES, or a hole in the recording): its
+    #: time is real time from the original start, but the trace has a gap, so it is never ranked,
+    #: averaged or lined up against another lap
+    resumed: bool = False
+    #: distances (m) where the recording has a hole — the map line breaks there
+    gaps: List[float] = field(default_factory=list)
+    #: the lap number the dash gave it (its Lap column), when the log has one
+    dash_number: Optional[int] = None
+    #: the dash's summary row for this lap (csvlog.read_summary), when there is one
+    summary: Optional[dict] = None
+
+    @property
+    def comparable(self) -> bool:
+        """Can be ranked, averaged and lined up against other laps."""
+        return not (self.unfinished or self.resumed)
 
     @property
     def speed_kmh(self) -> np.ndarray:
@@ -133,8 +148,15 @@ class Session:
     def finished_laps(self) -> List[LapTrack]:
         return [l for l in self.laps if not l.unfinished]
 
+    @property
+    def stats_laps(self) -> List[LapTrack]:
+        """Laps that statistics may use: the clean ones, or failing that every lap that can be compared at
+        all — never a resumed or unfinished one while any other lap exists."""
+        return (self.valid_laps or [l for l in self.laps if l.comparable] or self.finished_laps
+                or self.laps)
+
     def best_lap(self) -> Optional[LapTrack]:
-        pool = self.valid_laps or self.finished_laps or self.laps
+        pool = self.stats_laps
         if self.mode == "runs" and pool:
             # runs differ in length: the quickest is the one that covers the shared distance soonest
             common = min(l.length for l in pool)
@@ -441,6 +463,11 @@ def build_session(vbo: VboFile,
                 sf_source = (f"auto (declared line ignored: {km:,.0f} km "
                              f"from this data)" if too_far else
                              "auto (declared line never crossed)")
+    if sf is None and _pre_mask(vbo, len(t)) is not None:
+        # A GARW LapTimer log: the dash timed every lap itself. Use its timing rather than re-deriving it.
+        dash = _dash_session(vbo, x, y, lat, lon, t, speed, ds, curv_smooth_m, lat0, lon0, sf_half_width)
+        if dash is not None:
+            return dash
     if sf is None:
         # The logger's own lap counter knows where its start/finish is: take the line from where it steps.
         from_laps = sf_from_lap_column(vbo, x, y, speed, sf_half_width)
@@ -513,11 +540,144 @@ def build_session(vbo: VboFile,
             laps, mode = runs, "runs"
             sf_source = "runs from the log's lap column (straight-line, timed from launch)"
     if mode == "laps":
+        apply_dash_summary(vbo, laps)
         _flag_outliers(laps)
 
     sess = Session(vbo=vbo, lat0=lat0, lon0=lon0, laps=laps, start_finish=sf,
                    ds=ds, x=x, y=y, t=t, speed=speed, sf_source=sf_source, mode=mode, finish=finish)
     return sess
+
+
+def _dash_session(vbo: VboFile, x, y, lat, lon, t, speed, ds: float, curv_smooth_m: float,
+                  lat0: float, lon0: float, half_width: float = 30.0) -> Optional[Session]:
+    """Laps and runs exactly as the GARW LapTimer dash timed them.
+
+    The log says, row by row, what the dash was doing: PRE rows before a start (ignored), then timed rows
+    whose Lap Time counts up from the crossing. A timed stretch ends one of three ways:
+
+    * the Lap Time restarts (the Lap number steps up): the car crossed the start/finish — a lap;
+    * the rows go back to PRE with no hole in the recording: a point-to-point finish — a run;
+    * the log ends, or a hole in the recording comes before PRE rows: never finished — unfinished.
+
+    The crossing instant is the row's time minus its Lap Time, so it is as precise as the dash's own.
+    Lap times come from the Lap Time column too: after a power cycle on a circuit the log's clock moves on
+    by only a second while the Lap Time carries the real elapsed time (a resumed lap)."""
+    lap_c, lt = vbo.channels.get("lap"), vbo.channels.get("laptime")
+    pre = _pre_mask(vbo, len(t))
+    if lap_c is None or lt is None or pre is None:
+        return None
+    n = min(len(t), len(lap_c), len(lt))
+    lap_c = np.asarray(lap_c[:n], dtype=float)
+    lt = np.asarray(lt[:n], dtype=float)
+    thr = geo.gap_threshold(t)
+
+    def crossing_time(j: int) -> Optional[float]:
+        """When the line was crossed just before row j, from its Lap Time (None if it doesn't say)."""
+        if j <= 0 or not np.isfinite(lt[j]):
+            return None
+        step = float(t[j] - t[j - 1])
+        if step <= 0 or step > thr or not (0.0 <= lt[j] <= step * 1.5):
+            return None
+        return float(t[j] - lt[j])
+
+    def at(tc: float, i: int):
+        """(row, fraction) for a time between rows i and i+1."""
+        span = float(t[i + 1] - t[i]) if i + 1 < n else 0.0
+        f = float(np.clip((tc - t[i]) / span, 0.0, 1.0)) if span > 0 else 0.0
+        return i, f
+
+    # timed stretches: consecutive non-PRE rows, split where the Lap Time restarts or the Lap steps up
+    segs = []
+    a = None
+    for i in range(n):
+        if pre[i]:
+            if a is not None:
+                segs.append((a, i - 1, "pre"))
+                a = None
+            continue
+        if a is None:
+            a = i
+            continue
+        reset = (np.isfinite(lt[i]) and np.isfinite(lt[i - 1]) and lt[i] < lt[i - 1] - 1.0) or \
+                (np.isfinite(lap_c[i]) and np.isfinite(lap_c[i - 1]) and lap_c[i] > lap_c[i - 1])
+        if reset:
+            segs.append((a, i - 1, "line"))
+            a = i
+    if a is not None:
+        segs.append((a, n - 1, "end"))
+
+    laps: List[LapTrack] = []
+    starts, finishes, unfinished = [], [], []
+    any_finish = False
+    for a, b, how in segs:
+        tc0 = crossing_time(a)
+        if tc0 is None:
+            continue                      # didn't begin at a line (the log started mid-lap): not timed by us
+        i0, f0 = at(tc0, a - 1)
+        starts.append(a)
+        nxt = b + 1
+        if how == "line" or (how == "pre" and nxt < n and t[nxt] - t[b] <= thr):
+            tc1 = crossing_time(nxt)
+            if tc1 is None:
+                tc1 = 0.5 * float(t[b] + t[nxt])
+            i1, f1 = at(tc1, b)
+            lap = _extract_lap(vbo, 0, x, y, lat, lon, t, speed, i0, f0, tc0, i1, f1, tc1, ds,
+                               curv_smooth_m, lat0, lon0,
+                               min_length=200.0 if how == "line" else RUN_MIN_M)
+            if lap is None:
+                continue
+            if np.isfinite(lt[b]):
+                lap.lap_time = float(lt[b] + (tc1 - t[b]))       # the dash's clock: real time
+            if how == "pre":
+                any_finish = True
+                finishes.append((i1, f1))
+            laps.append(lap)
+        else:
+            unfinished.append((i0, f0, tc0, a))
+
+    p2p = any_finish or (not laps and bool(unfinished))
+    if p2p:
+        for i0, f0, tc0, a in unfinished:
+            run = _unfinished_run(vbo, 0, x, y, lat, lon, t, speed, (i0, f0, tc0), pre, ds,
+                                  curv_smooth_m, lat0, lon0)
+            if run is not None:
+                if np.isfinite(lt[a]):
+                    run.dash_number = _dash_number(vbo, a, a)
+                laps.append(run)
+        laps.sort(key=lambda l: l.t_start)
+    if not laps:
+        return None
+    # Number laps as the dash did (its summary and screen say "lap 6", not "the 4th lap shown"), unless
+    # that would give two laps the same number.
+    nums = [l.dash_number for l in laps]
+    use_dash = all(n is not None for n in nums) and len(set(nums)) == len(nums)
+    for k, lap in enumerate(laps, start=1):
+        lap.number = int(lap.dash_number) if use_dash else k
+    apply_dash_summary(vbo, laps)
+    _flag_outliers(laps)
+
+    # the timing lines, where the dash crossed them
+    sf = sf_from_lap_column(vbo, x, y, speed, half_width)
+    if sf is None:
+        a = starts[0]
+        hx, hy = float(x[min(a + 2, n - 1)] - x[max(a - 3, 0)]), float(y[min(a + 2, n - 1)] - y[max(a - 3, 0)])
+        sf = _line_through(float(x[a]), float(y[a]), hx, hy, half_width)
+    finish = None
+    if finishes:
+        px = np.array([geo.interp_at(x, i, f) for i, f in finishes])
+        py = np.array([geo.interp_at(y, i, f) for i, f in finishes])
+        i = finishes[0][0]
+        hx, hy = float(x[min(i + 3, n - 1)] - x[max(i - 2, 0)]), float(y[min(i + 3, n - 1)] - y[max(i - 2, 0)])
+        finish = _line_through(float(np.median(px)), float(np.median(py)), hx, hy, half_width)
+    if p2p:
+        src = "point-to-point, timed by the dash (its Lap Time and PRE rows)"
+        if not any_finish:
+            src += "; the run never reached the finish (unfinished)"
+    else:
+        src = "from the dash's timing (where its Lap Time restarts)"
+    return Session(vbo=vbo, lat0=lat0, lon0=lon0, laps=laps, start_finish=sf, ds=ds,
+                   x=x, y=y, t=t, speed=speed, sf_source=src, mode="p2p" if p2p else "laps",
+                   finish=finish)
 
 
 def _pre_mask(vbo: VboFile, n: int) -> Optional[np.ndarray]:
@@ -603,6 +763,7 @@ def _build_p2p(vbo: VboFile, start_ll: Sequence[float], finish_ll: Sequence[floa
         if lap is not None:
             laps.append(lap)
         last_s = None
+    apply_dash_summary(vbo, laps)
     _flag_outliers(laps)
     if last_s is not None:
         # started (in the start direction) and the log ended before the finish: an unfinished run
@@ -717,10 +878,13 @@ def _extract_lap(vbo: VboFile, number: int,
     y_seg = np.concatenate([[head["y"]], y_seg[keep], [tail["y"]]])
     idx_keep = np.flatnonzero(keep) + lo
 
-    s_seg = geo.distance_from_speed(t_seg, v_seg)
+    gap = geo.gap_threshold(t)
+    s_seg = geo.distance_from_speed(t_seg, v_seg, gap=gap)
     length = float(s_seg[-1])
     if length < min_length:
         return None
+    holes = np.flatnonzero(np.diff(t_seg) > gap)
+    gap_s = sorted({float(s_seg[k]) for k in holes})
 
     n_grid = max(32, int(round(length / ds)) + 1)
     s_grid = np.linspace(0.0, length, n_grid)
@@ -784,11 +948,74 @@ def _extract_lap(vbo: VboFile, number: int,
     lap = LapTrack(number=number, ds=actual_ds, s=s_grid, t=t_grid,
                    x=xg, y=yg, lat=latg, lon=long_, speed=vg, curv=kappa,
                    ax_g=ax_g, ay_g=ay_g, extras=extras,
-                   t_start=t0, lap_time=float(t1 - t0), length=length)
+                   t_start=t0, lap_time=float(t1 - t0), length=length, gaps=gap_s)
+    lap.dash_number = _dash_number(vbo, lo, min(i1, len(t) - 1))
     return lap
 
 
+def _dash_number(vbo: VboFile, a: int, b: int) -> Optional[int]:
+    """The dash's own number for the lap spanning rows a..b (the most common Lap value, PRE rows aside)."""
+    col = vbo.channels.get("lap")
+    if col is None or b < a:
+        return None
+    vals = np.asarray(col[a:b + 1], dtype=float)
+    pre = vbo.channels.get("pre")
+    if pre is not None:
+        vals = vals[np.asarray(pre[a:b + 1]) < 0.5] if len(pre) > b else vals
+    vals = vals[np.isfinite(vals)]
+    if vals.size == 0:
+        return None
+    u, c = np.unique(vals, return_counts=True)
+    return int(u[int(np.argmax(c))])
+
+
+def _has_res_rows(vbo: VboFile, lap: LapTrack) -> bool:
+    """Whether the log tags any of this lap's rows RES (newer LapTimer firmware does)."""
+    res = vbo.channels.get("res")
+    t = vbo.channels.get("t")
+    if res is None or t is None:
+        return False
+    a = int(np.searchsorted(t, lap.t_start))
+    b = int(np.searchsorted(t, lap.t_start + float(lap.t[-1]) if len(lap.t) else lap.t_start))
+    return bool(np.any(np.asarray(res[a:b + 1]) > 0.5))
+
+
+def apply_dash_summary(vbo: VboFile, laps: Sequence[LapTrack]) -> None:
+    """Fold the dash's per-lap verdicts into the laps: RES = resumed (with the dash's real-time lap time),
+    IN / OUT = not clean. Without a summary row, a lap with a hole in its recording counts as resumed —
+    until the log itself tags RES rows, the summary is the only reliable source.
+
+    `pit` is deliberately not read as "pit stop": the dash sets it on any lap that isn't clean."""
+    summ = getattr(vbo, "lap_summary", None) or {}
+    for lap in laps:
+        if lap.unfinished:
+            continue
+        row = summ.get(lap.dash_number) if lap.dash_number is not None else None
+        lap.summary = row
+        tag = (row or {}).get("tag", "") or ""
+        if not tag and _has_res_rows(vbo, lap):
+            tag = "RES"                       # the log tags the lap's rows itself
+        if tag == "RES" or (row is None and lap.gaps):
+            lap.resumed = True
+            lap.valid = False
+            lap.note = ("Resumed — carried on across a restart" if tag == "RES"
+                        else "Resumed — gap in the recording")
+            if row and row.get("time"):
+                lap.lap_time = float(row["time"])
+        elif row is not None and row.get("time") and abs(float(row["time"]) - lap.lap_time) < 1.0:
+            # the dash's own figure, so the two never disagree by a few milliseconds
+            lap.lap_time = float(row["time"])
+        if tag in ("IN", "OUT"):
+            lap.valid = False
+            lap.note = "in lap" if tag == "IN" else "out lap"
+        elif row is not None and row.get("valid") is False and lap.valid:
+            lap.valid = False
+            lap.note = "not clean (dash)"
+
+
 def _flag_outliers(laps: List[LapTrack]) -> None:
+    every = laps
+    laps = [l for l in every if l.comparable]      # resumed / unfinished times say nothing about pace
     if not laps:
         return
     times = np.array([l.lap_time for l in laps])
@@ -811,9 +1038,10 @@ def _flag_outliers(laps: List[LapTrack]) -> None:
         # A slow hairpin on a kart track is not an incident. Only a *sustained*
         # crawl — several seconds of it — means a pit stop, spin or off.
         secs = crawl_secs(lap)
-        if secs - typical_crawl > 4.0:
+        # With one lap there is no "typical" to compare with: its stop sign is as likely as a spin.
+        if len(laps) >= 2 and secs - typical_crawl > 4.0:
             reasons.append(f"{secs:.0f}s below 10 km/h")
-        if reasons:
+        if reasons and lap.valid:
             lap.valid = False
             lap.note = "; ".join(reasons)
 

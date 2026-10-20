@@ -30,9 +30,14 @@ def lap_time_text(lap) -> str:
     return "unfinished" if getattr(lap, "unfinished", False) else fmt_time(lap.lap_time)
 
 
+def comparable(lap) -> bool:
+    """Not resumed or unfinished — safe to line up against another lap."""
+    return not (getattr(lap, "unfinished", False) or getattr(lap, "resumed", False))
+
+
 def delta_text(lap, best, d: float) -> str:
-    """Delta column: blank against itself, '—' for an unfinished run (nothing to compare)."""
-    if getattr(lap, "unfinished", False) or getattr(best, "unfinished", False):
+    """Delta column: '—' when either lap is unfinished or resumed (a gap in the trace: nothing to line up)."""
+    if not comparable(lap) or not comparable(best):
         return "—"
     return fmt_delta(d)
 
@@ -59,6 +64,10 @@ def session_summary(session: Session) -> str:
     else:
         lines.append(f"Laps detected : {len(session.laps)} "
                      f"({len(session.valid_laps)} clean)")
+    n_res = sum(1 for l in session.laps if l.resumed)
+    if n_res:
+        lines[-1] += (f", {n_res} resumed (carried on across a restart — shown with their time, left out of "
+                      f"best lap, statistics and deltas)")
     lines.append("")
     lines.append(f"{'Run' if (runs or p2p) else 'Lap':>4}  {'Time':>10}  {'Delta':>8}  {'Len m':>7}  Note"
                  + (f"   (Delta: over the shared {common:.0f} m)" if runs and session.laps else ""))
@@ -185,7 +194,10 @@ def insight_report(analysis: LapAnalysis, session: Optional[Session] = None,
     ref = analysis.reference
 
     lines.append("=" * 70)
-    if ref is not None and ref is not lap:
+    if lap.resumed:
+        lines.append(f"LAP {lap.number}  {lap_time_text(lap)}   resumed — the recording has a gap, "
+                     f"so it isn't lined up against another lap")
+    elif ref is not None and ref is not lap and not ref.resumed:
         lines.append(f"LAP {lap.number}  {lap_time_text(lap)}   vs reference "
                      f"lap {ref.number}  {lap_time_text(ref)}   "
                      f"({delta_text(lap, ref, lap.lap_time - ref.lap_time)})")
@@ -243,7 +255,7 @@ def insight_report(analysis: LapAnalysis, session: Optional[Session] = None,
         lines.append(dt)
 
     if session is not None:
-        pool = session.valid_laps or session.laps
+        pool = session.stats_laps
         lines.append("")
         block = elevation_block(analysis, units)
         if block:
@@ -254,7 +266,7 @@ def insight_report(analysis: LapAnalysis, session: Optional[Session] = None,
         lines.append(sector_block(session, analysis, units))
         tb, owner = theoretical_best(pool, analysis.corners)
         best = session.best_lap()
-        if not best.unfinished:          # no finished lap, no lap time to improve on
+        if comparable(best):             # no comparable lap, no lap time to improve on
             lines.append("")
             lines.append("SESSION POTENTIAL")
             lines.append(f"  Best actual lap    : {fmt_time(best.lap_time)} "
@@ -345,7 +357,7 @@ def corner_summary_block(session, analysis, units=None) -> str:
     from .units import METRIC
     u = units or METRIC
 
-    pool = session.valid_laps or session.laps
+    pool = session.stats_laps
     rows = corner_summaries(pool, analysis.corners)
     if not rows or len(pool) < 2:
         return ""
@@ -395,7 +407,7 @@ def sector_block(session, analysis, units=None) -> str:
 
     ref = analysis.reference or analysis.lap
     sec = build_sectors(session, ref)
-    pool = session.valid_laps or session.laps
+    pool = session.stats_laps
     if sec.count < 2 or not pool:
         return ""
 

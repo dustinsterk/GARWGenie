@@ -112,7 +112,7 @@ def circuit_key(session: Session) -> str:
     """
     lat = round(session.lat0, 2)
     lon = round(session.lon0, 2)
-    laps = session.valid_laps or session.laps
+    laps = session.stats_laps
     length = float(np.median([l.length for l in laps])) if laps else 0.0
     bucket = int(round(length / 250.0)) * 250
     return f"{lat:+07.2f}{lon:+08.2f}_{bucket}"
@@ -120,7 +120,7 @@ def circuit_key(session: Session) -> str:
 
 def circuit_label(session: Session) -> str:
     """A first-guess human label. The user can rename it later."""
-    laps = session.valid_laps or session.laps
+    laps = session.stats_laps
     length = float(np.median([l.length for l in laps])) if laps else 0.0
     return (f"{abs(session.lat0):.3f}{'N' if session.lat0 >= 0 else 'S'} "
             f"{abs(session.lon0):.3f}{'E' if session.lon0 >= 0 else 'W'} "
@@ -186,7 +186,7 @@ def _brake_gap(m: CornerMetrics) -> Optional[float]:
 def build_record(session: Session, corners: Sequence[Corner],
                  reference: LapTrack, label: Optional[str] = None
                  ) -> SessionRecord:
-    pool = session.valid_laps or session.laps
+    pool = session.stats_laps
     env = GripEnvelope.from_laps(pool)
     tb, _ = theoretical_best(pool, corners)
     metrics = analyse_lap(reference, corners)

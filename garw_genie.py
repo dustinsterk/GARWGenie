@@ -92,7 +92,7 @@ except Exception as _e:  # pragma: no cover — not just ImportError: a broken d
     PARAMIKO_ERROR = f"{type(_e).__name__}: {_e}"
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.18.5"
+APP_VERSION = "5.18.6"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -7878,7 +7878,9 @@ def run_gui(initial_zip: Optional[str] = None):
                 log(f"Lap Analysis: {len(done)} start-to-finish run(s)"
                     + (f", {len(session.laps) - len(done)} unfinished (never reached the finish)." if len(done) < len(session.laps) else "."))
             else:
-                log(f"Lap Analysis: {len(session.laps)} lap(s), {len(session.valid_laps)} clean.")
+                n_res = sum(1 for l in session.laps if getattr(l, "resumed", False))
+                log(f"Lap Analysis: {len(session.laps)} lap(s), {len(session.valid_laps)} clean"
+                    + (f", {n_res} resumed." if n_res else "."))
             ui(la_fill)
         start(worker)
 
@@ -7905,6 +7907,8 @@ def run_gui(initial_zip: Optional[str] = None):
                 status = ("★ quickest  " if best is lap else "") + lap.note
             if getattr(lap, "unfinished", False):
                 status = f"{lap.note} ({fmt_time(lap.lap_time)} driven)"
+            elif getattr(lap, "resumed", False):
+                status = lap.note                      # "Resumed — …": shown with its time, never ranked
             la_tree.insert("", "end", iid=str(lap.number), values=(lap.number, lap_time_text(lap),
                                                                      "" if best is lap else delta_text(lap, best, d), status),
                            tags=("best",) if best is lap else ("bad",) if not lap.valid else ())

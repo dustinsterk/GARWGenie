@@ -124,7 +124,7 @@ def _rate_check(session: Session, u: UnitSystem) -> tuple[Check, float]:
     what the rate supports and what it does not.
     """
     hz = session.vbo.sample_rate or 0.0
-    laps = session.valid_laps or session.laps
+    laps = session.stats_laps
     speed = max((float(np.percentile(l.speed, 90)) for l in laps), default=30.0)
     spacing = speed / hz if hz > 0 else float("inf")
 
@@ -214,7 +214,7 @@ def _timing_line_check(session: Session) -> Check:
 
 
 def _closure_check(session: Session, u: UnitSystem) -> Check:
-    laps = session.valid_laps or session.laps
+    laps = session.stats_laps
     if not laps:
         return Check("lap closure", POOR, "no laps", "")
     gaps = [float(np.hypot(l.x[0] - l.x[-1], l.y[0] - l.y[-1])) for l in laps]
@@ -291,7 +291,7 @@ def _channels_check(session: Session) -> Check:
 
 def _corner_stability_check(session: Session, corners: Sequence[Corner]) -> Check:
     """Does corner detection agree with itself across the session's laps?"""
-    laps = session.valid_laps or session.laps
+    laps = session.stats_laps
     if len(laps) < 2:
         return Check("corner detection", FAIR, f"{len(corners)} corners",
                      "Only one lap, so detection could not be cross-checked.")

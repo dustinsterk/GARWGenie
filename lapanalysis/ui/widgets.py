@@ -608,6 +608,21 @@ class TrackMap(ClickToggleMixin, pg.PlotWidget):
         (x0, _), (y0, _) = vb.viewRange()
         self._attrib.setPos(x0, y0)
 
+    @staticmethod
+    def _broken_xy(lap: LapTrack):
+        """The lap's x, y with the line broken (a NaN) wherever the recording has a hole — the unit was off
+        or its screen away, so the straight line across it is a road nobody drove."""
+        x, y = np.asarray(lap.x, dtype=float), np.asarray(lap.y, dtype=float)
+        gaps = getattr(lap, "gaps", None) or []
+        if not gaps:
+            return x, y
+        x, y = x.copy(), y.copy()
+        for g in gaps:
+            k = int(np.searchsorted(lap.s, g + 1e-6))
+            if 0 < k < len(x):
+                x[k] = y[k] = np.nan
+        return x, y
+
     def _clear_segments(self) -> None:
         for it in self._segments:
             self.removeItem(it)
@@ -636,6 +651,7 @@ class TrackMap(ClickToggleMixin, pg.PlotWidget):
                      (0.75, (240, 200, 70)), (1.0, (235, 80, 70))]
         edges = np.linspace(lo, hi, bins + 1)
         idx = np.clip(np.digitize(v, edges) - 1, 0, bins - 1)
+        bx, by = self._broken_xy(lap)
 
         for b in range(bins):
             mask = idx == b
@@ -649,8 +665,8 @@ class TrackMap(ClickToggleMixin, pg.PlotWidget):
                 if seg.size < 2:
                     continue
                 lo_i = max(seg[0] - 1, 0)
-                xs.extend(lap.x[lo_i:seg[-1] + 1].tolist() + [np.nan])
-                ys.extend(lap.y[lo_i:seg[-1] + 1].tolist() + [np.nan])
+                xs.extend(bx[lo_i:seg[-1] + 1].tolist() + [np.nan])
+                ys.extend(by[lo_i:seg[-1] + 1].tolist() + [np.nan])
             if not xs:
                 continue
             colour = _lerp_colour(stops, b / max(bins - 1, 1))
@@ -700,7 +716,8 @@ class TrackMap(ClickToggleMixin, pg.PlotWidget):
         if lap is None:
             self._cmp_line.setData([], [])
         else:
-            self._cmp_line.setData(lap.x, lap.y)
+            bx, by = self._broken_xy(lap)
+            self._cmp_line.setData(bx, by, connect="finite")
 
     def set_corner_labels(self, lap: LapTrack, corners: Sequence[Corner],
                           brake_points: Sequence[float]) -> None:
