@@ -4111,6 +4111,45 @@ def run_gui(initial_zip: Optional[str] = None):
     nb.add(tab_ctl, text="Controller")
     # tab_lap (Lap Timer) is hidden until Shift + double-click on the logo (see reveal_lap_tab)
 
+    def fit_tabs(_e=None):
+        """Narrow the tab headers' side padding when the window is too narrow for them, so the labels stay
+        readable instead of being clipped (ttk squeezes every tab's text otherwise)."""
+        try:
+            st = ttk.Style()
+            f = tkfont.Font(font=st.lookup("TNotebook.Tab", "font") or "TkDefaultFont")
+            tabs = list(nb.tabs())
+            for t in tabs:
+                fit_tabs.full.setdefault(t, nb.tab(t, "text"))
+            width = nb.winfo_width()
+            if width <= 1 or not tabs:
+                return
+
+            def pad_for(texts):
+                text_w = sum(f.measure(x) for x in texts)
+                return next((p for p in (18, 12, 8, 5, 3) if text_w + 2 * p * len(texts) + 4 <= width), None)
+            texts = [fit_tabs.full[t] for t in tabs]
+            pad = pad_for(texts)
+            if pad is None:
+                # still too wide (an 800-pixel screen with every tab showing): short names, so each stays readable
+                texts = [TAB_SHORT.get(x, x) for x in texts]
+                pad = pad_for(texts) or 3
+            for t, x in zip(tabs, texts):
+                if nb.tab(t, "text") != x:
+                    nb.tab(t, text=x)
+            if fit_tabs.pad != pad:
+                fit_tabs.pad = pad
+                for state_pad in ("padding",):
+                    st.configure("TNotebook.Tab", **{state_pad: (pad, 9)})
+                st.map("TNotebook.Tab", padding=[("selected", (pad, 9)), ("!selected", (pad, 9))])
+        except Exception:                       # cosmetic only
+            pass
+    fit_tabs.pad = 18
+    fit_tabs.full = {}
+    TAB_SHORT = {"GitHub repos": "Repos", "Device Dashes": "Dashes", "Dash Settings": "Settings",
+                 "Boot & Logo Screens": "Boot & Logo", "Firmware / System Info": "Firmware",
+                 "Lap Analysis": "Analysis"}
+    nb.bind("<Configure>", fit_tabs, add="+")
+
     bottom = ttk.Frame(outer, style="Bg.TFrame")
     bottom.pack(fill="x", side="bottom")
     prow_ = ttk.Frame(bottom, style="Bg.TFrame")
@@ -4298,6 +4337,7 @@ def run_gui(initial_zip: Optional[str] = None):
             return "break"
         nb.add(tab_lap, text="Lap Timer")
         nb.add(tab_la, text="Lap Analysis")
+        fit_tabs()
         nb.select(tab_lap)
         log("Lap Timer and Lap Analysis tabs revealed (Shift + double-click on the logo).")
         debug["clicks"] = []   # don't let the double-click also count towards the 4-click debug toggle
@@ -4865,12 +4905,14 @@ def run_gui(initial_zip: Optional[str] = None):
                     for w in body._collapse:
                         w.grid_remove()
                     body._collapsed = bw
+                    body._peek(True)
                     body.update_idletasks()
                     bw, bh = min_size()
                 elif hidden and cw >= hidden + 24:   # clear margin, so it can't flip back and forth
                     for w in body._collapse:
                         w.grid()
                     body._collapsed = 0
+                    body._peek(False)
                     body.update_idletasks()
                     bw, bh = min_size()
             except Exception:                       # never let layout maths break the tab
@@ -4910,6 +4952,68 @@ def run_gui(initial_zip: Optional[str] = None):
         page.bind("<Configure>", settle, add="+")
         body._page_canvas = cv
         body._collapse, body._collapsed = (), 0
+
+        # When the preview has stepped aside, a small "Preview" tab at the top right brings it up as a panel
+        # floating over the page, with a button to put it away again.
+        peek = {"btn": None, "panel": None}
+
+        def close_panel():
+            if peek["panel"] is not None:
+                try:
+                    peek["panel"].destroy()
+                except tk.TclError:
+                    pass
+                peek["panel"] = None
+            if peek["btn"] is not None and body._collapsed:
+                peek["btn"].place(relx=1.0, x=-(vsb.winfo_width() if vsb.winfo_ismapped() else 0) - 4, y=4,
+                                  anchor="ne")
+                peek["btn"].lift()
+
+        def open_panel():
+            close_panel()
+            src = next((w for w in body._collapse if hasattr(w, "_add_view")), None)
+            if src is None:
+                return
+            # On the window, not the page, so it may hang down over the log on a short screen; sized to what
+            # is left below the top of the page (an 800×480 dash keeps its 5:3 shape).
+            top = page.winfo_toplevel()
+            avail_h = top.winfo_height() - (page.winfo_rooty() - top.winfo_rooty()) - 12
+            avail_w = page.winfo_width() - 40
+            iw = int(max(160, min(PREVIEW_W, avail_w, (avail_h - 92) * 5 / 3)))
+            ih = int(iw * 3 / 5)
+            panel = tk.Frame(top, bg=P["panel"], highlightthickness=1, highlightbackground=P["accent"], bd=0)
+            head = ttk.Frame(panel, padding=(8, 6, 6, 0))
+            head.pack(fill="x")
+            ttk.Label(head, text="Preview", style="Muted.TLabel").pack(side="left")
+            ttk.Button(head, text="Hide preview  ▸", command=close_panel).pack(side="right")
+            inner = ttk.Frame(panel, padding=(8, 6, 8, 8))
+            inner.pack()
+            src._add_view(inner, iw, ih)
+            panel.place(in_=page, relx=1.0, x=-(vsb.winfo_width() if vsb.winfo_ismapped() else 0) - 4, y=4,
+                        anchor="ne")
+            panel.lift()
+            peek["panel"] = panel
+            if peek["btn"] is not None:
+                peek["btn"].place_forget()
+
+        def set_peek(collapsed: bool):
+            if not any(hasattr(w, "_add_view") for w in body._collapse):
+                return
+            if collapsed:
+                if peek["btn"] is None:
+                    peek["btn"] = ttk.Button(page, text="◂  Show preview", command=open_panel)
+                if peek["panel"] is None:
+                    peek["btn"].place(relx=1.0, x=-(vsb.winfo_width() if vsb.winfo_ismapped() else 0) - 4, y=4,
+                                      anchor="ne")
+                    peek["btn"].lift()
+            else:
+                if peek["panel"] is not None:
+                    peek["panel"].destroy()
+                    peek["panel"] = None
+                if peek["btn"] is not None:
+                    peek["btn"].place_forget()
+        body._peek = set_peek
+        body._peek_state = peek
         return body
 
     def finish_page(page, body, collapse=()):
@@ -4962,10 +5066,12 @@ def run_gui(initial_zip: Optional[str] = None):
     repo_tree.configure(yscrollcommand=repo_sb.set, xscrollcommand=repo_hsb.set)
 
     PREVIEW_W, PREVIEW_H = 400, 240   # 800×480 dash at 1:2
+    PREVIEW_SIZE = (PREVIEW_W, PREVIEW_H)
 
-    def make_preview(png: Optional[bytes]):
-        """A PhotoImage scaled to fit PREVIEW_W×PREVIEW_H, or None. Tk 8.6 reads PNG natively;
-        Pillow (if present) gives smoother scaling than Tk's integer subsample."""
+    def make_preview(png: Optional[bytes], box_w: int = 0, box_h: int = 0):
+        """A PhotoImage scaled to fit PREVIEW_W×PREVIEW_H (or the given box), or None. Tk 8.6 reads PNG
+        natively; Pillow (if present) gives smoother scaling than Tk's integer subsample."""
+        PREVIEW_W, PREVIEW_H = (box_w or PREVIEW_SIZE[0]), (box_h or PREVIEW_SIZE[1])
         if not png:
             return None
         try:
@@ -4988,27 +5094,53 @@ def run_gui(initial_zip: Optional[str] = None):
             return None
 
     def preview_panel(parent, blank_text: str):
-        """A framed image box with a caption. Returns (frame, set_image(png_bytes|None, caption))."""
-        box = ttk.Frame(parent, padding=6)
-        holder = tk.Frame(box, bg=P["field"], width=PREVIEW_W, height=PREVIEW_H, highlightthickness=1,
-                          highlightbackground=P["line"])
-        holder.pack()
-        holder.pack_propagate(False)   # fixed box whether it holds text or an image
-        img_lbl = tk.Label(holder, bg=P["field"], text=blank_text, fg=P["muted"], font=fonts["ui"],
-                           wraplength=PREVIEW_W - 30, justify="center")
-        img_lbl.pack(fill="both", expand=True)
-        cap = ttk.Label(box, style="Muted.TLabel", text="", anchor="center", wraplength=PREVIEW_W)
-        cap.pack(fill="x", pady=(4, 0))
-        keep = {}
+        """A framed image box with a caption. Returns (frame, set_image(png_bytes|None, caption)).
 
-        def set_image(png: Optional[bytes], caption: str, blank: Optional[str] = None):
-            photo = make_preview(png)
-            keep["img"] = photo   # hold a reference or Tk drops it
+        The same picture can also be shown in a second place — the pop-out panel used when the window is too
+        narrow for the preview beside the list (box._add_view(parent) builds one, kept in step from then on)."""
+        box = ttk.Frame(parent, padding=6)
+        views = []
+        state = {"png": None, "text": blank_text, "caption": ""}
+
+        def paint(view):
+            img_lbl, cap, size, keep = view
+            photo = make_preview(state["png"], *size) if state["png"] else None
+            keep["img"] = photo            # hold a reference or Tk drops it
             if photo:
                 img_lbl.configure(image=photo, text="")
             else:
-                img_lbl.configure(image="", text=blank or blank_text)
-            cap.configure(text=caption)
+                img_lbl.configure(image="", text=state["text"])
+            cap.configure(text=state["caption"])
+
+        def add_view(where, w: int = PREVIEW_W, h: int = PREVIEW_H):
+            holder = tk.Frame(where, bg=P["field"], width=w, height=h, highlightthickness=1,
+                              highlightbackground=P["line"])
+            holder.pack()
+            holder.pack_propagate(False)   # fixed box whether it holds text or an image
+            img_lbl = tk.Label(holder, bg=P["field"], text=blank_text, fg=P["muted"], font=fonts["ui"],
+                               wraplength=w - 30, justify="center")
+            img_lbl.pack(fill="both", expand=True)
+            cap = ttk.Label(where, style="Muted.TLabel", text="", anchor="center", wraplength=w)
+            cap.pack(fill="x", pady=(4, 0))
+            view = (img_lbl, cap, (w, h), {})
+            views.append(view)
+            img_lbl.bind("<Destroy>", lambda _e, v=view: v in views and views.remove(v), add="+")
+            paint(view)
+            return holder
+
+        add_view(box)
+        box._add_view = add_view
+
+        def set_image(png: Optional[bytes], caption: str, blank: Optional[str] = None):
+            state["png"] = png
+            state["text"] = blank or blank_text
+            state["caption"] = caption
+            for v in list(views):
+                try:
+                    paint(v)
+                except tk.TclError:
+                    pass
+        box._set_image = set_image
         return box, set_image
 
     repo_preview, set_repo_preview = preview_panel(tab_repo, "Select a repo to see its dash preview")
@@ -6531,6 +6663,21 @@ def run_gui(initial_zip: Optional[str] = None):
     tab_fw.columnconfigure(0, weight=3)
     tab_fw.columnconfigure(1, weight=2)
 
+    fw_body = tab_fw        # the scrolling body (tab_fw is pointed back at the page further down)
+
+    def fw_cols(_e=None):
+        # Tk shares a shortfall between weighted columns, so on a narrow window the firmware box would lose
+        # width (squeezing its Browse… button) although only the info table beside it can usefully shrink.
+        # Only then does the box stop taking a share; with room to spare the layout is the usual 3:2.
+        try:
+            short = fw_body.winfo_width() < fw_body.winfo_reqwidth()
+            want = 0 if short else 2
+            if int(fw_body.grid_columnconfigure(1, "weight")) != want:
+                fw_body.columnconfigure(1, weight=want)
+        except tk.TclError:
+            pass
+    fw_body.bind("<Configure>", fw_cols, add="+")
+
     def fill_sys_tree(info: List[Tuple[str, str]]):
         sys_tree.delete(*sys_tree.get_children())
         for k, v in info:
@@ -7348,10 +7495,43 @@ def run_gui(initial_zip: Optional[str] = None):
     trk_download_btn.pack(side="right", padx=(0, 6))
     trk_refresh_btn = ttk.Button(trow, text="Refresh from device")
     trk_refresh_btn.pack(side="right", padx=(0, 6))
+    # On a narrow window the device buttons drop to a second row instead of being squeezed off the end.
+    trow2 = ttk.Frame(trow)          # inside trow, so its buttons may be packed into it
+    trk_dev_btns = (trk_upload_btn, trk_download_btn, trk_refresh_btn)
+    trk_left_btns = (trk_new_btn, trk_edit_btn, trk_dup_btn, trk_del_btn, trk_gmaps_btn)
+    trow_state = {"split": False}
+
+    def trk_rows_fit(_e=None):
+        try:
+            avail = trk_box.winfo_width() - 4
+            if avail <= 1:
+                return
+            left = sum(b.winfo_reqwidth() for b in trk_left_btns) + 6 * 3 + 18
+            right = sum(b.winfo_reqwidth() for b in trk_dev_btns) + 12
+            need = left + 12 + right
+            if not trow_state["split"] and avail < need:
+                for b in trk_dev_btns:
+                    b.pack_forget()
+                for b, pad in zip(trk_dev_btns, ((0, 0), (0, 6), (0, 6))):
+                    b.pack(in_=trow2, side="right", padx=pad)
+                # first in the packing order: it takes a full-width strip along the bottom of the row
+                trow2.pack(side="bottom", fill="x", pady=(6, 0), before=trk_new_btn)
+                trow_state["split"] = True
+            elif trow_state["split"] and avail >= need + 24:
+                trow2.pack_forget()
+                for b in trk_dev_btns:
+                    b.pack_forget()
+                for b, pad in zip(trk_dev_btns, ((0, 0), (0, 6), (0, 6))):
+                    b.pack(in_=trow, side="right", padx=pad)
+                trow_state["split"] = False
+        except tk.TclError:
+            pass
+    trk_box.bind("<Configure>", trk_rows_fit, add="+")
+    # packed ahead of the file name (before=…), so on a narrow window the long path gets clipped, not the buttons
     trk_saveas_btn = ttk.Button(trow0, text="Save copy as…")
-    trk_saveas_btn.pack(side="right")
+    trk_saveas_btn.pack(side="right", before=trk_file_lbl)
     trk_open_btn = ttk.Button(trow0, text="Open file…")
-    trk_open_btn.pack(side="right", padx=(0, 6))
+    trk_open_btn.pack(side="right", padx=(0, 6), before=trk_file_lbl)
     trk_status = ttk.Label(trk_box, style="Muted.TLabel", text="")   # not shown: the hints live in the log and the file line
 
     # row ids: "u:<index>" = user track, "l:<name>" = library entry
