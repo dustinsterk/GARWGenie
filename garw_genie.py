@@ -92,7 +92,7 @@ except Exception as _e:  # pragma: no cover — not just ImportError: a broken d
     PARAMIKO_ERROR = f"{type(_e).__name__}: {_e}"
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.18.6"
+APP_VERSION = "5.18.8"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
