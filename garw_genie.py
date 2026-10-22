@@ -44,6 +44,12 @@ import urllib.request
 import zipfile
 from dataclasses import dataclass, field
 
+# laptimer.py and the lapanalysis/ folder ship beside this file (they are part of GARW Genie, not pip packages).
+# Make sure that folder is importable however the app was started — from an IDE, a launcher or shortcut that runs
+# it from another directory, or through a symlink.
+_APP_DIR = os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
+if _APP_DIR not in sys.path:
+    sys.path.insert(0, _APP_DIR)
 try:
     import laptimer as _lt
 except ImportError:  # pragma: no cover
@@ -53,7 +59,13 @@ try:                     # Lap Analysis: the analysis core needs numpy; the full
     _LA_ERROR = ""
 except Exception as _e:  # pragma: no cover
     _la = None
-    _LA_ERROR = f"{type(_e).__name__}: {_e}"
+    if isinstance(_e, ModuleNotFoundError) and (_e.name or "").split(".")[0] == "lapanalysis":
+        # the folder itself is missing — no pip install will fix that
+        _LA_ERROR = (f"the 'lapanalysis' folder isn't next to garw_genie.py (looked in {_APP_DIR}). It is part of "
+                     "GARW Genie, not a pip package: keep the whole GARW_Genie folder together — garw_genie.py, "
+                     "laptimer.py and the lapanalysis folder — rather than copying garw_genie.py on its own.")
+    else:
+        _LA_ERROR = f"{type(_e).__name__}: {_e}"
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -92,7 +104,7 @@ except Exception as _e:  # pragma: no cover — not just ImportError: a broken d
     PARAMIKO_ERROR = f"{type(_e).__name__}: {_e}"
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "5.18.8"
+APP_VERSION = "5.18.9"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -8318,7 +8330,9 @@ def run_gui(initial_zip: Optional[str] = None):
     la_ref_cb.bind("<<ComboboxSelected>>", la_analyse)
     la_units_cb.bind("<<ComboboxSelected>>", la_analyse)
     if _la is None:
-        la_set_text("Lap Analysis isn't available: " + _LA_ERROR + "\n\nInstall the requirements:  pip install -r requirements.txt")
+        la_set_text("Lap Analysis isn't available: " + _LA_ERROR
+                    + ("" if _LA_ERROR.startswith("the 'lapanalysis' folder")
+                       else "\n\nInstall the requirements:  pip install -r requirements.txt"))
     else:
         la_set_text("Open a .vbo, Garmin .fit or CSV data log to see its laps.\n\n"
                     "Pick a lap for a corner-by-corner report against the fastest clean lap (or any lap you choose), "
@@ -8685,7 +8699,7 @@ def self_check(report: Optional[str] = None) -> int:
     ok = True
     for mod, required in (("paramiko", True), ("cryptography", True), ("bcrypt", True), ("nacl", True),
                           ("certifi", True), ("PIL", True), ("numpy", False), ("PySide6", False),
-                          ("pyqtgraph", False), ("bleak", False)):
+                          ("pyqtgraph", False), ("bleak", False), ("laptimer", False), ("lapanalysis", False)):
         try:
             m = importlib.import_module(mod)
             print(f"ok      {mod} {getattr(m, '__version__', '')}")
@@ -8695,6 +8709,8 @@ def self_check(report: Optional[str] = None) -> int:
     if paramiko is None:
         ok = False
         print(f"MISSING paramiko at startup: {PARAMIKO_ERROR}")
+    if _LA_ERROR:
+        print(f"note    Lap Analysis tab: {_LA_ERROR}")
     print("SELF-CHECK", "OK" if ok else "FAILED")
     if report:
         with open(report, "w", encoding="utf-8") as fh:
