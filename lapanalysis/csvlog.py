@@ -309,12 +309,17 @@ def parse_csv(path: str, delimiter: Optional[str] = None) -> VboFile:
     if not text.strip():
         raise CsvFormatError("the file is empty")
 
+    # A line starting with '#' is a comment wherever it appears — the GARW LapTimer writes a version line
+    # near the top, '# link …' lines about once a minute and '# dropped malformed row #N' markers. They go
+    # before any CSV parsing: a quote inside a comment must not be able to swallow the rows after it, and
+    # their commas mustn't sway the delimiter guess.
+    lines = text.splitlines()
+    n_comments = sum(1 for ln in lines if ln.lstrip().startswith("#"))
+    if n_comments:
+        text = "\n".join(ln for ln in lines if not ln.lstrip().startswith("#"))
     delim = delimiter or sniff_delimiter(text)
     rows = [r for r in csv.reader(io.StringIO(text), delimiter=delim)]
     rows = [r for r in rows if any(c.strip() for c in r)]
-    # '#' lines are comments — the GARW LapTimer writes '# dropped malformed row #N' markers
-    n_comments = sum(1 for r in rows if r and r[0].lstrip().startswith("#"))
-    rows = [r for r in rows if not (r and r[0].lstrip().startswith("#"))]
     if len(rows) < 3:
         raise CsvFormatError("too few rows to be a data log")
 
