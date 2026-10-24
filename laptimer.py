@@ -20,6 +20,7 @@ import os
 import re
 import sys
 import threading
+import unicodedata
 import webbrowser
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -27,6 +28,55 @@ from typing import Callable, List, Optional, Tuple
 from urllib.parse import parse_qs, urlparse
 
 RS = "\x1e"
+
+# ---------------------------------------------------------------- text encoding of the dash's files
+# The LapTimer dash reads and writes its text files one byte per character: ISO-8859-1 (Latin-1), no BOM.
+# Not Windows-1252, which puts '–' and curly quotes in bytes that mean other characters in ISO-8859-1.
+#: letters Latin-1 lacks that don't decompose to a plain letter (ł has no combining-mark form)
+_LATIN1_FIX = {"ł": "l", "Ł": "L", "đ": "d", "Đ": "D", "ħ": "h", "Ħ": "H", "ı": "i", "ŀ": "l", "Ŀ": "L",
+               "œ": "oe", "Œ": "OE", "ŋ": "n", "Ŋ": "N", "ŧ": "t", "Ŧ": "T",
+               # punctuation a name might carry in from a web page or a word processor
+               "–": "-", "—": "-", "‐": "-", "‑": "-", "‘": "'", "’": "'", "‚": "'", "“": '"', "”": '"',
+               "„": '"', "…": "...", "•": "-", "€": "EUR", "™": "", "\u00a0": " "}
+
+
+def to_latin1(text: str) -> str:
+    """Text the dash can store and show: characters Latin-1 has (é, ó, ü, ñ, å, ß, ø …) are kept; any other
+    letter becomes its plain form (ż → z, ő → o, ł → l) rather than the '?' a lossy encode would give."""
+    out = []
+    for ch in text:
+        if ord(ch) < 256:
+            out.append(ch)
+            continue
+        if ch in _LATIN1_FIX:
+            out.append(_LATIN1_FIX[ch])
+            continue
+        base = unicodedata.normalize("NFKD", ch)
+        base = "".join(c for c in base if ord(c) < 256 and not unicodedata.combining(c))
+        out.append(base or "?")
+    return "".join(out)
+
+
+def encode_dash_text(text: str) -> bytes:
+    """Bytes for a file the dash reads: strict ISO-8859-1, after to_latin1(), no BOM."""
+    return to_latin1(text).encode("latin-1")
+
+
+def decode_dash_text(data: bytes) -> str:
+    """Text of a file the dash wrote (or reads): ISO-8859-1. A file that is valid UTF-8 with non-ASCII in it
+    — a UserTracks.txt saved by an older GARW Genie, or TrackList.txt — is read as UTF-8 instead, so its
+    names come through intact and are written back as Latin-1 on the next save. (A real Latin-1 file is
+    practically never valid UTF-8: 'Autódromo' is one 0xF3 byte, which UTF-8 rejects.)"""
+    if data.startswith(b"\xef\xbb\xbf"):
+        data = data[3:]
+    if any(b >= 0x80 for b in data):
+        try:
+            return data.decode("utf-8")
+        except UnicodeDecodeError:
+            pass
+    return data.decode("latin-1")
+
+
 HEADER_RE = re.compile(r"^#LAPTIMER_TRACKS v(\d+)\|(\d+)$")
 MAC_RE = re.compile(r"^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$")
 MAC_ANY_RE = re.compile(r"([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}")
@@ -39,7 +89,7 @@ def racebox_parse(data: bytes) -> Tuple[Optional[str], str]:
     """-> (value, status). value is 'AA:BB:CC:DD:EE:FF', 'off', or None (file empty / nothing usable).
     Mirrors the dash: 'off' on the first line disables the RaceBox; otherwise the first MAC anywhere in
     the file is used, in any case, with ':' or '-'. Status describes what was found."""
-    text = data.decode("utf-8", "replace").replace("\r", "")
+    text = decode_dash_text(data).replace("\r", "")
     first = text.split("\n", 1)[0].strip()
     if first.lower().startswith("off"):
         return "off", "RaceBox disabled ('off' on the first line)"
@@ -53,13 +103,13 @@ def racebox_render(value: str, existing: Optional[bytes]) -> bytes:
     """New file contents: the value on line 1, the rest of the existing file (its comments) kept."""
     rest = ""
     if existing:
-        parts = existing.decode("utf-8", "replace").replace("\r", "").split("\n", 1)
+        parts = decode_dash_text(existing).replace("\r", "").split("\n", 1)
         rest = parts[1] if len(parts) > 1 else ""
         if not rest.strip():
             rest = ""
     if not rest:
-        return RACEBOX_TEMPLATE.format(mac=value).encode("utf-8")
-    return (value + "\n" + rest.rstrip("\n") + "\n").encode("utf-8")
+        return encode_dash_text(RACEBOX_TEMPLATE.format(mac=value))
+    return encode_dash_text(value + "\n" + rest.rstrip("\n") + "\n")
 LAPTIMER_FILE = "/opt/IC7/library/LapTimer.enc"  # the LapTimer dash (encrypted) — an optional add-on, not on every device
 LAPTIMER_DATA_DIR = "/opt/IC7/laptimerdata"      # its data folder; made by the dash, never by this tool
 LAPTIMER_USB_DIR = "/media/laptimerdata"         # where the lap data lives while a USB stick is in the GARW
@@ -191,8 +241,9 @@ class Track:
     @classmethod
     def from_json(cls, d: dict) -> "Track":
         pt = lambda v: (float(v[0]), float(v[1])) if v else None  # noqa: E731
-        return cls(name=str(d.get("name", "")).strip(), region=str(d.get("region", "")).strip(),
-                   cc=str(d.get("cc", "")).strip().upper()[:2], country=str(d.get("country", "")).strip(),
+        txt = lambda k: to_latin1(str(d.get(k, "")).strip())  # noqa: E731 — as the dash will store it
+        return cls(name=txt("name"), region=txt("region"),
+                   cc=txt("cc").upper()[:2], country=txt("country"),
                    sf=pt(d.get("sf")), radius=int(d.get("radius") or RADIUS_DEFAULT),
                    sectors=[pt(p) for p in d.get("sectors") or [] if p], pit_entry=pt(d.get("pit_entry")),
                    pit_sf=pt(d.get("pit_sf")), pit_exit=pt(d.get("pit_exit")), centre=pt(d.get("centre")),
@@ -210,7 +261,7 @@ class TrackDB:
     @classmethod
     def parse(cls, data: bytes) -> "TrackDB":
         db = cls()
-        text = data.decode("utf-8")
+        text = decode_dash_text(data)
         recs = [r.lstrip("\n").rstrip("\n") for r in text.split(RS)]
         recs = [r for r in recs if r.strip()]
         if not recs:
@@ -226,7 +277,7 @@ class TrackDB:
     def serialize(self) -> bytes:
         out = [f"#LAPTIMER_TRACKS v{self.version}|{len(self.tracks)}{RS}\n"]
         out += [t.to_line() + RS + "\n" for t in self.tracks]
-        return "".join(out).encode("utf-8")
+        return encode_dash_text("".join(out))
 
     def find(self, name: str) -> Optional[int]:
         return next((i for i, t in enumerate(self.tracks) if t.name == name), None)
@@ -258,7 +309,7 @@ class TrackLibrary:
     @classmethod
     def parse(cls, data: bytes) -> "TrackLibrary":
         lib = cls()
-        for line in data.decode("utf-8", "replace").replace("\r", "").split("\n"):
+        for line in decode_dash_text(data).replace("\r", "").split("\n"):
             if not line.strip() or line.startswith("#"):
                 continue
             f = line.split("|")
@@ -283,7 +334,7 @@ class UserTrackDB:
     def parse(cls, data: bytes) -> "UserTrackDB":
         db = cls()
         bad = []
-        for raw in data.decode("utf-8", "replace").replace("\r", "").replace(RS, "").split("\n"):
+        for raw in decode_dash_text(data).replace("\r", "").replace(RS, "").split("\n"):
             line = raw.rstrip()
             if not line.strip():
                 continue
@@ -300,7 +351,7 @@ class UserTrackDB:
 
     def serialize(self) -> bytes:
         comments = self.comments or USER_TRACKS_TEMPLATE.rstrip("\n").split("\n")
-        return ("\n".join(comments) + "\n" + "".join(t.to_line() + "\n" for t in self.tracks)).encode("utf-8")
+        return encode_dash_text("\n".join(comments) + "\n" + "".join(t.to_line() + "\n" for t in self.tracks))
 
     def find(self, name: str) -> Optional[int]:
         return next((i for i, t in enumerate(self.tracks) if t.name == name), None)
@@ -329,7 +380,7 @@ _geocode_cache: dict = {}
 def parse_admin_tracks(data: bytes):
     """Tracks.txt for admin editing: the full library in the legacy record-separated format (TrackDB,
     byte-identical round trip) — or, if it's a plain newline file, the UserTracks format."""
-    text = data.decode("utf-8", "replace")
+    text = decode_dash_text(data)
     if RS in text or text.lstrip().startswith("#LAPTIMER_TRACKS"):
         return TrackDB.parse(data)
     return UserTrackDB.parse(data)

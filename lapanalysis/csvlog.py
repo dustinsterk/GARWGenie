@@ -302,10 +302,27 @@ def coords_to_degrees(values: np.ndarray, limit: float
 # --------------------------------------------------------------------------
 
 
+def read_log_text(path: str) -> Tuple[str, str]:
+    """(text, encoding) for a log or summary file.
+
+    UTF-8 when the whole file is valid UTF-8 (most loggers' exports — a '°' in a header must stay a '°').
+    Otherwise Latin-1, which maps every byte to one character and so never fails: the GARW LapTimer writes
+    track names one byte per character ('Autódromo' arrives as a single 0xF3 byte, invalid as UTF-8), and a
+    log with binary junk in it isn't valid UTF-8 either. Decoding that as UTF-8 would turn those bytes into
+    replacement characters and lose the name."""
+    with open(path, "rb") as fh:
+        raw = fh.read()
+    if raw.startswith(b"\xef\xbb\xbf"):
+        raw = raw[3:]
+    try:
+        return raw.decode("utf-8"), "utf-8"
+    except UnicodeDecodeError:
+        return raw.decode("latin-1"), "latin-1"
+
+
 def parse_csv(path: str, delimiter: Optional[str] = None) -> VboFile:
     """Read a CSV data log into the same structure as a .vbo."""
-    with open(path, "r", encoding="utf-8-sig", errors="replace") as fh:
-        text = fh.read()
+    text, encoding = read_log_text(path)
     if not text.strip():
         raise CsvFormatError("the file is empty")
 
@@ -353,7 +370,11 @@ def parse_csv(path: str, delimiter: Optional[str] = None) -> VboFile:
     def corrupt(r: List[str]) -> bool:
         if abs(len(r) - len(header)) > 1:
             return True
-        # \x1e (record separator) ends every row of a GARW LapTimer log; tab and CR are ordinary too
+        # \x1e (record separator) ends every row of a GARW LapTimer log; tab and CR are ordinary too.
+        # Read as Latin-1 (not valid UTF-8), a junk byte is just a character above 0x7F rather than a
+        # replacement character — and a data row of numbers and tags never legitimately holds one.
+        if encoding == "latin-1":
+            return any(ord(ch) > 0x7E or (ord(ch) < 32 and ch not in "\t\r\x1e") for c in r for ch in c)
         return any(ch == "\ufffd" or (ord(ch) < 32 and ch not in "\t\r\x1e") for c in r for ch in c)
     data = rows[data_start:]
     clean = [r for r in data if not corrupt(r)]
@@ -608,8 +629,9 @@ def read_summary(path: str) -> Dict[int, dict]:
     Column names are matched loosely (lap / lap #, time / lap time / lap time (ms), tag, pit, valid, best,
     S1… / Sector 1…). Times may be m:ss.sss, seconds or milliseconds. An empty sector field (a sector
     missed while the unit was off) reads as None."""
-    with open(path, "r", encoding="utf-8-sig", errors="replace") as fh:
-        lines = [ln for ln in fh.read().splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+    text, _enc = read_log_text(path)          # UTF-8, or Latin-1 for the dash's one-byte-per-character names
+    lines = [ln.rstrip("\r") for ln in text.split("\n")]
+    lines = [ln for ln in lines if ln.strip() and not ln.lstrip().startswith("#")]
     if len(lines) < 2:
         return {}
     delim = sniff_delimiter("\n".join(lines[:20]))

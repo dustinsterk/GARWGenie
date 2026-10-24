@@ -104,7 +104,7 @@ except Exception as _e:  # pragma: no cover — not just ImportError: a broken d
     PARAMIKO_ERROR = f"{type(_e).__name__}: {_e}"
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "6.0.1"
+APP_VERSION = "6.0.2"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -7779,6 +7779,7 @@ def run_gui(initial_zip: Optional[str] = None):
             name = ask_string(root, tk, ttk, "Duplicate library track", "Name for the copy (added to Tracks.txt):", src.name + " - Copy")
             if not name:
                 return
+            name = _lt.to_latin1(name.strip())     # as the dash will store it
             if adb.find(name) is not None:
                 messagebox.showerror(APP_NAME, f"Tracks.txt already has a track called '{name}'.", parent=root)
                 return
@@ -7796,6 +7797,7 @@ def run_gui(initial_zip: Optional[str] = None):
         name = ask_string(root, tk, ttk, "Duplicate track", "Name for the copy:", src.name + " - Copy")
         if not name:
             return
+        name = _lt.to_latin1(name.strip())         # as the dash will store it
         if lap["db"].find(name) is not None:
             messagebox.showerror(APP_NAME, f"A custom track called '{name}' already exists.", parent=root)
             return
