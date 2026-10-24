@@ -313,13 +313,32 @@ def parse_csv(path: str, delimiter: Optional[str] = None) -> VboFile:
     # near the top, '# link …' lines about once a minute and '# dropped malformed row #N' markers. They go
     # before any CSV parsing: a quote inside a comment must not be able to swallow the rows after it, and
     # their commas mustn't sway the delimiter guess.
-    lines = text.splitlines()
+    # Split on newlines only: str.splitlines() would also break at \x1e (which ends every LapTimer row) and at
+    # stray control bytes inside a corrupted row.
+    lines = [ln[:-1] if ln.endswith("\r") else ln for ln in text.split("\n")]
     n_comments = sum(1 for ln in lines if ln.lstrip().startswith("#"))
-    if n_comments:
-        text = "\n".join(ln for ln in lines if not ln.lstrip().startswith("#"))
-    delim = delimiter or sniff_delimiter(text)
-    rows = [r for r in csv.reader(io.StringIO(text), delimiter=delim)]
-    rows = [r for r in rows if any(c.strip() for c in r)]
+    lines = [ln for ln in lines if ln.strip() and not ln.lstrip().startswith("#")]
+    delim = delimiter or sniff_delimiter("\n".join(lines[:200]))
+
+    # Each line is parsed on its own. A logger that loses power or flushes the wrong buffer mid-write leaves
+    # binary junk in the file, and a stray '"' in it would otherwise open a quoted field that swallows every
+    # row after it (until the csv module gives up: "field larger than field limit"). Lines without a quote
+    # — nearly all of them — are simply split.
+    def parse_line(ln: str) -> Optional[List[str]]:
+        if '"' not in ln:
+            return ln.split(delim)
+        try:
+            return next(csv.reader([ln], delimiter=delim, strict=True), [])
+        except csv.Error:
+            return None                       # an unbalanced quote: junk, not data
+    rows = []
+    unreadable = 0
+    for ln in lines:
+        r = parse_line(ln)
+        if r is None:
+            unreadable += 1
+        elif any(c.strip() for c in r):
+            rows.append(r)
     if len(rows) < 3:
         raise CsvFormatError("too few rows to be a data log")
 
@@ -338,7 +357,7 @@ def parse_csv(path: str, delimiter: Optional[str] = None) -> VboFile:
         return any(ch == "\ufffd" or (ord(ch) < 32 and ch not in "\t\r\x1e") for c in r for ch in c)
     data = rows[data_start:]
     clean = [r for r in data if not corrupt(r)]
-    dropped = len(data) - len(clean)
+    dropped = len(data) - len(clean) + unreadable
     rows = rows[:data_start] + clean
 
     columns: Dict[str, List[str]] = {}
