@@ -120,6 +120,9 @@ def circuit_key(session: Session) -> str:
 
 def circuit_label(session: Session) -> str:
     """A first-guess human label. The user can rename it later."""
+    name = getattr(session.vbo, "track_name", "")
+    if name:
+        return name                     # the dash knew which track it was timing
     laps = session.stats_laps
     length = float(np.median([l.length for l in laps])) if laps else 0.0
     return (f"{abs(session.lat0):.3f}{'N' if session.lat0 >= 0 else 'S'} "

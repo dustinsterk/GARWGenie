@@ -762,6 +762,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _adopt(self, session: Session) -> None:
         self.session = session
+        track = getattr(session.vbo, "track_name", "")
+        self.setWindowTitle(f"Lap Analysis — {track} — GARW Genie" if track else "Lap Analysis — GARW Genie")
         self._load_video()
         best = session.best_lap()
         self._populate_laps()

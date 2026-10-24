@@ -104,7 +104,7 @@ except Exception as _e:  # pragma: no cover — not just ImportError: a broken d
     PARAMIKO_ERROR = f"{type(_e).__name__}: {_e}"
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "6.0.2"
+APP_VERSION = "6.0.5"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -8082,7 +8082,8 @@ def run_gui(initial_zip: Optional[str] = None):
         from lapanalysis.report import fmt_time, fmt_delta, session_summary, lap_time_text, delta_text
         s = la["session"]
         la_tree.delete(*la_tree.get_children())
-        la_file_lbl.configure(text=os.path.basename(la["path"] or ""))
+        _track = getattr(getattr(s, "vbo", None), "track_name", "") if s else ""
+        la_file_lbl.configure(text=os.path.basename(la["path"] or "") + (f"  ·  {_track}" if _track else ""))
         if not s or not s.laps:
             la_set_text("No laps found in this log. The start/finish line may be missing — open the full analysis window to set one.")
             return

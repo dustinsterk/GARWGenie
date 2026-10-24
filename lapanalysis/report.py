@@ -46,6 +46,8 @@ def session_summary(session: Session) -> str:
     lines: List[str] = []
     best = session.best_lap()
     lines.append(f"File          : {session.vbo.path}")
+    if getattr(session.vbo, "track_name", ""):
+        lines.append(f"Track         : {session.vbo.track_name}")
     lines.append(f"Samples       : {session.vbo.n_samples} @ "
                  f"{session.vbo.sample_rate:.0f} Hz")
     lines.append(f"Channels      : {', '.join(sorted(session.vbo.channels))}")

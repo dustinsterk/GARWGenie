@@ -100,6 +100,11 @@ class VboFile:
     #: GARW LapTimer session summary, {dash lap number: row dict} (csvlog.read_summary), and its path
     lap_summary: Dict[int, dict] = field(default_factory=dict)
     summary_path: str = ""
+    #: GARW LapTimer: the track the dash was timing, from its log header ('# LapTimer v3.6, track: …') or,
+    #: for a v3.5-or-earlier log, from the summary's header line; "" when neither says
+    track_name: str = ""
+    #: GARW LapTimer version that wrote the log ('3.6'), "" if the log doesn't say
+    dash_version: str = ""
     sample_rate: float = 0.0
 
     def has(self, *names: str) -> bool:

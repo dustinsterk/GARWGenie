@@ -334,6 +334,11 @@ def parse_csv(path: str, delimiter: Optional[str] = None) -> VboFile:
     # stray control bytes inside a corrupted row.
     lines = [ln[:-1] if ln.endswith("\r") else ln for ln in text.split("\n")]
     n_comments = sum(1 for ln in lines if ln.lstrip().startswith("#"))
+    dash_version, track_name = "", None
+    for ln in lines[:20]:                     # the LapTimer's version line sits at the top
+        if ln.lstrip().startswith("#") and "LapTimer v" in ln:
+            dash_version, track_name = parse_dash_header(ln)
+            break
     lines = [ln for ln in lines if ln.strip() and not ln.lstrip().startswith("#")]
     delim = delimiter or sniff_delimiter("\n".join(lines[:200]))
 
@@ -471,6 +476,9 @@ def parse_csv(path: str, delimiter: Optional[str] = None) -> VboFile:
     dtv = dtv[(dtv > 1e-6) & (dtv < 30.0)]
     vbo.sample_rate = float(1.0 / np.median(dtv)) if dtv.size else 1.0
 
+    vbo.dash_version = dash_version
+    if track_name:
+        vbo.track_name = track_name
     summary = find_summary(path)
     if summary:
         try:
@@ -480,6 +488,13 @@ def parse_csv(path: str, delimiter: Optional[str] = None) -> VboFile:
                          f"({len(vbo.lap_summary)} lap row{'s' if len(vbo.lap_summary) != 1 else ''})")
         except (OSError, ValueError) as exc:
             notes.append(f"lap summary {os.path.basename(summary)} couldn't be read ({exc})")
+        if not vbo.track_name:
+            vbo.track_name = summary_track_name(summary) or ""
+    if dash_version:
+        notes.append(f"written by LapTimer v{dash_version}"
+                     + (f", track: {track_name}" if track_name else
+                        " (no track in the log header — v3.5 or earlier)"
+                        + (f"; track from the summary: {vbo.track_name}" if vbo.track_name else "")))
 
     if not vbo.splits and "sector" in vbo.channels:
         vbo.splits = split_lines_from_sector_column(vbo)
@@ -682,3 +697,35 @@ def read_summary(path: str) -> Dict[int, dict]:
             "sectors": [parse_duration(r[i], ms) if i < len(r) else None for _n, i, ms in secs],
         }
     return out
+
+
+def parse_dash_header(line: str) -> Tuple[str, Optional[str]]:
+    """(version, track name or None) from the LapTimer's version line, e.g.
+    '# LapTimer v3.6, track: House Loop, g-meter levelled 8.0 deg (…)' -> ('3.6', 'House Loop').
+
+    The name runs from 'track: ' to the next ', ' or the end of the line. No 'track: ' means the log was
+    written by v3.5 or earlier, which didn't record it."""
+    text = line.strip().lstrip("#").strip().rstrip("\x1e").strip()
+    m = re.search(r"LapTimer v(\d+(?:\.\d+)*)", text)
+    version = m.group(1) if m else ""
+    i = text.find("track: ")
+    if i < 0:
+        return version, None
+    rest = text[i + len("track: "):]
+    j = rest.find(", ")
+    name = (rest[:j] if j >= 0 else rest).strip()
+    return version, (name or None)
+
+
+def summary_track_name(path: str) -> Optional[str]:
+    """Track name from a summary's first line ('# LapTimer session,S0004,Barber - Full,United States,…'):
+    the third field. Only a fallback for logs too old to carry the name themselves."""
+    try:
+        text, _enc = read_log_text(path)
+    except OSError:
+        return None
+    first = text.split("\n", 1)[0].strip().rstrip("\x1e")
+    if not first.startswith("#") or "LapTimer session" not in first:
+        return None
+    f = first.lstrip("#").split(",")
+    return f[2].strip() or None if len(f) > 2 else None
