@@ -64,6 +64,11 @@ except Exception as _e:  # pragma: no cover
         _LA_ERROR = (f"the 'lapanalysis' folder isn't next to garw_genie.py (looked in {_APP_DIR}). It is part of "
                      "GARW Genie, not a pip package: keep the whole GARW_Genie folder together — garw_genie.py, "
                      "laptimer.py and the lapanalysis folder — rather than copying garw_genie.py on its own.")
+    elif "baseline optimizations" in str(_e) or "X86_V2" in str(_e):
+        # NumPy 2.4+ needs an x86-64-v2 processor (SSE4.2 / POPCNT); older ones need NumPy 2.3 or earlier
+        _LA_ERROR = ("the installed NumPy needs a newer processor than this computer has (NumPy 2.4 and later "
+                     "require SSE4.2). Install the last version that runs on it:  pip install \"numpy<2.4\"  "
+                     "— newer GARW Genie builds include it.")
     else:
         _LA_ERROR = f"{type(_e).__name__}: {_e}"
 from datetime import datetime, timezone

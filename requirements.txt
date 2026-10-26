@@ -5,7 +5,10 @@ imageio-ffmpeg
 bleak
 # Lap Analysis tab: its code is the lapanalysis/ folder that ships beside garw_genie.py (not on pip — keep the
 # folder with the app). numpy runs the analysis; PySide6 + pyqtgraph (+ PyOpenGL for the 3D view) the full window
-numpy>=1.22
+# <2.4: NumPy 2.4 raised its x86 baseline to x86-64-v2 (SSE4.2 / POPCNT), so on an older PC (roughly pre-2010
+# CPUs) it refuses to load — "NumPy was built with baseline optimizations: (X86_V2) but your machine doesn't
+# support". 2.3.x still runs on any x86-64 and has wheels for Python 3.11–3.14 (pip picks 2.2.x on 3.10).
+numpy>=1.22,<2.4
 fitparse>=1.2
 # PySide6 6.12.0 mis-counts references on Python < 3.12 (crashes the analysis window; worked around in
 # lapanalysis/ui/qtfixes.py, but skip it there anyway)
