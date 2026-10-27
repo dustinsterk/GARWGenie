@@ -109,7 +109,7 @@ except Exception as _e:  # pragma: no cover — not just ImportError: a broken d
     PARAMIKO_ERROR = f"{type(_e).__name__}: {_e}"
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "6.0.8"
+APP_VERSION = "6.0.9"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -7797,7 +7797,20 @@ def run_gui(initial_zip: Optional[str] = None):
             bak.write_bytes(p.read_bytes())
             lap["admin_backed_up"] = True
             log(f"  original Tracks.txt backed up → {bak}")
-        p.write_bytes(lap["admin"].serialize())
+        # First line on every save: '#LAPTIMER_TRACKS v1|<count>|<date>' — the date is the data version, with
+        # '.2', '.3' … for further saves the same day; v1 is the line format and never changes here.
+        adb = lap["admin"]
+        today = datetime.now().strftime("%Y-%m-%d")
+        if isinstance(adb, _lt.TrackDB):
+            stamp = adb.date = _lt.next_db_date(adb.date, today)
+        else:                                      # a plain-newline Tracks.txt: the header goes in as a comment
+            prev = next((_lt.HEADER_RE.match(c.strip()) for c in adb.comments
+                         if _lt.HEADER_RE.match(c.strip())), None)
+            stamp = _lt.next_db_date((prev.group(3) or "") if prev else "", today)
+            adb.comments = ([_lt.admin_header(len(adb.tracks), stamp)]
+                            + [c for c in adb.comments if not c.lstrip().startswith("#LAPTIMER_TRACKS")])
+        p.write_bytes(adb.serialize())
+        log(f"  Tracks.txt header: {_lt.admin_header(len(adb.tracks), stamp, getattr(adb, 'version', 1))}")
         trk_sync_tracklist()
 
     def trk_sync_tracklist():

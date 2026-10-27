@@ -77,7 +77,9 @@ def decode_dash_text(data: bytes) -> str:
     return data.decode("latin-1")
 
 
-HEADER_RE = re.compile(r"^#LAPTIMER_TRACKS v(\d+)\|(\d+)$")
+#: '#LAPTIMER_TRACKS v1|2563' — and, from GARW Genie's admin saves on, '#LAPTIMER_TRACKS v1|2563|2026-10-27'
+#: (version | track count | date of the last edit), so it's clear which database a LapTimer is using
+HEADER_RE = re.compile(r"^#LAPTIMER_TRACKS v(\d+)\|(\d+)(?:\|([^|]*))?$")
 MAC_RE = re.compile(r"^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$")
 MAC_ANY_RE = re.compile(r"([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}")
 RACEBOX_TEMPLATE = ("{mac}\n"
@@ -257,6 +259,7 @@ class TrackDB:
     def __init__(self) -> None:
         self.tracks: List[Track] = []
         self.version = 1
+        self.date = ""          # the header's date field (YYYY-MM-DD), "" when the file has none
 
     @classmethod
     def parse(cls, data: bytes) -> "TrackDB":
@@ -269,13 +272,14 @@ class TrackDB:
         m = HEADER_RE.match(recs[0])
         if m:
             db.version = int(m.group(1))
+            db.date = (m.group(3) or "").strip()
             recs = recs[1:]
         for r in recs:
             db.tracks.append(Track.from_line(r))
         return db
 
     def serialize(self) -> bytes:
-        out = [f"#LAPTIMER_TRACKS v{self.version}|{len(self.tracks)}{RS}\n"]
+        out = [f"#LAPTIMER_TRACKS v{self.version}|{len(self.tracks)}{'|' + self.date if self.date else ''}{RS}\n"]
         out += [t.to_line() + RS + "\n" for t in self.tracks]
         return encode_dash_text("".join(out))
 
@@ -375,6 +379,22 @@ def parse_google_maps_link(text: str) -> Optional[LatLng]:
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/reverse"
 _geocode_cache: dict = {}
+
+
+def next_db_date(previous: str, today: str) -> str:
+    """The header date for a save made today: 'YYYY-MM-DD' for the day's first save, then '.2', '.3' … for
+    each further save that day ('2026-11-02' → '2026-11-02.2' → '2026-11-02.3'). `previous` is the date the
+    file had before this save ('' if none)."""
+    prev = (previous or "").strip()
+    base, _, n = prev.partition(".")
+    if base != today:
+        return today
+    return f"{today}.{(int(n) if n.isdigit() else 1) + 1}"
+
+
+def admin_header(count: int, date: str, version: int = 1) -> str:
+    """The first-line comment GARW Genie writes into an admin-edited Tracks.txt: version | count | date."""
+    return f"#LAPTIMER_TRACKS v{version}|{count}|{date}"
 
 
 def parse_admin_tracks(data: bytes):
