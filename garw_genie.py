@@ -109,7 +109,7 @@ except Exception as _e:  # pragma: no cover — not just ImportError: a broken d
     PARAMIKO_ERROR = f"{type(_e).__name__}: {_e}"
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "6.0.7"
+APP_VERSION = "6.0.8"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -2679,7 +2679,7 @@ class IC7Device:
         return out
 
     def download_laptimer_data(self, rels: List[str], dest_dir: str, delete_after: bool = False,
-                               temp_usb: bool = False) -> int:
+                               temp_usb: bool = False, never_delete=lambda rel: False) -> int:
         """Copy the chosen files out of laptimerdata into dest_dir (subfolders kept), verifying sizes.
         With delete_after, each file is removed from the device only after its copy verified.
 
@@ -2738,6 +2738,8 @@ class IC7Device:
                     live.append(r)
                     self.log(f"  {r}{where}  ({want:,} bytes) — still being recorded: copied as it was when the "
                              "download started; download it again after the session for the rest")
+                elif delete_after and never_delete(r):
+                    self.log(f"  {r}{where}  ({want:,} bytes) — kept on the device (the dash's own file, not a session)")
                 elif delete_after and not (src == "usb" and getattr(self, "_usb_temp_base", None)):
                     sftp.remove(remote)
                     self.log(f"  {r}{where}  ({want:,} bytes) — downloaded and removed from the device")
@@ -7312,8 +7314,9 @@ def run_gui(initial_zip: Optional[str] = None):
         ttk.Button(btns, text="Refresh", command=refresh).pack(side="right", padx=(0, 12))
         dlg.grab_set()
     # not lap data: MAC/track/settings files, the dash's camera settings (Camera.txt), the dash's own index.* and
-    # probe.* bookkeeping files, dotfiles
-    LAPDATA_KEEP = re.compile(r"(^racebox_mac_address\.txt$|^usertracks\.txt$|^camera\.|^index\.|^probe\.|config|settings|\.cfg$|\.ini$|\.conf$|^\.)", re.I)
+    # probe.* bookkeeping files, its best_<track>.txt best laps (what the live delta is timed against), dotfiles.
+    # These are listed only on request, and "Remove from device" never deletes them.
+    LAPDATA_KEEP = re.compile(r"(^racebox_mac_address\.txt$|^usertracks\.txt$|^camera\.|^index\.|^probe\.|^best_|config|settings|\.cfg$|\.ini$|\.conf$|^\.)", re.I)
 
     def do_lapdata_download(temp_usb: bool = False):
         """List the lap timer's data folder on the device, let the user pick, copy to a folder here."""
@@ -7446,7 +7449,8 @@ def run_gui(initial_zip: Optional[str] = None):
                 return
             delete_after = delete_var.get()
             if delete_after and not messagebox.askyesno("Remove from device?", f"After each of the {len(rels)} file(s) is downloaded and its size "
-                                                          "verified, delete it from the device?\n\nThe lap timer won't see those sessions any more.",
+                                                          "verified, delete it from the device?\n\nThe lap timer won't see those sessions any more. Its own files "
+                                                          "(best_<track>.txt best laps, settings, MAC) always stay on the device.",
                                                           icon="warning", parent=dlg):
                 return
             dlg.destroy()
@@ -7458,12 +7462,14 @@ def run_gui(initial_zip: Optional[str] = None):
                 log(f"LAP DATA: {len(rels)} file(s) from the GARW → {dest}" + ("  (removing from device)" if delete_after else ""))
                 with IC7Device(log, confirm, set_progress) as dev:
                     dev.require_laptimer(need_data_dir=False)
-                    n = dev.download_laptimer_data(rels, dest, delete_after, temp_usb=temp_usb)
+                    n = dev.download_laptimer_data(rels, dest, delete_after, temp_usb=temp_usb,
+                                                   never_delete=lambda r: bool(LAPDATA_KEEP.search(r.rsplit("/", 1)[-1])))
                     live = list(getattr(dev, "lapdata_live", []))
                 log(f"Done — {n} file(s) in {dest}")
                 cfg["lapdata_dir"] = dest
                 save_config(cfg)
-                extra = ("\n\nand removed from the device." if delete_after else "")
+                extra = ("\n\nand the sessions removed from the device (best-lap and settings files kept)."
+                         if delete_after else "")
                 if live:
                     extra += ("\n\nStill being recorded (copied as it was when its download started, and left on the "
                               "device):\n  " + "\n  ".join(live[:6]) + ("\n  …" if len(live) > 6 else ""))
