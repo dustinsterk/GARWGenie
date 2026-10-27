@@ -109,7 +109,7 @@ except Exception as _e:  # pragma: no cover — not just ImportError: a broken d
     PARAMIKO_ERROR = f"{type(_e).__name__}: {_e}"
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "6.0.9"
+APP_VERSION = "6.1.0"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -2642,13 +2642,14 @@ class IC7Device:
         folder (/opt/IC7/laptimerdata) and 'usb:<rel>' for a USB stick in the GARW (/media/laptimerdata).
 
         Also sets self.lapdata_info: {'usb': 'mounted' | 'unmounted' | 'temp' | 'none', 'usb_device': …,
-        'now': the unit's clock (to spot a file being recorded right now)}. With temp_usb, a stick the dash
-        hasn't mounted is mounted read-only for the listing and unmounted again."""
+        'live': ids of files that grew or changed while we looked}. The GARW has no real-time clock, so its
+        'now' and the files' modification times can't say what is being recorded; a file that changes over
+        a couple of seconds is. With temp_usb, a stick the dash hasn't mounted is mounted read-only for the
+        listing and unmounted again."""
         self.require_laptimer(need_data_dir=False)
         import stat as _stat
         usb, usb_dev = self.usb_stick_state()
-        _, now, _ = self._run("date +%s")
-        self.lapdata_info = {"usb": usb, "usb_device": usb_dev, "now": float(now.strip() or 0) if now.strip().isdigit() else 0.0}
+        self.lapdata_info = {"usb": usb, "usb_device": usb_dev, "live": []}
         out: List[Tuple[str, int, float]] = []
         try:
             if usb == "unmounted" and temp_usb:
@@ -2671,6 +2672,14 @@ class IC7Device:
             try:
                 for src in present:
                     walk(src, self.lapdata_base(src), "")
+                if out:
+                    # look again a moment later: whatever grew or changed is being written right now
+                    first = {i: (sz, mt) for i, sz, mt in out}
+                    time.sleep(2.0)
+                    del out[:]
+                    for src in present:
+                        walk(src, self.lapdata_base(src), "")
+                    self.lapdata_info["live"] = [i for i, sz, mt in out if first.get(i, (sz, mt)) != (sz, mt)]
             finally:
                 sftp.close()
         finally:
@@ -7335,8 +7344,7 @@ def run_gui(initial_zip: Optional[str] = None):
     def show_lapdata(files: List[Tuple[str, int, float]], info: Optional[dict] = None):
         info = info or {"usb": "mounted", "now": 0.0}
         temp_usb = info.get("usb") == "temp"
-        # being written right now: changed in the last 30 s by the unit's own clock
-        recording = {f[0] for f in files if info.get("now") and f[2] >= info["now"] - 30}
+        recording = set(info.get("live") or [])        # changed while the list was read (the GARW has no clock)
         dlg = tk.Toplevel(root)
         dlg.title("Lap data on the GARW")
         dlg.configure(bg=P["bg"])
@@ -7402,7 +7410,10 @@ def run_gui(initial_zip: Optional[str] = None):
                 tv.insert("", "end", iid=rel, values=("☑" if checked[rel] else "☐", "USB stick" if rel.startswith("usb:") else "Device", rel[4:],
                                                        f"{size / 1024:.0f} KB" if size >= 1024 else f"{size} B",
                                                        "● recording now" if rel in recording else
-                                                       datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M") if mtime else ""),
+                                                       # no RTC on the GARW: a file stamped before 2015 has a
+                                                       # boot-time clock, not a real date
+                                                       datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
+                                                       if mtime > 1420070400 else "—"),
                           tags=("data",) if is_data else ("other",))
             if not shown:
                 tv.insert("", "end", iid="none", values=("", "", "(no lap files on the device)", "", ""))
