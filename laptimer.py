@@ -2,7 +2,7 @@
 hosts a Leaflet/Esri map editor for one track at a time (Tk cannot draw web maps itself).
 
 tracks.txt format (LapTimer on the device):
-    #LAPTIMER_TRACKS v1|<count><RS>\\n
+    #LAPTIMER_TRACKS v1|<count>[|<date>]<RS>\\n   (the date, YYYY-MM-DD[.N], is written by GARW Genie admin saves)
     name|region|cc|country|sf_lat,sf_lng|radius_m|sec1;sec2;…|pit_entry|pit_sf|pit_exit|centre<RS>\\n
 Fields are '|'-separated, coordinates are 'lat,lng' with 6 decimals, sectors are ';'-separated,
 every record ends with ASCII RS (0x1e) followed by a newline.
@@ -401,7 +401,9 @@ def parse_admin_tracks(data: bytes):
     """Tracks.txt for admin editing: the full library in the legacy record-separated format (TrackDB,
     byte-identical round trip) — or, if it's a plain newline file, the UserTracks format."""
     text = decode_dash_text(data)
-    if RS in text or text.lstrip().startswith("#LAPTIMER_TRACKS"):
+    # The record separator decides the format. (A '#LAPTIMER_TRACKS …' first line no longer does: GARW Genie
+    # writes that line as a comment at the top of a plain-newline file too.)
+    if RS in text:
         return TrackDB.parse(data)
     return UserTrackDB.parse(data)
 
