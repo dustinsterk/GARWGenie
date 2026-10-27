@@ -489,6 +489,7 @@ EDITOR_HTML = r"""<!doctype html>
  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)} #toast.err{background:var(--err);color:#fff}
  #save.saved{background:var(--ok);border-color:var(--ok);color:#111318}
  #unsaved{display:none;color:var(--accent);font-size:12px;margin-top:6px} #unsaved.show{display:block}
+ label.chk{display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:10px} label.chk input{width:auto;margin:0}
 </style></head><body><div id="app"><div id="side">
 <h1>GARW Genie · Track editor</h1>
 <label>Track name</label><input id="name">
@@ -514,6 +515,7 @@ EDITOR_HTML = r"""<!doctype html>
 <label>Jump to… (paste a Google Maps link, or lat, lng)</label>
 <div class="row"><input id="jump" placeholder="https://www.google.com/maps/@…  or  51.0, -1.0"><button id="go" style="flex:0 0 auto">Go</button></div>
 <div class="row" style="margin-top:8px"><button id="gmaps">Open this view in Google Maps</button><button id="fit">Fit track</button></div>
+<label class="chk"><input type="checkbox" id="showline"> Show the line joining start / finish, sectors and finish</label>
 <div class="row" style="margin-top:12px"><button id="save" class="accent">Save track</button><button id="close">Close</button></div>
 <div id="unsaved">● Unsaved changes</div>
 <div id="status"></div>
@@ -579,10 +581,14 @@ async function geocode(force){
   } catch (e) { status("Lookup failed — no internet?", "err"); }
 }
 document.getElementById("geo").onclick = () => geocode(true);
+{ const box = document.getElementById("showline");
+  try { box.checked = localStorage.getItem("garw_showline") === "1"; } catch (e) {}
+  box.onchange = () => { try { localStorage.setItem("garw_showline", box.checked ? "1" : "0"); } catch (e) {} render(); }; }
 function render(){
   markers.sectors.forEach((m,i) => { m.n = i+1; m.setTooltipContent(`S${i+1}`); });
   if (lapLine) { map.removeLayer(lapLine); lapLine = null; }
-  if (markers.sf && (markers.sectors.length || markers.finish)) {
+  // the dashed line joining the timing points: off unless asked for (it clutters the imagery)
+  if (document.getElementById("showline").checked && markers.sf && (markers.sectors.length || markers.finish)) {
     const pts = [markers.sf.getLatLng(), ...markers.sectors.map(m => m.getLatLng()), (markers.finish || markers.sf).getLatLng()];
     lapLine = L.polyline(pts, {color: isP2P() ? "#ff3b6b" : "#3b9cff", weight: 2, dashArray: "6 6", opacity: .7}).addTo(map); }
   // start-direction arrow (typed value, or the suggested one from the first split / finish)
