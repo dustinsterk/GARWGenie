@@ -109,7 +109,7 @@ except Exception as _e:  # pragma: no cover — not just ImportError: a broken d
     PARAMIKO_ERROR = f"{type(_e).__name__}: {_e}"
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "6.1.2"
+APP_VERSION = "6.1.3"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -4529,7 +4529,11 @@ def run_gui(initial_zip: Optional[str] = None):
                         log(f"GARW Genie v{APP_VERSION} is the latest version.")
                         ui(lambda: messagebox.showinfo(APP_NAME, f"You're on the latest version (v{APP_VERSION}).", parent=root))
                     return
-                if auto and (cfg.get("update_skip") == rel["tag"] or time.time() < float(cfg.get("update_later_until") or 0)):
+                # 'Later' puts off only the version it was pressed for: a newer release pops up straight away.
+                # (A snooze saved by an older build has no version: it still counts, for at most its 24 h.)
+                snoozed = (time.time() < float(cfg.get("update_later_until") or 0)
+                           and cfg.get("update_later_tag", rel["tag"]) == rel["tag"])
+                if auto and (cfg.get("update_skip") == rel["tag"] or snoozed):
                     FILE_LOG.info("update %s available; not prompting (skipped or later)", rel["tag"])
                     if cfg.get("update_skip") == rel["tag"]:
                         why = "you chose to skip this version"
@@ -4596,6 +4600,7 @@ def run_gui(initial_zip: Optional[str] = None):
 
         def later():
             cfg["update_later_until"] = time.time() + 24 * 3600
+            cfg["update_later_tag"] = rel["tag"]
             save_config(cfg)
             log(f"GARW Genie {rel['tag']}: 'Later' — the automatic check asks again in 24 h; "
                 f"'Update to {rel['tag']}…' installs it any time.")
