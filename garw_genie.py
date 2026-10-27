@@ -109,7 +109,7 @@ except Exception as _e:  # pragma: no cover — not just ImportError: a broken d
     PARAMIKO_ERROR = f"{type(_e).__name__}: {_e}"
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "6.1.0"
+APP_VERSION = "6.1.1"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -4522,6 +4522,7 @@ def run_gui(initial_zip: Optional[str] = None):
                     return
                 if not is_newer_version(rel["tag"]):
                     FILE_LOG.info("update check: latest %s, running %s", rel["tag"], APP_VERSION)
+                    ui(lambda: update_state["installing"] or upd_btn.configure(text="Check for updates", style="TButton"))
                     if auto:
                         log(f"Update check: v{APP_VERSION} is the latest version.")
                     if not auto:
@@ -4530,8 +4531,17 @@ def run_gui(initial_zip: Optional[str] = None):
                     return
                 if auto and (cfg.get("update_skip") == rel["tag"] or time.time() < float(cfg.get("update_later_until") or 0)):
                     FILE_LOG.info("update %s available; not prompting (skipped or later)", rel["tag"])
-                    why = "you chose to skip it" if cfg.get("update_skip") == rel["tag"] else "you chose 'Later'"
-                    log(f"Update check: {rel['tag']} is available ({why}) — 'Check for updates' installs it.")
+                    if cfg.get("update_skip") == rel["tag"]:
+                        why = "you chose to skip this version"
+                    else:
+                        until = datetime.fromtimestamp(float(cfg.get("update_later_until") or 0))
+                        why = f"you chose 'Later' — it asks again after {until:%a %H:%M}"
+                    if cfg.get("update_skip") == rel["tag"]:
+                        log(f"Update check: {rel['tag']} is available ({why}) — 'Check for updates' installs it.")
+                    else:
+                        log(f"Update check: {rel['tag']} is available ({why}). Press 'Update to {rel['tag']}…' "
+                            "(bottom right) to install it now.")
+                        ui(mark_update_available, rel["tag"])
                     return
                 log(f"GARW Genie {rel['tag']} is available (this is v{APP_VERSION}).")
                 ui(show_update_dialog, rel)
@@ -4547,6 +4557,12 @@ def run_gui(initial_zip: Optional[str] = None):
             finally:
                 update_state["checking"] = False
         threading.Thread(target=worker, daemon=True).start()
+
+    def mark_update_available(tag: str):
+        """A newer version is known but not installed: say so on the button itself, so it's seen without
+        reading the log. The button still runs a fresh check, which brings up the update window."""
+        if not update_state["installing"]:
+            upd_btn.configure(text=f"Update to {tag}…", style="Accent.TButton")
 
     def show_update_dialog(rel: dict):
         if update_state["installing"] or (update_state["dialog"] is not None and update_state["dialog"].winfo_exists()):
@@ -4581,6 +4597,14 @@ def run_gui(initial_zip: Optional[str] = None):
         def later():
             cfg["update_later_until"] = time.time() + 24 * 3600
             save_config(cfg)
+            log(f"GARW Genie {rel['tag']}: 'Later' — the automatic check asks again in 24 h; "
+                f"'Update to {rel['tag']}…' installs it any time.")
+            mark_update_available(rel["tag"])
+            win.destroy()
+
+        def close():
+            # closing the window isn't a decision: no 24 h snooze — it asks again next launch
+            mark_update_available(rel["tag"])
             win.destroy()
 
         def skip():
@@ -4596,8 +4620,8 @@ def run_gui(initial_zip: Optional[str] = None):
         ttk.Button(row, text="Update now" if can_install else "Open release page", style="Accent.TButton",
                    command=go).pack(side="right")
         ttk.Button(row, text="Later", command=later).pack(side="right", padx=(0, 8))
-        win.bind("<Escape>", lambda e: later())
-        win.protocol("WM_DELETE_WINDOW", later)
+        win.bind("<Escape>", lambda e: close())
+        win.protocol("WM_DELETE_WINDOW", close)
         win.update_idletasks()
         x = root.winfo_rootx() + max(0, (root.winfo_width() - win.winfo_reqwidth()) // 2)
         y = root.winfo_rooty() + max(0, (root.winfo_height() - win.winfo_reqheight()) // 3)
@@ -4624,7 +4648,7 @@ def run_gui(initial_zip: Optional[str] = None):
 
         def not_installing():
             update_state["installing"] = False
-            upd_btn.configure(state="normal", text="Check for updates")
+            upd_btn.configure(state="normal", text="Check for updates", style="TButton")
 
         def worker():
             log("=" * 60)
