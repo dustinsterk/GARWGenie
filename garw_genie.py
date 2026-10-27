@@ -109,7 +109,7 @@ except Exception as _e:  # pragma: no cover — not just ImportError: a broken d
     PARAMIKO_ERROR = f"{type(_e).__name__}: {_e}"
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "6.0.6"
+APP_VERSION = "6.0.7"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -2199,6 +2199,10 @@ class IC7Device:
         return self
 
     def __exit__(self, *exc):
+        try:
+            self.usb_unmount_temp()             # never leave the LapTimer's stick mounted behind
+        except Exception:                       # noqa: BLE001
+            pass
         self.close()
 
     def connect(self):
@@ -2579,42 +2583,117 @@ class IC7Device:
         self.log(f"Active screens written: {', '.join(map(str, indices))} → {SCREEN_ENABLED_FILE}")
 
     LAPDATA_DIRS = {"dev": "LAPTIMER_DATA_DIR", "usb": "LAPTIMER_USB_DIR"}
+    #: where GARW Genie mounts the LapTimer's USB stick itself (read-only) when the dash hasn't
+    USB_TEMP_MOUNT = "/tmp/garw_genie_usb"
 
-    @staticmethod
-    def lapdata_base(src: str) -> str:
+    def lapdata_base(self, src: str) -> str:
+        if src == "usb" and getattr(self, "_usb_temp_base", None):
+            return self._usb_temp_base
         return getattr(_lt, IC7Device.LAPDATA_DIRS[src])
 
-    def list_laptimer_data(self) -> List[Tuple[str, int, float]]:
+    # -- the LapTimer's USB stick ----------------------------------------------
+    def usb_stick_state(self) -> Tuple[str, str]:
+        """('mounted', '') when the dash has the stick mounted (its laptimerdata folder is there);
+        ('unmounted', '/dev/sdXN') when a USB disk is plugged in but nothing has mounted it — the dash only
+        mounts it while its LapTimer screen is showing; ('none', '') when there is no USB disk."""
+        if self._remote_exists(_lt.LAPTIMER_USB_DIR):
+            return "mounted", ""
+        _, mounts, _ = self._run("cat /proc/mounts")
+        mounted_devs = {ln.split()[0] for ln in mounts.splitlines() if ln.strip()}
+        # USB disks show up as sd*; the GARW's own storage is eMMC (mmcblk*), never listed here
+        _, out, _ = self._run("for d in /sys/block/sd*; do [ -e \"$d\" ] || continue; n=${d##*/}; "
+                              "echo \"$n $(ls -d $d/$n[0-9]* 2>/dev/null | sed 's#.*/##' | tr '\\n' ' ')\"; done")
+        for line in out.splitlines():
+            parts = line.split()
+            if not parts:
+                continue
+            disk, partitions = parts[0], parts[1:]
+            if any(f"/dev/{x}" in mounted_devs for x in [disk] + partitions):
+                continue                    # mounted somewhere — but not as the LapTimer's stick
+            return "unmounted", f"/dev/{partitions[0] if partitions else disk}"
+        return "none", ""
+
+    def usb_mount_temp(self, device: str) -> None:
+        """Mount the stick read-only at a private folder, just for this listing / download. Read-only: nothing
+        here can change what the dash wrote, and it is unmounted again as soon as the job is done."""
+        m = self.USB_TEMP_MOUNT
+        rc, _, err = self._run(f"mkdir -p {m} && (mount -t vfat -o ro {_sq(device)} {m} 2>/dev/null "
+                               f"|| mount -o ro {_sq(device)} {m})", timeout=30)
+        if rc != 0:
+            raise RuntimeError(f"Couldn't mount the USB stick ({device}) read-only: {err.strip() or 'mount failed'}")
+        self._usb_temp_mounted = True
+        base = f"{m}/{USB_FOLDER}"
+        if not self._remote_exists(base):
+            self.usb_unmount_temp()
+            raise RuntimeError(f"The USB stick in the GARW has no '{USB_FOLDER}' folder — it isn't a LapTimer stick "
+                               "(use 'Prepare USB stick…' to set one up).")
+        self._usb_temp_base = base
+        self.log(f"USB stick {device} mounted read-only for this job.")
+
+    def usb_unmount_temp(self) -> None:
+        if getattr(self, "_usb_temp_mounted", False):
+            self._run(f"sync; umount {self.USB_TEMP_MOUNT} && rmdir {self.USB_TEMP_MOUNT}", timeout=30)
+            self._usb_temp_mounted = False
+            self._usb_temp_base = None
+            self.log("USB stick unmounted again.")
+
+    def list_laptimer_data(self, temp_usb: bool = False) -> List[Tuple[str, int, float]]:
         """[(id, size, mtime)] for every lap-data file on the unit: id is 'dev:<rel>' for the internal
-        folder (/opt/IC7/laptimerdata) and 'usb:<rel>' for a USB stick in the GARW (/media/laptimerdata)."""
+        folder (/opt/IC7/laptimerdata) and 'usb:<rel>' for a USB stick in the GARW (/media/laptimerdata).
+
+        Also sets self.lapdata_info: {'usb': 'mounted' | 'unmounted' | 'temp' | 'none', 'usb_device': …,
+        'now': the unit's clock (to spot a file being recorded right now)}. With temp_usb, a stick the dash
+        hasn't mounted is mounted read-only for the listing and unmounted again."""
         self.require_laptimer(need_data_dir=False)
         import stat as _stat
-        present = [src for src in ("dev", "usb") if self._remote_exists(self.lapdata_base(src))]
-        if not present:
-            raise RuntimeError(f"No lap data on the device: neither {_lt.LAPTIMER_DATA_DIR} nor a USB stick "
-                               f"({_lt.LAPTIMER_USB_DIR}) is there.")
-        sftp = self.client.open_sftp()
+        usb, usb_dev = self.usb_stick_state()
+        _, now, _ = self._run("date +%s")
+        self.lapdata_info = {"usb": usb, "usb_device": usb_dev, "now": float(now.strip() or 0) if now.strip().isdigit() else 0.0}
         out: List[Tuple[str, int, float]] = []
-
-        def walk(src: str, remote_dir: str, rel: str):
-            for a in sftp.listdir_attr(remote_dir):
-                p = f"{remote_dir}/{a.filename}"
-                r = f"{rel}/{a.filename}" if rel else a.filename
-                if _stat.S_ISDIR(a.st_mode or 0):
-                    walk(src, p, r)
-                elif _stat.S_ISREG(a.st_mode or 0):
-                    out.append((f"{src}:{r}", a.st_size or 0, float(a.st_mtime or 0)))
         try:
-            for src in present:
-                walk(src, self.lapdata_base(src), "")
+            if usb == "unmounted" and temp_usb:
+                self.usb_mount_temp(usb_dev)
+                self.lapdata_info["usb"] = "temp"
+            present = [src for src in ("dev", "usb") if self._remote_exists(self.lapdata_base(src))]
+            if not present and self.lapdata_info["usb"] != "unmounted":
+                raise RuntimeError(f"No lap data on the device: neither {_lt.LAPTIMER_DATA_DIR} nor a USB stick "
+                                   f"({_lt.LAPTIMER_USB_DIR}) is there.")
+            sftp = self.client.open_sftp()
+
+            def walk(src: str, remote_dir: str, rel: str):
+                for a in sftp.listdir_attr(remote_dir):
+                    p = f"{remote_dir}/{a.filename}"
+                    r = f"{rel}/{a.filename}" if rel else a.filename
+                    if _stat.S_ISDIR(a.st_mode or 0):
+                        walk(src, p, r)
+                    elif _stat.S_ISREG(a.st_mode or 0):
+                        out.append((f"{src}:{r}", a.st_size or 0, float(a.st_mtime or 0)))
+            try:
+                for src in present:
+                    walk(src, self.lapdata_base(src), "")
+            finally:
+                sftp.close()
         finally:
-            sftp.close()
+            self.usb_unmount_temp()
         out.sort(key=lambda t: (t[0][4:].lower(), t[0][:3]))
         return out
 
-    def download_laptimer_data(self, rels: List[str], dest_dir: str, delete_after: bool = False) -> int:
+    def download_laptimer_data(self, rels: List[str], dest_dir: str, delete_after: bool = False,
+                               temp_usb: bool = False) -> int:
         """Copy the chosen files out of laptimerdata into dest_dir (subfolders kept), verifying sizes.
-        With delete_after, each file is removed from the device only after its copy verified."""
+        With delete_after, each file is removed from the device only after its copy verified.
+
+        A file the lap timer is still writing (the current session) is copied as it stands when its download
+        starts — the bytes up to that size — instead of failing because it grew meanwhile. Such a file is
+        never deleted. With temp_usb the stick is mounted read-only for the job (so nothing on it can be
+        deleted either) and unmounted afterwards."""
+        live: List[str] = []
+        if temp_usb:
+            usb, dev_ = self.usb_stick_state()
+            if usb == "unmounted":
+                self.usb_mount_temp(dev_)
+            elif usb == "none" and any(i.startswith("usb:") for i in rels):
+                raise RuntimeError("The USB stick is no longer in the GARW.")
         sftp = self.client.open_sftp()
         done = 0
         try:
@@ -2632,29 +2711,42 @@ class IC7Device:
                 local = Path(dest_dir) / ({"dev": "Device", "usb": "USB"}[src] if both else "") / Path(*r.split("/"))
                 local.parent.mkdir(parents=True, exist_ok=True)
                 tmp = local.with_name(local.name + ".part")
+                before = sftp.stat(remote)
+                want = before.st_size or 0              # the file as it is now; it may keep growing while we read
                 with sftp.file(remote, "rb") as fh, open(tmp, "wb") as out:
                     fh.set_pipelined(True)
-                    while True:
-                        chunk = fh.read(256 * 1024)
+                    left = want
+                    while left > 0:
+                        chunk = fh.read(min(256 * 1024, left))
                         if not chunk:
                             break
                         out.write(chunk)
+                        left -= len(chunk)
                         got += len(chunk)
-                        self.progress(got, total)
-                if tmp.stat().st_size != sizes[i]:
+                        self.progress(min(got, total), total)
+                after = sftp.stat(remote)
+                changed = (after.st_size or 0) != want or (after.st_mtime or 0) != (before.st_mtime or 0)
+                if tmp.stat().st_size != want:
                     tmp.unlink(missing_ok=True)
-                    raise RuntimeError(f"{r}: size mismatch after download — stopped, nothing deleted on the device.")
+                    raise RuntimeError(f"{r}: the file changed while it was being read (it got shorter) — "
+                                       "stopped, nothing deleted on the device. Try again.")
                 os.replace(tmp, local)
-                FILE_LOG.debug("SFTP get %s (%d bytes) -> %s", remote, sizes[i], local)
+                FILE_LOG.debug("SFTP get %s (%d bytes%s) -> %s", remote, want, ", live" if changed else "", local)
                 done += 1
                 where = " [USB stick]" if src == "usb" else ""
-                if delete_after:
+                if changed:
+                    live.append(r)
+                    self.log(f"  {r}{where}  ({want:,} bytes) — still being recorded: copied as it was when the "
+                             "download started; download it again after the session for the rest")
+                elif delete_after and not (src == "usb" and getattr(self, "_usb_temp_base", None)):
                     sftp.remove(remote)
-                    self.log(f"  {r}{where}  ({sizes[i]:,} bytes) — downloaded and removed from the device")
+                    self.log(f"  {r}{where}  ({want:,} bytes) — downloaded and removed from the device")
                 else:
-                    self.log(f"  {r}{where}  ({sizes[i]:,} bytes)")
+                    self.log(f"  {r}{where}  ({want:,} bytes)")
         finally:
             sftp.close()
+            self.usb_unmount_temp()
+        self.lapdata_live = live
         return done
 
     def download_dashes_zip(self, names: List[str], zip_path: str) -> Tuple[int, int]:
@@ -4325,6 +4417,15 @@ def run_gui(initial_zip: Optional[str] = None):
                                   DEBUG_HINT if (debug["unlocked"] and not connected) else
                                   "" if enabled else
                                   f"The other tabs unlock automatically once the GARW device answers at {HOST} — join Wi-Fi '{TARGET_SSID}'."))
+        repaint_tabs()
+
+    def repaint_tabs():
+        """Draw tab changes now. macOS Tk can leave a notebook's new tab states (and a newly shown page)
+        unpainted until the next mouse movement or window event, which looks like the app hanging."""
+        try:
+            nb.update_idletasks()
+        except tk.TclError:
+            pass
 
     def logo_clicked(e=None):
         """Hidden: 4 clicks on the logo within 2 s toggles debug mode (tabs usable with no device)."""
@@ -4356,6 +4457,7 @@ def run_gui(initial_zip: Optional[str] = None):
         nb.add(tab_la, text="Lap Analysis")
         fit_tabs()
         nb.select(tab_lap)
+        repaint_tabs()
         log("Lap Timer and Lap Analysis tabs revealed (Shift + double-click on the logo).")
         debug["clicks"] = []   # don't let the double-click also count towards the 4-click debug toggle
         return "break"
@@ -4363,11 +4465,31 @@ def run_gui(initial_zip: Optional[str] = None):
     logo_lbl.configure(cursor="hand2")
 
     # ---------- self-update (GitHub releases of APP_REPO) ----------
-    update_state = {"checking": False}
+    #: checking — a check is running; dialog — the "Update available" window is open; installing — an update
+    #: is downloading / being installed. Only one of these at a time: a second check (the automatic one, which
+    #: fires when the internet first answers, or another click) must not pop the dialog up again mid-download.
+    update_state = {"checking": False, "dialog": None, "installing": False}
 
     def check_app_update(auto: bool):
         """Look for a newer release. Automatic checks (once per launch, when the internet first answers) stay
         quiet unless there is something new that hasn't been skipped or put off with 'Later'."""
+        mon["update_checked"] = True        # a manual check counts: no automatic one later in this launch
+        if update_state["installing"]:
+            if not auto:
+                messagebox.showinfo(APP_NAME, "An update is already downloading — GARW Genie restarts when it's done.",
+                                    parent=root)
+            return
+        dlg = update_state["dialog"]
+        if dlg is not None:
+            try:
+                if dlg.winfo_exists():
+                    if not auto:
+                        dlg.lift()
+                        dlg.focus_force()
+                    return
+            except tk.TclError:
+                pass
+            update_state["dialog"] = None
         if update_state["checking"]:
             return
         update_state["checking"] = True
@@ -4402,21 +4524,27 @@ def run_gui(initial_zip: Optional[str] = None):
                     return
                 log(f"GARW Genie {rel['tag']} is available (this is v{APP_VERSION}).")
                 ui(show_update_dialog, rel)
+                return
             except Exception as e:
                 FILE_LOG.warning("update check failed: %s", e)
                 if auto:
                     log(f"Update check: couldn't reach GitHub — {str(e).splitlines()[0]}")
                 if not auto:
                     log(f"WARNING: update check failed — {e}")
-                    ui(lambda: messagebox.showerror(APP_NAME, f"Couldn't check for updates:\n{e}", parent=root))
+                    why = str(e)                # `e` is unbound by the time the lambda runs
+                    ui(lambda: messagebox.showerror(APP_NAME, f"Couldn't check for updates:\n{why}", parent=root))
             finally:
                 update_state["checking"] = False
         threading.Thread(target=worker, daemon=True).start()
 
     def show_update_dialog(rel: dict):
+        if update_state["installing"] or (update_state["dialog"] is not None and update_state["dialog"].winfo_exists()):
+            return                          # one dialog at a time, and none once an update is under way
         target, asset = running_app_path(), pick_update_asset(rel["assets"])
         can_install = target is not None and asset is not None
         win = tk.Toplevel(root)
+        update_state["dialog"] = win
+        win.bind("<Destroy>", lambda e: e.widget is win and update_state.update(dialog=None), add="+")
         win.title("Update available")
         win.configure(bg=P["panel"])
         win.transient(root)
@@ -4480,6 +4608,12 @@ def run_gui(initial_zip: Optional[str] = None):
             messagebox.showinfo(APP_NAME, "Wait for the current job to finish, then press 'Check for updates'.", parent=root)
             return
         windows = platform.system() == "Windows"
+        update_state["installing"] = True
+        upd_btn.configure(state="disabled", text="Updating…")
+
+        def not_installing():
+            update_state["installing"] = False
+            upd_btn.configure(state="normal", text="Check for updates")
 
         def worker():
             log("=" * 60)
@@ -4502,8 +4636,10 @@ def run_gui(initial_zip: Optional[str] = None):
                     except Exception:
                         pass
                 log(f"ERROR: the update couldn't be installed here — {e}")
+                why = str(e)                    # `e` is unbound once the except block ends; the lambda runs later
+                ui(not_installing)
                 ui(lambda: (messagebox.showerror(
-                    APP_NAME, f"The update couldn't be installed automatically:\n{e}\n\n"
+                    APP_NAME, f"The update couldn't be installed automatically:\n{why}\n\n"
                               "The release page will open so you can download it yourself.", parent=root),
                     open_release_page(rel)))
                 return
@@ -4512,7 +4648,14 @@ def run_gui(initial_zip: Optional[str] = None):
                     shutil.rmtree(work, ignore_errors=True)
             log(f"Installed {rel['tag']} — restarting GARW Genie …")
             ui(relaunch_after_update, target)
-        start(worker)
+
+        def guarded():
+            try:
+                worker()
+            except BaseException:
+                ui(not_installing)          # anything unexpected: let a later check try again
+                raise
+        start(guarded)
 
     def relaunch_after_update(target: Path):
         try:
@@ -7001,6 +7144,17 @@ def run_gui(initial_zip: Optional[str] = None):
     root.bind_all("<KeyRelease>", on_key_release, add="+")
 
     def on_tab_changed(_e=None):
+        # paint the newly selected page straight away (see repaint_tabs), and note in the file log when
+        # showing a tab took noticeably long — the evidence needed if a tab is ever slow to appear
+        t0 = time.perf_counter()
+        name = nb.tab(nb.select(), "text") if nb.select() else ""
+        repaint_tabs()
+
+        def shown():
+            ms = (time.perf_counter() - t0) * 1000
+            if ms > 300:
+                FILE_LOG.info("tab '%s' took %.0f ms to show", name, ms)
+        root.after_idle(shown)
         active = nb.select() == str(tab_ctl)
         ctl_state["active"] = active
         if active:
@@ -7161,17 +7315,25 @@ def run_gui(initial_zip: Optional[str] = None):
     # probe.* bookkeeping files, dotfiles
     LAPDATA_KEEP = re.compile(r"(^racebox_mac_address\.txt$|^usertracks\.txt$|^camera\.|^index\.|^probe\.|config|settings|\.cfg$|\.ini$|\.conf$|^\.)", re.I)
 
-    def do_lapdata_download():
+    def do_lapdata_download(temp_usb: bool = False):
         """List the lap timer's data folder on the device, let the user pick, copy to a folder here."""
         def lister():
             if not gui_preflight():
                 raise RuntimeError(f"GARW device not reachable at {HOST}.")
             with IC7Device(log, confirm) as dev:
-                files = dev.list_laptimer_data()
-            ui(show_lapdata, files)
+                files = dev.list_laptimer_data(temp_usb=temp_usb)
+                info = dict(dev.lapdata_info)
+            if info["usb"] == "unmounted":
+                log(f"Lap data: a USB stick ({info['usb_device']}) is in the GARW but not mounted — the LapTimer "
+                    "dash only mounts it while its screen is showing.")
+            ui(show_lapdata, files, info)
         start(lister)
 
-    def show_lapdata(files: List[Tuple[str, int, float]]):
+    def show_lapdata(files: List[Tuple[str, int, float]], info: Optional[dict] = None):
+        info = info or {"usb": "mounted", "now": 0.0}
+        temp_usb = info.get("usb") == "temp"
+        # being written right now: changed in the last 30 s by the unit's own clock
+        recording = {f[0] for f in files if info.get("now") and f[2] >= info["now"] - 30}
         dlg = tk.Toplevel(root)
         dlg.title("Lap data on the GARW")
         dlg.configure(bg=P["bg"])
@@ -7183,8 +7345,31 @@ def run_gui(initial_zip: Optional[str] = None):
         on_usb = any(f[0].startswith("usb:") for f in files)
         other = [f for f in files if f not in data_files]
         show_other = tk.BooleanVar(value=False)
-        head = ttk.Label(frm, wraplength=640, justify="left")
-        head.grid(row=0, column=0, columnspan=3, sticky="w")
+        top = ttk.Frame(frm)
+        top.grid(row=0, column=0, columnspan=4, sticky="ew")
+        head = ttk.Label(top, wraplength=640, justify="left")
+        head.pack(anchor="w")
+        if info.get("usb") == "unmounted":
+            # the dash only mounts its stick while the LapTimer screen shows — say so, and offer to read it anyway
+            note = ttk.Frame(top)
+            note.pack(anchor="w", fill="x", pady=(10, 2))
+            ttk.Label(note, style="Warn.TLabel", wraplength=640, justify="left",
+                      text=f"A USB stick is plugged into the GARW, but it isn't mounted, so its laps aren't listed. "
+                           "The LapTimer dash only mounts the stick while its screen is showing — switch the dash to "
+                           "the LapTimer screen and press Refresh, or read it from here (mounted read-only just for "
+                           "the listing and the download, then unmounted again; nothing on it is changed).").pack(anchor="w")
+            nrow = ttk.Frame(note)
+            nrow.pack(anchor="w", pady=(6, 0))
+
+            def read_stick():
+                dlg.destroy()
+                do_lapdata_download(temp_usb=True)
+
+            def refresh_list():
+                dlg.destroy()
+                do_lapdata_download(temp_usb=False)
+            ttk.Button(nrow, text="Read the USB stick from here", style="Accent.TButton", command=read_stick).pack(side="left")
+            ttk.Button(nrow, text="Refresh", command=refresh_list).pack(side="left", padx=(6, 0))
         tv = ttk.Treeview(frm, columns=("sel", "where", "path", "size", "date"), show="headings", height=min(18, max(6, len(data_files))), selectmode="none")
         for c, t, w, an in (("sel", "", 36, "center"), ("where", "Location", 90, "w"), ("path", "File", 380, "w"), ("size", "Size", 90, "e"), ("date", "Modified", 150, "w")):
             tv.heading(c, text=t)
@@ -7213,6 +7398,7 @@ def run_gui(initial_zip: Optional[str] = None):
                 checked.setdefault(rel, False)
                 tv.insert("", "end", iid=rel, values=("☑" if checked[rel] else "☐", "USB stick" if rel.startswith("usb:") else "Device", rel[4:],
                                                        f"{size / 1024:.0f} KB" if size >= 1024 else f"{size} B",
+                                                       "● recording now" if rel in recording else
                                                        datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M") if mtime else ""),
                           tags=("data",) if is_data else ("other",))
             if not shown:
@@ -7220,7 +7406,11 @@ def run_gui(initial_zip: Optional[str] = None):
             hidden = 0 if show_other.get() else len(other)
             head.configure(text=f"{len(data_files)} lap file(s) ({sum(f[1] for f in data_files) / 1e6:.1f} MB)"
                                 + (" on the device and the USB stick in the GARW" if on_usb else " on the device")
-                                + (f" — {hidden} other file(s) hidden." if hidden else ".") + "  Click a row to tick/untick it.")
+                                + (" (stick read from here, read-only)" if temp_usb else "")
+                                + (f" — {hidden} other file(s) hidden." if hidden else ".") + "  Click a row to tick/untick it."
+                                + ("\n● recording now: the lap timer is writing it — it's copied as it is at the moment "
+                                   "of download (the rest arrives if you download it again after the session), and it "
+                                   "is never removed from the device." if recording else ""))
 
         def toggle(e):
             iid = tv.identify_row(e.y)
@@ -7243,7 +7433,8 @@ def run_gui(initial_zip: Optional[str] = None):
         if other:
             ttk.Checkbutton(row, text=f"Show other files ({len(other)})", variable=show_other, command=fill).pack(side="left", padx=(18, 0))
         delete_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(row, text="Remove from device after a verified download", variable=delete_var).pack(side="left", padx=(24, 0))
+        ttk.Checkbutton(row, text="Remove from device after a verified download" + (" (not from the stick: read-only)" if temp_usb else ""),
+                        variable=delete_var).pack(side="left", padx=(24, 0))
 
         def go():
             rels = [r for r, v in checked.items() if v]
@@ -7267,11 +7458,16 @@ def run_gui(initial_zip: Optional[str] = None):
                 log(f"LAP DATA: {len(rels)} file(s) from the GARW → {dest}" + ("  (removing from device)" if delete_after else ""))
                 with IC7Device(log, confirm, set_progress) as dev:
                     dev.require_laptimer(need_data_dir=False)
-                    n = dev.download_laptimer_data(rels, dest, delete_after)
+                    n = dev.download_laptimer_data(rels, dest, delete_after, temp_usb=temp_usb)
+                    live = list(getattr(dev, "lapdata_live", []))
                 log(f"Done — {n} file(s) in {dest}")
                 cfg["lapdata_dir"] = dest
                 save_config(cfg)
-                ui(lambda: messagebox.showinfo(APP_NAME, f"{n} file(s) downloaded to\n{dest}" + ("\n\nand removed from the device." if delete_after else ""), parent=root))
+                extra = ("\n\nand removed from the device." if delete_after else "")
+                if live:
+                    extra += ("\n\nStill being recorded (copied as it was when its download started, and left on the "
+                              "device):\n  " + "\n  ".join(live[:6]) + ("\n  …" if len(live) > 6 else ""))
+                ui(lambda: messagebox.showinfo(APP_NAME, f"{n} file(s) downloaded to\n{dest}" + extra, parent=root))
             start(worker)
         btns = ttk.Frame(frm)
         btns.grid(row=3, column=0, columnspan=4, sticky="e", pady=(10, 0))
@@ -8719,6 +8915,12 @@ def self_check(report: Optional[str] = None) -> int:
         print(f"MISSING paramiko at startup: {PARAMIKO_ERROR}")
     if _LA_ERROR:
         print(f"note    Lap Analysis tab: {_LA_ERROR}")
+    try:
+        import tkinter as _tk
+        print(f"note    {platform.system()} {platform.release()}, Python {platform.python_version()}, "
+              f"Tk {_tk.Tcl().eval('info patchlevel')}")
+    except Exception as e:                          # noqa: BLE001
+        print(f"note    Tk not available: {e}")
     print("SELF-CHECK", "OK" if ok else "FAILED")
     if report:
         with open(report, "w", encoding="utf-8") as fh:
