@@ -105,6 +105,8 @@ class VboFile:
     track_name: str = ""
     #: GARW LapTimer version that wrote the log ('3.6'), "" if the log doesn't say
     dash_version: str = ""
+    #: GARW LapTimer: [(level 'warn' | 'note', text)] from its diagnostic '#' lines (csvlog.dash_health)
+    dash_health: List[Tuple[str, str]] = field(default_factory=list)
     sample_rate: float = 0.0
 
     def has(self, *names: str) -> bool:

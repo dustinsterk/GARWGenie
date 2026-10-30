@@ -84,6 +84,13 @@ def session_summary(session: Session) -> str:
             flag = f"  [{lap.note}; {fmt_time(lap.lap_time)} driven]"
         lines.append(f"{lap.number:>4}  {lap_time_text(lap):>10}  "
                      f"{delta_text(lap, best, d):>8}  {lap.length:>7.0f}{flag}")
+    health = getattr(session.vbo, "dash_health", None) or []
+    if health:
+        ver = getattr(session.vbo, "dash_version", "")
+        lines.append("")
+        lines.append(f"DASH HEALTH  (from the LapTimer{' v' + ver if ver else ''}'s own notes in the log)")
+        for level, text in health:
+            lines.append(f"  {'!' if level == 'warn' else '-'} {text}")
     return "\n".join(lines)
 
 

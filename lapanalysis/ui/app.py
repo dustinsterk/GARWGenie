@@ -1501,11 +1501,19 @@ class MainWindow(QtWidgets.QMainWindow):
         note = ("" if not limits else
                 f" <span style='color:#5a616e'>· {limits[0].summary.split(' —')[0]}"
                 f"</span>")
+        # the dash's own health notes (stalls, a failing stick, an unfinished key-off) — about the unit, not the data
+        health = getattr(self.session.vbo, "dash_health", None) or []
+        warns = [t for lvl, t in health if lvl == "warn"]
+        dash = ("" if not warns else
+                f" <span style='color:#f2b134'>· &#9888; {warns[0].split(' — ')[0].rstrip('.')}</span>")
         self.quality_badge.setText(
             f"<span style='color:{colour}'>&#9679;</span> "
             f"<span style='color:#8b93a1'>data {q.actionable_grade}{tail}"
-            f"</span>{note}")
+            f"</span>{note}{dash}")
         tip = [f"{q.grade.upper()} — {q.headline}", ""]
+        if health:
+            tip += ["Dash health (the LapTimer's notes in the log):"] + [
+                f"{'⚠' if lvl == 'warn' else '·'} {t}" for lvl, t in health] + [""]
         for c in q.checks:
             tip.append(f"[{c.grade}] {c.name}: {c.summary}")
         note = significance_note(q, self.units)

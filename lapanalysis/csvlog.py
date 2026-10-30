@@ -324,7 +324,9 @@ def parse_csv(path: str, delimiter: Optional[str] = None) -> VboFile:
     """Read a CSV data log into the same structure as a .vbo."""
     text, encoding = read_log_text(path)
     if not text.strip():
-        raise CsvFormatError("the file is empty")
+        raise CsvFormatError(
+            "the file is empty (0 bytes). The LapTimer empties a log's old copy when it moves the session (it "
+            "can't delete files) — open the copy it moved to: the same name on the unit or on the stick.")
 
     # A line starting with '#' is a comment wherever it appears — the GARW LapTimer writes a version line
     # near the top, '# link …' lines about once a minute and '# dropped malformed row #N' markers. They go
@@ -339,7 +341,13 @@ def parse_csv(path: str, delimiter: Optional[str] = None) -> VboFile:
         if ln.lstrip().startswith("#") and "LapTimer v" in ln:
             dash_version, track_name = parse_dash_header(ln)
             break
+    comments = [ln.lstrip()[1:].strip().rstrip("\x1e").strip() for ln in lines if ln.lstrip().startswith("#")]
     lines = [ln for ln in lines if ln.strip() and not ln.lstrip().startswith("#")]
+    # The GARW LapTimer ends every complete row with 0x1E. It writes once a second, so a power cut can leave
+    # the last row cut short — without its 0x1E. When the file's rows carry the marker, a row without it is
+    # incomplete and is dropped (even one missing only its last few characters).
+    ends_rs = [ln.rstrip(" \t").endswith("\x1e") for ln in lines]
+    rs_rows = len(lines) > 3 and sum(ends_rs[1:]) > 0.5 * (len(lines) - 1)
     delim = delimiter or sniff_delimiter("\n".join(lines[:200]))
 
     # Each line is parsed on its own. A logger that loses power or flushes the wrong buffer mid-write leaves
@@ -354,13 +362,15 @@ def parse_csv(path: str, delimiter: Optional[str] = None) -> VboFile:
         except csv.Error:
             return None                       # an unbalanced quote: junk, not data
     rows = []
+    complete: List[bool] = []
     unreadable = 0
-    for ln in lines:
+    for ln, has_rs in zip(lines, ends_rs):
         r = parse_line(ln)
         if r is None:
             unreadable += 1
         elif any(c.strip() for c in r):
             rows.append(r)
+            complete.append(has_rs)
     if len(rows) < 3:
         raise CsvFormatError("too few rows to be a data log")
 
@@ -382,6 +392,11 @@ def parse_csv(path: str, delimiter: Optional[str] = None) -> VboFile:
             return any(ord(ch) > 0x7E or (ord(ch) < 32 and ch not in "\t\r\x1e") for c in r for ch in c)
         return any(ch == "\ufffd" or (ord(ch) < 32 and ch not in "\t\r\x1e") for c in r for ch in c)
     data = rows[data_start:]
+    cut_off = 0
+    if rs_rows:
+        keep = complete[data_start:]
+        cut_off = sum(1 for k in keep if not k)
+        data = [r for r, k in zip(data, keep) if k]
     clean = [r for r in data if not corrupt(r)]
     dropped = len(data) - len(clean) + unreadable
     rows = rows[:data_start] + clean
@@ -410,6 +425,9 @@ def parse_csv(path: str, delimiter: Optional[str] = None) -> VboFile:
                         f"header on line {head_idx + 1})"]
     if dropped:
         notes.append(f"{dropped} corrupted row{'s' if dropped != 1 else ''} skipped (binary junk in the file)")
+    if cut_off:
+        notes.append(f"{cut_off} row{'s' if cut_off != 1 else ''} without the end-of-row marker dropped (cut short "
+                     "by a power cut, or garbled)")
     if n_comments:
         notes.append(f"{n_comments} comment line{'s' if n_comments != 1 else ''} (#) skipped")
     vbo = VboFile(path=path, source_format="csv")
@@ -477,6 +495,23 @@ def parse_csv(path: str, delimiter: Optional[str] = None) -> VboFile:
     vbo.sample_rate = float(1.0 / np.median(dtv)) if dtv.size else 1.0
 
     vbo.dash_version = dash_version
+    vbo.dash_health = dash_health(comments)
+    if dash_version:
+        jumps = np.diff(vbo.channels["t"])
+        weeks = int(np.count_nonzero(jumps > 500000.0))
+        if weeks:
+            vbo.dash_health.append(("warn", f"Time (s) jumped forward by about a GPS week (604800 s) {weeks}× — "
+                                            "the GPS time of week restarted near zero and the dash counted it as "
+                                            "a week rollover. Treated as breaks in the log."))
+    diag = find_diag(path)
+    if diag:
+        try:
+            extra = diag_health(diag)
+        except OSError:
+            extra = []
+        if extra:
+            vbo.dash_health += extra
+            notes.append(f"dash diagnostics read from {os.path.basename(diag)}")
     if track_name:
         vbo.track_name = track_name
     summary = find_summary(path)
@@ -602,15 +637,21 @@ def find_summary(path: str) -> Optional[str]:
         cands.append(stem[len("laptimer_"):])
     else:
         cands.append("laptimer_" + stem)
+    def usable(p: str) -> bool:
+        # a 0-byte summary is an emptied old copy (the dash moved it and can't delete files): not this one
+        try:
+            return os.path.isfile(p) and os.path.getsize(p) > 0
+        except OSError:
+            return False
     for c in cands:
         for suffix in ("_summary.csv", "_summary.CSV"):
             p = os.path.join(folder, c + suffix)
-            if os.path.isfile(p):
+            if usable(p):
                 return p
     core = cands[-1] if stem.lower().startswith("laptimer_") else stem
     try:
         for f in sorted(os.listdir(folder)):
-            if f.lower().endswith("_summary.csv") and core.lower() in f.lower():
+            if f.lower().endswith("_summary.csv") and core.lower() in f.lower() and usable(os.path.join(folder, f)):
                 return os.path.join(folder, f)
     except OSError:
         pass
@@ -729,3 +770,182 @@ def summary_track_name(path: str) -> Optional[str]:
         return None
     f = first.lstrip("#").split(",")
     return f[2].strip() or None if len(f) > 2 else None
+
+
+# --------------------------------------------------------------------------
+# GARW LapTimer diagnostics written as '#' lines in the session log
+# --------------------------------------------------------------------------
+
+_HEALTH_PATTERNS = [
+    ("stall", re.compile(r"^stall (\d+) ms(?: \(last: (.*)\))?", re.I)),
+    ("slow_write", re.compile(r"^slow log write (\d+) ms(?: \((\d+) rows?\))?", re.I)),
+    ("slow", re.compile(r"^slow (.+?) (\d+) ms", re.I)),
+    ("backlog", re.compile(r"^screen at 8/s: backlog (\d+) ms", re.I)),
+    ("caught_up", re.compile(r"^screen full rate after ([\d.]+) s", re.I)),
+    ("keyoff_ok", re.compile(r"^last key-off finished: (.*)", re.I)),
+    ("keyoff_bad", re.compile(r"^last key-off did not finish: (.*)", re.I)),
+    ("usb_bad", re.compile(r"^usb stick not working: (.*)", re.I)),
+    ("no_stick", re.compile(r"^no USB stick found (\d+) s after the mount", re.I)),
+    ("library", re.compile(r"^track library loaded in steps: (\d+) tracks?, ([\d.]+) s", re.I)),
+    ("gps_low", re.compile(r"^GPS rate low ([\d.]+) Hz", re.I)),
+]
+
+
+def dash_health(comments: List[str]) -> List[Tuple[str, str]]:
+    """[(level, text)] from the LapTimer's diagnostic '#' lines — level 'warn' (worth acting on) or 'note'.
+
+    Stalls, slow operations and slow writes to the stick are summed up rather than listed one by one; a
+    key-off that did not finish (the unit froze or lost power during that step) and a stick that stopped
+    working (logging moved to the unit — replace the stick) are warnings."""
+    found: Dict[str, list] = {}
+    for c in comments:
+        for kind, rx in _HEALTH_PATTERNS:
+            m = rx.match(c)
+            if m:
+                found.setdefault(kind, []).append(m.groups())
+                break
+    out: List[Tuple[str, str]] = []
+    if "usb_bad" in found:
+        out.append(("warn", f"USB stick stopped working ({found['usb_bad'][-1][0]}) — logging moved to the unit. "
+                            "Replace the stick."))
+    if "keyoff_bad" in found:
+        out.append(("warn", f"The last key-off did not finish: {found['keyoff_bad'][-1][0]} — the unit froze or "
+                            "lost power during that step."))
+    if "no_stick" in found:
+        out.append(("note", f"No USB stick found {found['no_stick'][-1][0]} s after the mount — this session was "
+                            "logged on the unit."))
+    if "stall" in found:
+        ms = [int(g[0]) for g in found["stall"]]
+        last = found["stall"][ms.index(max(ms))][1]
+        out.append(("warn" if max(ms) >= 1000 else "note",
+                    f"Dash stalled {len(ms)}× (longest {max(ms)} ms{', during ' + last if last else ''})."))
+    if "slow" in found:
+        ms = [int(g[1]) for g in found["slow"]]
+        worst = found["slow"][ms.index(max(ms))][0]
+        out.append(("note", f"{len(ms)} slow operation{'s' if len(ms) != 1 else ''} (longest: {worst}, {max(ms)} ms)."))
+    if "slow_write" in found:
+        ms = [int(g[0]) for g in found["slow_write"]]
+        out.append(("warn" if max(ms) >= 1000 else "note",
+                    f"{len(ms)} slow write{'s' if len(ms) != 1 else ''} to the stick (longest {max(ms)} ms)."))
+    if "backlog" in found:
+        ms = [int(g[0]) for g in found["backlog"]]
+        tail = (f"; back to full rate after {found['caught_up'][-1][0]} s" if "caught_up" in found else "")
+        out.append(("note", f"Screen fell behind {len(ms)}× (backlog up to {max(ms)} ms){tail}."))
+    if "gps_low" in found:
+        hz = min(float(g[0]) for g in found["gps_low"])
+        out.append(("note", f"GPS rate dropped to {hz:g} Hz at times."))
+    if "keyoff_ok" in found:
+        out.append(("note", f"Last key-off finished: {found['keyoff_ok'][-1][0]}."))
+    if "library" in found:
+        n, secs = found["library"][-1]
+        out.append(("note", f"Track library loaded in steps: {n} tracks in {secs} s."))
+    return out
+
+
+# --------------------------------------------------------------------------
+# GARW LapTimer diagnostics file (laptimer_diag_<date>_<time>.txt) beside the logs
+# --------------------------------------------------------------------------
+
+_STAMP = re.compile(r"(\d{4})-(\d{2})-(\d{2})_(\d{2})(\d{2})")
+
+
+def _stamp_minutes(name: str) -> Optional[int]:
+    m = _STAMP.search(name)
+    if not m:
+        return None
+    import datetime as _dt
+    try:
+        d = _dt.datetime(*(int(x) for x in m.groups()))
+    except ValueError:
+        return None
+    return int(d.timestamp() // 60)
+
+
+def _diag_session(path: str) -> Tuple[str, str]:
+    """(log file name, session id) a diagnostics file names on its 'track: … session: S0017 log: …' line."""
+    try:
+        text, _enc = read_log_text(path)
+    except OSError:
+        return "", ""
+    head = "\n".join(text.replace("\r", "").split("\n")[:12])
+    m_log = re.search(r"\blog:\s*(\S+)", head)
+    m_ses = re.search(r"\bsession:\s*(S\d+)", head)
+    return (os.path.basename(m_log.group(1)) if m_log else ""), (m_ses.group(1) if m_ses else "")
+
+
+def find_diag(path: str) -> Optional[str]:
+    """The laptimer_diag_*.txt in the log's folder that belongs to this log, or None.
+
+    A diagnostics file names the session and log it was saved during ('session: S0017 log: …/S0017_….csv');
+    only one naming this log (or its session number) is used — another session's file would describe a
+    different drive. A file that names no session falls back to the one nearest in time (by the stamps in
+    the names, within a day)."""
+    folder, name = os.path.split(os.path.abspath(path))
+    m = re.match(r"(?:laptimer_)?(S\d+)_", name, re.I)
+    session = m.group(1).upper() if m else ""
+    t_log = _stamp_minutes(name)
+    named, nearest = None, None
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return None
+    for f in names:
+        if not (f.lower().startswith("laptimer_diag_") and f.lower().endswith(".txt")):
+            continue
+        p = os.path.join(folder, f)
+        try:
+            if os.path.getsize(p) == 0:
+                continue
+        except OSError:
+            continue
+        log_name, ses = _diag_session(p)
+        t = _stamp_minutes(f)
+        if log_name or ses:
+            if log_name == name or log_name == re.sub(r"^laptimer_", "", name) or (ses and ses.upper() == session):
+                if named is None or (t or 0) > (named[0] or 0):
+                    named = (t, p)              # the latest one saved during this session
+            continue
+        if t is None or t_log is None or abs(t - t_log) > 24 * 60:
+            continue
+        if nearest is None or abs(t - t_log) < nearest[0]:
+            nearest = (abs(t - t_log), p)
+    if named:
+        return named[1]
+    return nearest[1] if nearest else None
+
+
+def diag_health(path: str) -> List[Tuple[str, str]]:
+    """[(level, text)] from a LapTimer diagnostics file: entries under [Stalls and slow operations], the track
+    library the dash had loaded, rows the log-row guard dropped, an unusual [USB] mount, and
+    'stick: not working (…)' (the dash gave up on the stick). Placeholders like '(none)' are skipped."""
+    text, _enc = read_log_text(path)
+    section = ""
+    stalls: List[str] = []
+    out: List[Tuple[str, str]] = []
+    base = os.path.basename(path)
+    for raw in text.replace("\r", "").split("\n"):
+        line = raw.strip().rstrip("\x1e").strip()
+        if not line or line.startswith("("):
+            continue                            # '(none)', '(none yet: …)'
+        m = re.match(r"^\[(.+)\]$", line)
+        if m:
+            section = m.group(1).strip().lower()
+            continue
+        if re.match(r"^stick:\s*not working", line, re.I):
+            out.append(("warn", f"Diagnostics: {line} — the dash gave up on the stick. Replace it."))
+        elif section == "" and line.lower().startswith("track library:"):
+            out.append(("note", f"Track library on the dash: {' '.join(line.split(':', 1)[1].split())} ({base})."))
+        elif section.startswith("stalls"):
+            stalls.append(line)
+        elif section.startswith("log row guard"):
+            m = re.search(r"dropped (\d+)", line)
+            if m and int(m.group(1)) > 0:
+                out.append(("note", f"The dash's row guard dropped {m.group(1)} bad row(s) from the log ({line})."))
+        elif section == "usb" and line.lower().startswith("mount table:"):
+            last = re.search(r"last mount call:\s*(-?\d+)", line)
+            if "(not a device)" in line or (last and last.group(1) != "0"):
+                out.append(("note", f"{base} [USB] {line}"))
+    if stalls:
+        shown = "; ".join(stalls[:4]) + (f"; … ({len(stalls)} entries)" if len(stalls) > 4 else "")
+        out.append(("note", f"{base} [Stalls and slow operations]: {shown}"))
+    return out

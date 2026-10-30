@@ -109,7 +109,7 @@ except Exception as _e:  # pragma: no cover — not just ImportError: a broken d
     PARAMIKO_ERROR = f"{type(_e).__name__}: {_e}"
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "6.1.3"
+APP_VERSION = "6.1.4"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -557,6 +557,12 @@ def _check_dash(name: str, files: List[Tuple[str, bytes]], origin: str) -> DashP
 
 # -- settings-file annotation: which QML property does each line feed? --------
 _PROP_DECL_RE = re.compile(r"^\s*(?:readonly\s+)?property\s+(int|real|double|bool|string|color|var)\s+(\w+)\s*(?::\s*([^\n;]+?))?\s*;?\s*(?://.*)?$", re.M)
+
+
+def _is_laptimer_config(name: str) -> bool:
+    """laptimer_config.txt and the LapTimer's other settings files (not their .bak copies)."""
+    n = name.lower()
+    return n.startswith("laptimer") and not n.endswith(".bak")
 
 
 def parse_config_map(qml: str) -> Dict[int, dict]:
@@ -2921,7 +2927,9 @@ class IC7Device:
                 data = fh.read(CONFIG_PREVIEW_MAX + 1)
         finally:
             sftp.close()
-        text = data[:CONFIG_PREVIEW_MAX].decode("utf-8", errors="replace")
+        # the LapTimer's own files are one byte per character (ISO-8859-1), like all its files
+        text = (_lt.decode_dash_text(data[:CONFIG_PREVIEW_MAX]) if (_lt and _is_laptimer_config(name))
+                else data[:CONFIG_PREVIEW_MAX].decode("utf-8", errors="replace"))
         if len(data) > CONFIG_PREVIEW_MAX:
             text += "\n… (truncated)"
         return text
@@ -2933,7 +2941,21 @@ class IC7Device:
         self._run(f"mkdir -p {_sq(SCREEN_CONFIGS_DIR)}")
         remote = f"{SCREEN_CONFIGS_DIR}/{name}"
         tmp = f"{SCREEN_CONFIGS_DIR}/.{name}.editing"
-        data = text.encode("utf-8")
+        lt_cfg = bool(_lt) and _is_laptimer_config(name)
+        if lt_cfg:
+            # The LapTimer's config follows the dash's own rules: every key kept (the text is saved as edited, so
+            # keys this tool doesn't know — keyOffEject= and later ones — stay), the closing '#END' line kept,
+            # the previous version kept as <name>.bak, and ISO-8859-1 text.
+            old = self.read_text_file(remote) or b""
+            had_end = any(ln.strip() == "#END" for ln in _lt.decode_dash_text(old).splitlines())
+            if had_end and not any(ln.strip() == "#END" for ln in text.splitlines()):
+                text = text.rstrip("\n") + "\n#END\n"
+                self.log(f"  {name}: the '#END' line was missing — put back at the end.")
+            if old:
+                rc, _, err = self._run(f"cp -p {_sq(remote)} {_sq(remote + '.bak')}")
+                if rc == 0:
+                    self.log(f"  previous version kept as {name}.bak")
+        data = _lt.encode_dash_text(text) if lt_cfg else text.encode("utf-8")
         FILE_LOG.debug("SFTP put %s (%d bytes, staged as %s)", remote, len(data), tmp)
         sftp = self.client.open_sftp()
         try:
@@ -7354,7 +7376,7 @@ def run_gui(initial_zip: Optional[str] = None):
     # not lap data: MAC/track/settings files, the dash's camera settings (Camera.txt), the dash's own index.* and
     # probe.* bookkeeping files, its best_<track>.txt best laps (what the live delta is timed against), dotfiles.
     # These are listed only on request, and "Remove from device" never deletes them.
-    LAPDATA_KEEP = re.compile(r"(^racebox_mac_address\.txt$|^usertracks\.txt$|^camera\.|^index\.|^probe\.|^best_|config|settings|\.cfg$|\.ini$|\.conf$|^\.)", re.I)
+    LAPDATA_KEEP = re.compile(r"(^racebox_mac_address\.txt$|^usertracks\.txt$|^unit_logs\.txt$|^camera\.|^index\.|^probe\.|^best_|config|settings|\.cfg$|\.ini$|\.conf$|^\.)", re.I)
 
     def do_lapdata_download(temp_usb: bool = False):
         """List the lap timer's data folder on the device, let the user pick, copy to a folder here."""
@@ -7381,7 +7403,10 @@ def run_gui(initial_zip: Optional[str] = None):
         dlg.geometry(f"+{root.winfo_rootx() + 160}+{root.winfo_rooty() + 120}")
         frm = ttk.Frame(dlg, padding=14)
         frm.pack(fill="both", expand=True)
-        data_files = [f for f in files if not LAPDATA_KEEP.search(f[0][4:].rsplit("/", 1)[-1])]
+        # 0-byte files are normal: when the dash moves a log or summary it empties the old copy (it can't
+        # delete files). They're not lap data — hidden with the dash's own files, and never deleted.
+        empty = {f[0] for f in files if f[1] == 0}
+        data_files = [f for f in files if not LAPDATA_KEEP.search(f[0][4:].rsplit("/", 1)[-1]) and f[0] not in empty]
         on_usb = any(f[0].startswith("usb:") for f in files)
         other = [f for f in files if f not in data_files]
         show_other = tk.BooleanVar(value=False)
@@ -7503,12 +7528,13 @@ def run_gui(initial_zip: Optional[str] = None):
                 with IC7Device(log, confirm, set_progress) as dev:
                     dev.require_laptimer(need_data_dir=False)
                     n = dev.download_laptimer_data(rels, dest, delete_after, temp_usb=temp_usb,
-                                                   never_delete=lambda r: bool(LAPDATA_KEEP.search(r.rsplit("/", 1)[-1])))
+                                                   never_delete=lambda r: bool(LAPDATA_KEEP.search(r.rsplit("/", 1)[-1]))
+                                                   or any(e[4:] == r for e in empty))
                     live = list(getattr(dev, "lapdata_live", []))
                 log(f"Done — {n} file(s) in {dest}")
                 cfg["lapdata_dir"] = dest
                 save_config(cfg)
-                extra = ("\n\nand the sessions removed from the device (best-lap and settings files kept)."
+                extra = ("\n\nand the sessions removed from the device (the dash's own files — best laps, settings, empty copies — kept)."
                          if delete_after else "")
                 if live:
                     extra += ("\n\nStill being recorded (copied as it was when its download started, and left on the "
@@ -8322,6 +8348,9 @@ def run_gui(initial_zip: Optional[str] = None):
             known = (list(lap["db"].tracks) if lap.get("db") else []) + (list(lap["admin"].tracks) if lap.get("admin") else [])
             trackmatch.register_tracks(known or load_course_tracks())
             session = trackmatch.session_for(vbo)
+            for level, text in getattr(vbo, "dash_health", []) or []:
+                if level == "warn":                         # worth acting on: a failing stick, a key-off that froze
+                    log(f"WARNING: LapTimer: {text}")
             if session.mode == "p2p":
                 log(f"Lap Analysis: {session.sf_source}")
             la.update(session=session, path=path, result=None)
