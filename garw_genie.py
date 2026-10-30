@@ -7643,6 +7643,19 @@ def run_gui(initial_zip: Optional[str] = None):
                     log(f"{_lt.GPS_MAC_FILE} is not on the device — creating it with the default 'off'.")
                     path, data = _lt.GPS_MAC_FILE, _lt.gps_mac_render("off", None)
                     dev.write_text_file(_lt.GPS_MAC_FILE, data, "GPS setting")
+                elif path != _lt.GPS_MAC_FILE:
+                    # Only the older Racebox_MAC_Address.txt is there: carry its value over to the new file
+                    # (fresh comment lines) so a current dash reads the same setting. The old file stays as it is.
+                    old_value = _lt.gps_mac_parse(data)[0]
+                    if old_value:
+                        log(f"{_lt.GPS_MAC_FILE} is not on the device — creating it from "
+                            f"{os.path.basename(_lt.LEGACY_MAC_FILE)} ({old_value}).")
+                        data = _lt.gps_mac_render(old_value, None)
+                        dev.write_text_file(_lt.GPS_MAC_FILE, data, "GPS setting")
+                        path = _lt.GPS_MAC_FILE
+                    else:
+                        log(f"{os.path.basename(_lt.LEGACY_MAC_FILE)} has no MAC and no 'off' — "
+                            f"{os.path.basename(_lt.GPS_MAC_FILE)} not created (the dash uses its default).")
             value, status = _lt.gps_mac_parse(data)
 
             def show():
