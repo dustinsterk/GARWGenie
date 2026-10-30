@@ -7616,12 +7616,28 @@ def run_gui(initial_zip: Optional[str] = None):
         if data is not None:
             if legacy is not None and _lt.gps_mac_parse(legacy)[0] != _lt.gps_mac_parse(data)[0]:
                 log(f"Note: {os.path.basename(_lt.LEGACY_MAC_FILE)} (read by older dashes) holds "
-                    f"{_lt.gps_mac_parse(legacy)[0] or 'no MAC'}; {os.path.basename(_lt.GPS_MAC_FILE)} is used. "
-                    "'Save to device' sets both.")
+                    f"{_lt.gps_mac_parse(legacy)[0] or 'no MAC'}; {os.path.basename(_lt.GPS_MAC_FILE)} is used.")
             return _lt.GPS_MAC_FILE, data, legacy
         if legacy is not None:
             return _lt.LEGACY_MAC_FILE, legacy, legacy
         return None, None, None
+
+    def retire_legacy_mac(dev: IC7Device, value: Optional[str]) -> None:
+        """Delete the older Racebox_MAC_Address.txt once GPS_MAC_Address.txt holds the setting (a MAC or 'off'):
+        GPS_MAC_Address.txt is read back first and must say `value`. A failure is logged, never fatal — the
+        new file is already in place."""
+        old = _lt.LEGACY_MAC_FILE
+        if not value or dev.read_text_file(old) is None:
+            return
+        now = dev.read_text_file(_lt.GPS_MAC_FILE)
+        if now is None or _lt.gps_mac_parse(now)[0] != value:
+            log(f"Kept {os.path.basename(old)}: {os.path.basename(_lt.GPS_MAC_FILE)} didn't read back as {value}.")
+            return
+        rc, _, err = dev._run(f"rm -f {_sq(old)} && sync")
+        if rc != 0 or dev.read_text_file(old) is not None:
+            log(f"WARNING: couldn't delete {old}: {err.strip() or 'still present'}")
+            return
+        log(f"Deleted {old} — {os.path.basename(_lt.GPS_MAC_FILE)} now holds the setting ({value}).")
 
     def mac_normalise(v: str) -> Optional[str]:
         v = v.strip().upper().replace("-", ":")
@@ -7656,6 +7672,8 @@ def run_gui(initial_zip: Optional[str] = None):
                     else:
                         log(f"{os.path.basename(_lt.LEGACY_MAC_FILE)} has no MAC and no 'off' — "
                             f"{os.path.basename(_lt.GPS_MAC_FILE)} not created (the dash uses its default).")
+                if path == _lt.GPS_MAC_FILE:
+                    retire_legacy_mac(dev, _lt.gps_mac_parse(data)[0])
             value, status = _lt.gps_mac_parse(data)
 
             def show():
@@ -7686,12 +7704,8 @@ def run_gui(initial_zip: Optional[str] = None):
             with IC7Device(log, confirm) as dev:
                 dev.require_laptimer()
                 existing = dev.read_text_file(_lt.GPS_MAC_FILE)       # keep the file's comment lines
-                legacy = dev.read_text_file(_lt.LEGACY_MAC_FILE)
                 dev.write_text_file(_lt.GPS_MAC_FILE, _lt.gps_mac_render(value, existing), "GPS setting")
-                if legacy is not None:
-                    # an older dash on this unit still reads the old name — keep it in step
-                    dev.write_text_file(_lt.LEGACY_MAC_FILE, _lt.gps_mac_render(value, legacy), "GPS setting (older dash file)")
-                    log(f"Also updated {os.path.basename(_lt.LEGACY_MAC_FILE)} for older LapTimer versions.")
+                retire_legacy_mac(dev, value)                          # the old Racebox_MAC_Address.txt goes
                 ui(mac_info.configure, {"text": "On device: " + ("GPS off" if value == "off" else value)})
                 lap["mac_device"] = value
             # the dash re-reads the file whenever a dash loads — a screen flip is enough, no restart needed
