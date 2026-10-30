@@ -83,16 +83,51 @@ HEADER_RE = re.compile(r"^#LAPTIMER_TRACKS v(\d+)\|(\d+)(?:\|([^|]*))?$")
 MAC_RE = re.compile(r"^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$")
 MAC_ANY_RE = re.compile(r"([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}")
 GPS_MAC_TEMPLATE = ("{mac}\n"
+                    "{type_line}"
                     "# Your GPS's Bluetooth MAC address goes on the first line (e.g. 12:34:56:78:9A:BC).\n"
-                    "# Write \"off\" on the first line to not use a GPS.\n")
-#: Bluetooth names of the GPS units the dash can use (lower case, matched anywhere in the advertised name).
-#: Listed first in the scan, and on macOS the scan connects to them to recover the MAC.
-GPS_BLE_NAMES = ("racebox",)
+                    "# Write \"off\" on the first line to not use a GPS.\n"
+                    "# The line after it names the GPS type (letters, digits, . _ -, up to 32); without it the\n"
+                    "# type is racebox.\n")
+#: GPS types offered in the GARW Genie's Type list (the first is the default). Any name matching
+#: GPS_TYPE_RE can be typed in; the dash stores it in lower case.
+GPS_TYPES = ("racebox", "generic")
+DEFAULT_GPS_TYPE = "racebox"
+GPS_TYPE_RE = re.compile(r"^[A-Za-z0-9._-]{1,32}$")
+_TYPE_LINE_RE = re.compile(r"^\s*type\s*=\s*(\S*)\s*$", re.I)
+#: Bluetooth names of the GPS units the dash can use (lower case, matched anywhere in the advertised name)
+#: and the type each one is. Listed first in the scan, and on macOS the scan connects to them to recover the MAC.
+GPS_BLE_NAMES = {"racebox": "racebox"}
 
 
 def is_gps_name(name: str) -> bool:
+    return gps_type_for_name(name) is not None
+
+
+def gps_type_for_name(name: str) -> Optional[str]:
     n = (name or "").lower()
-    return any(k in n for k in GPS_BLE_NAMES)
+    for k, t in GPS_BLE_NAMES.items():
+        if k in n:
+            return t
+    return None
+
+
+def gps_type_normalise(value: str) -> Optional[str]:
+    """'Generic-2' -> 'generic-2'; None when it isn't a valid type (letters, digits, . _ -, up to 32)."""
+    v = (value or "").strip()
+    return v.lower() if GPS_TYPE_RE.match(v) else None
+
+
+def gps_type_parse(data: Optional[bytes]) -> str:
+    """The GPS type a pairing file names on a 'type=…' line after the address line; 'racebox' without one
+    (every file written before the type existed, and Racebox_MAC_Address.txt)."""
+    if not data:
+        return DEFAULT_GPS_TYPE
+    lines = decode_dash_text(data).replace("\r", "").split("\n")
+    for ln in lines[1:]:
+        m = _TYPE_LINE_RE.match(ln)
+        if m:
+            return gps_type_normalise(m.group(1)) or DEFAULT_GPS_TYPE
+    return DEFAULT_GPS_TYPE
 
 
 def gps_mac_parse(data: bytes) -> Tuple[Optional[str], str]:
@@ -109,17 +144,24 @@ def gps_mac_parse(data: bytes) -> Tuple[Optional[str], str]:
     return None, "no MAC in the file (the dash falls back to its built-in default)"
 
 
-def gps_mac_render(value: str, existing: Optional[bytes]) -> bytes:
-    """New file contents: the value on line 1, the rest of the existing file (its comments) kept."""
+def gps_mac_render(value: str, existing: Optional[bytes], gps_type: Optional[str] = None) -> bytes:
+    """New file contents: the value ('AA:BB:…' or 'off') on line 1, 'type=<gps_type>' on line 2 when a type is
+    given (the dash drops line breaks when it reads the file, so the type must come after the address), then
+    the rest of the existing file (its comments) with any old type line taken out."""
+    t = gps_type_normalise(gps_type) if gps_type else None
+    type_line = f"type={t}\n" if t else ""
     rest = ""
     if existing:
         parts = decode_dash_text(existing).replace("\r", "").split("\n", 1)
         rest = parts[1] if len(parts) > 1 else ""
+        rest = "\n".join(ln for ln in rest.split("\n") if not (t and _TYPE_LINE_RE.match(ln)))
         if not rest.strip():
             rest = ""
     if not rest:
-        return encode_dash_text(GPS_MAC_TEMPLATE.format(mac=value))
-    return encode_dash_text(value + "\n" + rest.rstrip("\n") + "\n")
+        return encode_dash_text(GPS_MAC_TEMPLATE.format(mac=value, type_line=type_line))
+    return encode_dash_text(value + "\n" + type_line + rest.strip("\n") + "\n")
+
+
 LAPTIMER_FILE = "/opt/IC7/library/LapTimer.enc"  # the LapTimer dash (encrypted) — an optional add-on, not on every device
 LAPTIMER_DATA_DIR = "/opt/IC7/laptimerdata"      # its data folder; made by the dash, never by this tool
 LAPTIMER_USB_DIR = "/media/laptimerdata"         # where the lap data lives while a USB stick is in the GARW

@@ -105,6 +105,9 @@ class VboFile:
     track_name: str = ""
     #: GARW LapTimer version that wrote the log ('3.6'), "" if the log doesn't say
     dash_version: str = ""
+    #: GARW LapTimer: the GPS type the dash was paired with ('racebox', 'generic', …), from 'gps=' in the
+    #: summary header; "" when the summary doesn't say (written before the type existed)
+    gps_type: str = ""
     #: GARW LapTimer: [(level 'warn' | 'note', text)] from its diagnostic '#' lines (csvlog.dash_health)
     dash_health: List[Tuple[str, str]] = field(default_factory=list)
     sample_rate: float = 0.0

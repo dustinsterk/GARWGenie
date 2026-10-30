@@ -50,6 +50,8 @@ def session_summary(session: Session) -> str:
         lines.append(f"Track         : {session.vbo.track_name}")
     lines.append(f"Samples       : {session.vbo.n_samples} @ "
                  f"{session.vbo.sample_rate:.0f} Hz")
+    if getattr(session.vbo, "gps_type", ""):
+        lines.append(f"GPS           : {session.vbo.gps_type}")
     lines.append(f"Channels      : {', '.join(sorted(session.vbo.channels))}")
     runs = getattr(session, "mode", "laps") == "runs"
     p2p = getattr(session, "mode", "laps") == "p2p"

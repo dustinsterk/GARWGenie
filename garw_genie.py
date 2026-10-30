@@ -7272,24 +7272,57 @@ def run_gui(initial_zip: Optional[str] = None):
     mac_box = ttk.LabelFrame(tab_lap, text="  GPS  ", padding=(10, 2, 10, 6))
     mac_box.grid(row=0, column=0, columnspan=2, sticky="ew")
     ttk.Label(mac_box, style="Muted.TLabel", wraplength=1150, justify="left",
-              text=f"Bluetooth MAC of your GPS (on its label / in its app), kept on the device in {_lt.GPS_MAC_FILE if _lt else ''}; "
-                   "the dash re-reads it whenever a dash loads.").grid(row=0, column=0, columnspan=6, sticky="w")
+              text=f"Bluetooth MAC of your GPS (on its label / in its app) and its type, kept on the device in {_lt.GPS_MAC_FILE if _lt else ''}; "
+                   "the dash re-reads it whenever a dash loads. Type: pick one or type a name (letters, digits, . _ -, up to 32).").grid(row=0, column=0, sticky="w")
+    # one row of controls packed left to right (a grid here would spread them under the long help line)
+    mac_row = ttk.Frame(mac_box)
+    mac_row.grid(row=1, column=0, sticky="w", pady=(6, 0))
     mac_var = tk.StringVar()
-    mac_ent = ttk.Entry(mac_box, textvariable=mac_var, width=24)
-    mac_ent.grid(row=1, column=0, sticky="w", pady=(6, 0))
+    mac_ent = ttk.Entry(mac_row, textvariable=mac_var, width=24)
+    mac_ent.pack(side="left")
     mac_off_var = tk.BooleanVar(value=False)
+
+    # GPS type: written as 'type=…' on the line after the address; the dash treats a file without it as racebox
+    gps_type_fr = ttk.Frame(mac_row)
+    gps_type_fr.pack(side="left", padx=(12, 0))
+    ttk.Label(gps_type_fr, text="Type").pack(side="left")
+    gps_type_var = tk.StringVar(value=_lt.DEFAULT_GPS_TYPE if _lt else "racebox")
+    gps_type_box = ttk.Combobox(gps_type_fr, textvariable=gps_type_var, width=12,
+                                values=list(_lt.GPS_TYPES) if _lt else ["racebox"])
+    gps_type_box.pack(side="left", padx=(6, 0))
 
     def mac_off_toggle():
         mac_ent.configure(state="disabled" if mac_off_var.get() else "normal")
-    ttk.Checkbutton(mac_box, text="No GPS (off)", variable=mac_off_var, command=mac_off_toggle).grid(row=1, column=1, padx=(10, 0), pady=(6, 0))
-    mac_scan_btn = ttk.Button(mac_box, text="Scan for GPS…")
-    mac_scan_btn.grid(row=1, column=2, padx=(12, 0), pady=(6, 0))
-    mac_read_btn = ttk.Button(mac_box, text="Read from device")
-    mac_read_btn.grid(row=1, column=3, padx=(6, 0), pady=(6, 0))
-    mac_save_btn = ttk.Button(mac_box, text="Save to device", style="Accent.TButton")
-    mac_save_btn.grid(row=1, column=4, padx=(6, 0), pady=(6, 0))
-    mac_info = ttk.Label(mac_box, style="Muted.TLabel", text="")
-    mac_info.grid(row=1, column=5, sticky="w", padx=(12, 0), pady=(6, 0))
+    mac_off_cb = ttk.Checkbutton(mac_row, text="No GPS (off)", variable=mac_off_var, command=mac_off_toggle)
+    mac_off_cb.pack(side="left", padx=(12, 0))
+    # the buttons and the status share one row on a wide window and move under the MAC on a narrow one
+    mac_btns = ttk.Frame(mac_box)
+    mac_scan_btn = ttk.Button(mac_btns, text="Scan for GPS…")
+    mac_scan_btn.pack(side="left")
+    mac_read_btn = ttk.Button(mac_btns, text="Read from device")
+    mac_read_btn.pack(side="left", padx=(6, 0))
+    mac_save_btn = ttk.Button(mac_btns, text="Save to device", style="Accent.TButton")
+    mac_save_btn.pack(side="left", padx=(6, 0))
+    mac_info = ttk.Label(mac_btns, style="Muted.TLabel", text="")
+    mac_info.pack(side="left", padx=(12, 0))
+    mac_layout = {"narrow": None}
+
+    def mac_reflow(width: int) -> None:
+        row_need = (mac_ent.winfo_reqwidth() + gps_type_fr.winfo_reqwidth() + mac_off_cb.winfo_reqwidth()
+                    + mac_btns.winfo_reqwidth() + 60)          # paddings + the box's own frame
+        narrow = width < row_need
+        if narrow == mac_layout["narrow"]:
+            return
+        mac_layout["narrow"] = narrow
+        mac_btns.pack_forget()
+        mac_btns.grid_forget()
+        if narrow:
+            mac_btns.grid(row=2, column=0, sticky="w", pady=(6, 0))
+        else:
+            mac_btns.pack(in_=mac_row, side="left", padx=(12, 0))
+    mac_reflow(10 ** 6)
+    page_lap.bind("<Configure>", lambda e: mac_reflow(e.width) if e.widget is page_lap else None, add="+")
+    mac_info.bind("<Configure>", lambda e: mac_reflow(page_lap.winfo_width()) if page_lap.winfo_width() > 1 else None, add="+")
     # -- USB stick --
     usb_box = ttk.LabelFrame(tab_lap, text="  Lap data  ", padding=(10, 2, 10, 6))
     usb_box.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(4, 0))
@@ -7579,6 +7612,7 @@ def run_gui(initial_zip: Optional[str] = None):
         mac_path, mac, _old = read_gps_mac(dev)
         trk = dev.read_text_file(_lt.USER_TRACKS_FILE)
         value = _lt.gps_mac_parse(mac)[0] if mac is not None else None
+        gtype = _lt.gps_type_parse(mac)
         lap["device_tracks"] = "missing" if trk is None else _lt.UserTrackDB.parse(trk)
 
         def show():
@@ -7588,14 +7622,15 @@ def run_gui(initial_zip: Optional[str] = None):
                 mac_off_var.set(value == "off")
                 mac_off_toggle()
                 mac_var.set("" if value in (None, "off") else value)
+                gps_type_var.set(gtype)
             lap["mac_device"] = value if mac is not None else None
-            mac_info.configure(text=("On device: " + ("GPS off" if value == "off" else value or "— no MAC (default used)")
-                                     + ("" if mac_path == _lt.GPS_MAC_FILE else f"  (older {os.path.basename(mac_path)})"))
+            mac_info.configure(text=mac_status_text(value, gtype, mac_path)
                                if mac is not None else f"On device: no {os.path.basename(_lt.GPS_MAC_FILE)} yet")
             fill_trk_tree()
         ui(show)
         n = 0 if trk is None else len(lap["device_tracks"].tracks)
-        log(f"Lap timer on device: GPS {'not set' if mac is None else (value or 'default')}, "
+        log(f"Lap timer on device: GPS {'not set' if mac is None else (value or 'default')}"
+            + (f" ({gtype})" if mac is not None else "") + ", "
             + (f"no {os.path.basename(_lt.USER_TRACKS_FILE)}" if trk is None else f"{n} custom track(s) in {os.path.basename(_lt.USER_TRACKS_FILE)}"))
 
     def do_lap_refresh():
@@ -7608,13 +7643,23 @@ def run_gui(initial_zip: Optional[str] = None):
                     log("LapTimer isn't installed on the device — nothing to read.")
         start(worker)
 
+    def mac_status_text(value: Optional[str], gtype: str, path: Optional[str]) -> str:
+        """'On device: D4:F7:… (racebox)' — plus the older file's name when the setting came from it."""
+        txt = "On device: " + ("GPS off" if value == "off" else value or "— no MAC (default used)")
+        if value and value != "off":
+            txt += f"  ({gtype})"
+        if path and path != _lt.GPS_MAC_FILE:
+            txt += f"  (older {os.path.basename(path)})"
+        return txt
+
     def read_gps_mac(dev: IC7Device) -> Tuple[Optional[str], Optional[bytes], Optional[bytes]]:
         """-> (path, data, legacy_data): the MAC file the dash uses — GPS_MAC_Address.txt, or the older
         Racebox_MAC_Address.txt when only that one is there — and the older file's contents (None if absent)."""
         data = dev.read_text_file(_lt.GPS_MAC_FILE)
         legacy = dev.read_text_file(_lt.LEGACY_MAC_FILE)
         if data is not None:
-            if legacy is not None and _lt.gps_mac_parse(legacy)[0] != _lt.gps_mac_parse(data)[0]:
+            if legacy is not None and (_lt.gps_mac_parse(legacy)[0], _lt.gps_type_parse(legacy)) != \
+                    (_lt.gps_mac_parse(data)[0], _lt.gps_type_parse(data)):
                 log(f"Note: {os.path.basename(_lt.LEGACY_MAC_FILE)} (read by older dashes) holds "
                     f"{_lt.gps_mac_parse(legacy)[0] or 'no MAC'}; {os.path.basename(_lt.GPS_MAC_FILE)} is used.")
             return _lt.GPS_MAC_FILE, data, legacy
@@ -7657,7 +7702,7 @@ def run_gui(initial_zip: Optional[str] = None):
                 if data is None:
                     # Not there yet: create it with the default ('off') so the device always has one.
                     log(f"{_lt.GPS_MAC_FILE} is not on the device — creating it with the default 'off'.")
-                    path, data = _lt.GPS_MAC_FILE, _lt.gps_mac_render("off", None)
+                    path, data = _lt.GPS_MAC_FILE, _lt.gps_mac_render("off", None, _lt.DEFAULT_GPS_TYPE)
                     dev.write_text_file(_lt.GPS_MAC_FILE, data, "GPS setting")
                 elif path != _lt.GPS_MAC_FILE:
                     # Only the older Racebox_MAC_Address.txt is there: carry its value over to the new file
@@ -7666,7 +7711,7 @@ def run_gui(initial_zip: Optional[str] = None):
                     if old_value:
                         log(f"{_lt.GPS_MAC_FILE} is not on the device — creating it from "
                             f"{os.path.basename(_lt.LEGACY_MAC_FILE)} ({old_value}).")
-                        data = _lt.gps_mac_render(old_value, None)
+                        data = _lt.gps_mac_render(old_value, None, _lt.gps_type_parse(data))
                         dev.write_text_file(_lt.GPS_MAC_FILE, data, "GPS setting")
                         path = _lt.GPS_MAC_FILE
                     else:
@@ -7675,16 +7720,18 @@ def run_gui(initial_zip: Optional[str] = None):
                 if path == _lt.GPS_MAC_FILE:
                     retire_legacy_mac(dev, _lt.gps_mac_parse(data)[0])
             value, status = _lt.gps_mac_parse(data)
+            gtype = _lt.gps_type_parse(data)
 
             def show():
                 mac_off_var.set(value == "off")
                 mac_off_toggle()
                 mac_var.set("" if value in (None, "off") else value)
-                mac_info.configure(text="On device: " + ("GPS off" if value == "off" else value or "— no MAC (default used)")
-                                   + ("" if path == _lt.GPS_MAC_FILE else f"  (older {os.path.basename(path)})"))
+                gps_type_var.set(gtype)
+                mac_info.configure(text=mac_status_text(value, gtype, path))
                 lap["mac_device"] = value
             ui(show)
-            log(f"GPS file on device ({os.path.basename(path)}): {status}" + (f" — {value}" if value and value != "off" else ""))
+            log(f"GPS file on device ({os.path.basename(path)}): {status}"
+                + (f" — {value}" if value and value != "off" else "") + f", type {gtype}")
         start(worker)
 
     def do_mac_save():
@@ -7697,6 +7744,12 @@ def run_gui(initial_zip: Optional[str] = None):
                                                "(dashes and lower case are fine) — or tick 'No GPS (off)'.", parent=root)
                 return
             mac_var.set(value)
+        gtype = _lt.gps_type_normalise(gps_type_var.get()) if _lt else None
+        if not gtype:
+            messagebox.showerror(APP_NAME, "That isn't a valid GPS type.\nUse letters, digits, '.', '_' and '-' only, "
+                                           "up to 32 characters — e.g. racebox or generic.", parent=root)
+            return
+        gps_type_var.set(gtype)
 
         def worker():
             if not gui_preflight():
@@ -7704,9 +7757,9 @@ def run_gui(initial_zip: Optional[str] = None):
             with IC7Device(log, confirm) as dev:
                 dev.require_laptimer()
                 existing = dev.read_text_file(_lt.GPS_MAC_FILE)       # keep the file's comment lines
-                dev.write_text_file(_lt.GPS_MAC_FILE, _lt.gps_mac_render(value, existing), "GPS setting")
+                dev.write_text_file(_lt.GPS_MAC_FILE, _lt.gps_mac_render(value, existing, gtype), "GPS setting")
                 retire_legacy_mac(dev, value)                          # the old Racebox_MAC_Address.txt goes
-                ui(mac_info.configure, {"text": "On device: " + ("GPS off" if value == "off" else value)})
+                ui(mac_info.configure, {"text": mac_status_text(value, gtype, _lt.GPS_MAC_FILE)})
                 lap["mac_device"] = value
             # the dash re-reads the file whenever a dash loads — a screen flip is enough, no restart needed
             reload_dash_settings()
@@ -7770,6 +7823,9 @@ def run_gui(initial_zip: Optional[str] = None):
             mac_off_var.set(False)
             mac_off_toggle()
             mac_var.set(sel[0])
+            t = _lt.gps_type_for_name(name) if _lt else None
+            if t:
+                gps_type_var.set(t)
             log(f"GPS selected from scan: {name} {sel[0]} — press 'Save to device' to store it.")
             dlg.destroy()
         ttk.Button(btns, text="Cancel", command=dlg.destroy).pack(side="right")

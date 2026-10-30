@@ -525,6 +525,7 @@ def parse_csv(path: str, delimiter: Optional[str] = None) -> VboFile:
             notes.append(f"lap summary {os.path.basename(summary)} couldn't be read ({exc})")
         if not vbo.track_name:
             vbo.track_name = summary_track_name(summary) or ""
+        vbo.gps_type = summary_header_fields(summary).get("gps", "").lower()
     if dash_version:
         notes.append(f"written by LapTimer v{dash_version}"
                      + (f", track: {track_name}" if track_name else
@@ -756,6 +757,24 @@ def parse_dash_header(line: str) -> Tuple[str, Optional[str]]:
     j = rest.find(", ")
     name = (rest[:j] if j >= 0 else rest).strip()
     return version, (name or None)
+
+
+def summary_header_fields(path: str) -> Dict[str, str]:
+    """The key=value fields of a summary's first line ('# LapTimer session,…,gps_hz=25,gps=generic,dash=v3.15'),
+    {} when there are none. Fields without '=' (session, track, country…) are left out."""
+    try:
+        text, _enc = read_log_text(path)
+    except OSError:
+        return {}
+    first = text.split("\n", 1)[0].strip().rstrip("\x1e")
+    if not first.startswith("#") or "LapTimer session" not in first:
+        return {}
+    out: Dict[str, str] = {}
+    for f in first.lstrip("#").split(","):
+        k, eq, v = f.partition("=")
+        if eq and k.strip() and k.strip().lower() not in out:
+            out[k.strip().lower()] = v.strip()
+    return out
 
 
 def summary_track_name(path: str) -> Optional[str]:
