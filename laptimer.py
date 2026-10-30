@@ -82,26 +82,34 @@ def decode_dash_text(data: bytes) -> str:
 HEADER_RE = re.compile(r"^#LAPTIMER_TRACKS v(\d+)\|(\d+)(?:\|([^|]*))?$")
 MAC_RE = re.compile(r"^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$")
 MAC_ANY_RE = re.compile(r"([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}")
-RACEBOX_TEMPLATE = ("{mac}\n"
-                    "# Your RaceBox Bluetooth MAC address goes on the first line (e.g. 12:34:56:78:9A:BC).\n"
-                    "# Write \"off\" on the first line to not use a RaceBox.\n")
+GPS_MAC_TEMPLATE = ("{mac}\n"
+                    "# Your GPS's Bluetooth MAC address goes on the first line (e.g. 12:34:56:78:9A:BC).\n"
+                    "# Write \"off\" on the first line to not use a GPS.\n")
+#: Bluetooth names of the GPS units the dash can use (lower case, matched anywhere in the advertised name).
+#: Listed first in the scan, and on macOS the scan connects to them to recover the MAC.
+GPS_BLE_NAMES = ("racebox",)
 
 
-def racebox_parse(data: bytes) -> Tuple[Optional[str], str]:
+def is_gps_name(name: str) -> bool:
+    n = (name or "").lower()
+    return any(k in n for k in GPS_BLE_NAMES)
+
+
+def gps_mac_parse(data: bytes) -> Tuple[Optional[str], str]:
     """-> (value, status). value is 'AA:BB:CC:DD:EE:FF', 'off', or None (file empty / nothing usable).
-    Mirrors the dash: 'off' on the first line disables the RaceBox; otherwise the first MAC anywhere in
+    Mirrors the dash: 'off' on the first line disables the GPS; otherwise the first MAC anywhere in
     the file is used, in any case, with ':' or '-'. Status describes what was found."""
     text = decode_dash_text(data).replace("\r", "")
     first = text.split("\n", 1)[0].strip()
     if first.lower().startswith("off"):
-        return "off", "RaceBox disabled ('off' on the first line)"
+        return "off", "GPS disabled ('off' on the first line)"
     m = MAC_ANY_RE.search(text)
     if m:
         return m.group(0).upper().replace("-", ":"), "MAC found"
     return None, "no MAC in the file (the dash falls back to its built-in default)"
 
 
-def racebox_render(value: str, existing: Optional[bytes]) -> bytes:
+def gps_mac_render(value: str, existing: Optional[bytes]) -> bytes:
     """New file contents: the value on line 1, the rest of the existing file (its comments) kept."""
     rest = ""
     if existing:
@@ -110,12 +118,14 @@ def racebox_render(value: str, existing: Optional[bytes]) -> bytes:
         if not rest.strip():
             rest = ""
     if not rest:
-        return encode_dash_text(RACEBOX_TEMPLATE.format(mac=value))
+        return encode_dash_text(GPS_MAC_TEMPLATE.format(mac=value))
     return encode_dash_text(value + "\n" + rest.rstrip("\n") + "\n")
 LAPTIMER_FILE = "/opt/IC7/library/LapTimer.enc"  # the LapTimer dash (encrypted) — an optional add-on, not on every device
 LAPTIMER_DATA_DIR = "/opt/IC7/laptimerdata"      # its data folder; made by the dash, never by this tool
 LAPTIMER_USB_DIR = "/media/laptimerdata"         # where the lap data lives while a USB stick is in the GARW
-RACEBOX_MAC_FILE = LAPTIMER_DATA_DIR + "/Racebox_MAC_Address.txt"
+GPS_MAC_FILE = LAPTIMER_DATA_DIR + "/GPS_MAC_Address.txt"         # the GPS MAC file the dash reads from now on
+LEGACY_MAC_FILE = LAPTIMER_DATA_DIR + "/Racebox_MAC_Address.txt"  # the name older dashes read
+MAC_FILES = (GPS_MAC_FILE, LEGACY_MAC_FILE)                      # read in this order
 USER_TRACKS_FILE = LAPTIMER_DATA_DIR + "/UserTracks.txt"   # the only track file the tool reads or writes on the device
 USER_TRACKS_TEMPLATE = """# UserTracks.txt - your own tracks, added to the LapTimer's track library.
 # One track per line, same format as the library:

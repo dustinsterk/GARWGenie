@@ -109,7 +109,7 @@ except Exception as _e:  # pragma: no cover — not just ImportError: a broken d
     PARAMIKO_ERROR = f"{type(_e).__name__}: {_e}"
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "6.1.4"
+APP_VERSION = "6.1.5"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -1832,13 +1832,20 @@ def _sq(s: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Bluetooth LE scan on this computer (bleak) — used to find the RaceBox's MAC.
+# Bluetooth LE scan on this computer (bleak) — used to find the GPS's MAC.
 # macOS hides peripheral MAC addresses from apps (CoreBluetooth hands out a per-Mac UUID), so there
-# the scanner also connects to each RaceBox and reads the Device Information "System ID" (0x2A23):
-# Nordic-based devices (the RaceBox is one) derive it from the MAC as an EUI-64 — MAC with FF:FE in
+# the scanner also connects to each GPS (laptimer.GPS_BLE_NAMES) and reads the Device Information "System ID" (0x2A23):
+# Nordic-based devices (the supported GPS is one) derive it from the MAC as an EUI-64 — MAC with FF:FE in
 # the middle — which gets the real address back. Windows and Linux report the MAC directly.
 # ---------------------------------------------------------------------------
 SYSTEM_ID_UUID = "00002a23-0000-1000-8000-00805f9b34fb"
+
+
+def _is_gps(name: str) -> bool:
+    """A Bluetooth name of a GPS the dash can use (laptimer.GPS_BLE_NAMES)."""
+    if _lt:
+        return _lt.is_gps_name(name)
+    return "racebox" in (name or "").lower()
 
 
 def _mac_from_system_id(raw: bytes) -> Optional[str]:
@@ -1897,7 +1904,7 @@ def ble_scan(seconds: float, log) -> List[Tuple[str, str, Optional[int], bool]]:
         return None
 
     async def recover_mac(dev, name: str, adv) -> Optional[str]:
-        """macOS only: get the real MAC of a RaceBox that CoreBluetooth shows as a UUID."""
+        """macOS only: get the real MAC of a GPS that CoreBluetooth shows as a UUID."""
         mfg = {k: bytes(v).hex() for k, v in (adv.manufacturer_data or {}).items()}
         svc = {k: bytes(v).hex() for k, v in (adv.service_data or {}).items()}
         log(f"  {name}: advertisement — manufacturer data {mfg or '{}'}, service data {svc or '{}'}, services {list(adv.service_uuids or [])}")
@@ -1937,9 +1944,9 @@ def ble_scan(seconds: float, log) -> List[Tuple[str, str, Optional[int], bool]]:
 
     async def run():
         # Callback scan rather than BleakScanner.discover(): discover() keeps only the LAST advertisement per
-        # device, and a device's name usually travels in the scan response, not every packet — so a RaceBox
+        # device, and a device's name usually travels in the scan response, not every packet — so a GPS
         # whose final packet happened to lack the name came back nameless. Here the name sticks once seen,
-        # and the scan ends ~2 s after the first RaceBox shows up (or after `seconds` at most).
+        # and the scan ends ~2 s after the first GPS shows up (or after `seconds` at most).
         seen: Dict[str, dict] = {}
         first_rb = {"t": None}
         loop = asyncio.get_running_loop()
@@ -1953,7 +1960,7 @@ def ble_scan(seconds: float, log) -> List[Tuple[str, str, Optional[int], bool]]:
                 e["name"] = nm                                    # sticky: a nameless packet never erases it
             if adv.rssi is not None:
                 e["rssi"] = adv.rssi
-            if "racebox" in e["name"].lower() and first_rb["t"] is None:
+            if _is_gps(e["name"]) and first_rb["t"] is None:
                 first_rb["t"] = loop.time()
 
         log(f"Scanning for Bluetooth LE devices (up to {seconds:g} s) …")
@@ -1975,18 +1982,18 @@ def ble_scan(seconds: float, log) -> List[Tuple[str, str, Optional[int], bool]]:
             dev, adv, name, rssi = e["dev"], e["adv"], e["name"], e["rssi"]
             addr = dev.address.upper()
             real = bool(_lt and _lt.MAC_RE.match(addr)) if _lt else bool(re.fullmatch(r"(?:[0-9A-F]{2}:){5}[0-9A-F]{2}", addr))
-            if not real and "racebox" in name.lower():
+            if not real and _is_gps(name):
                 mac = await recover_mac(dev, name, adv)
                 if mac:
                     addr, real = mac, True
             out.append((addr, name, rssi, real))
         out.sort(key=lambda t: (-(t[2] if t[2] is not None else -999), t[1].lower(), t[0]))
-        n_rb = sum('racebox' in n.lower() for _, n, _, _ in out)
-        log(f"Scan finished: {len(out)} device(s) seen, {n_rb} RaceBox.")
+        n_rb = sum(_is_gps(n) for _, n, _, _ in out)
+        log(f"Scan finished: {len(out)} device(s) seen, {n_rb} GPS.")
         if not n_rb:
-            log("  No RaceBox advertising. It goes silent while anything is connected to it: a GARW that's switched on with "
-                "this RaceBox's MAC set grabs it within seconds, as does the RaceBox phone app. Switch the GARW off (or save "
-                "'No RaceBox' to it) and close the phone app, then scan again.")
+            log("  No GPS advertising. It goes silent while anything is connected to it: a GARW that's switched on with "
+                "this GPS's MAC set grabs it within seconds, as does the GPS's phone app. Switch the GARW off (or save "
+                "'No GPS' to it) and close the phone app, then scan again.")
         return out
     return asyncio.run(run())
 
@@ -7251,7 +7258,7 @@ def run_gui(initial_zip: Optional[str] = None):
         root.after(100, ctl_tick)
     ctl_tick()
 
-    # ---------- Tab: Lap Timer (RaceBox MAC + track database editor) ----------
+    # ---------- Tab: Lap Timer (GPS MAC + track database editor) ----------
     page_lap, tab_lap = tab_lap, scroll_page(tab_lap)
     LOCAL_USER_TRACKS = CONFIG_DIR / "UserTracks.txt"
     lap = {"db": _lt.UserTrackDB() if _lt else None, "lib": _lt.TrackLibrary() if _lt else None,
@@ -7261,11 +7268,11 @@ def run_gui(initial_zip: Optional[str] = None):
            # what the device holds, from the last read (None = not read yet; "missing" = no file on the unit)
            "device_db": None, "device_tracks": None, "mac_device": None}
 
-    # -- RaceBox --
-    mac_box = ttk.LabelFrame(tab_lap, text="  RaceBox  ", padding=(10, 2, 10, 6))
+    # -- GPS --
+    mac_box = ttk.LabelFrame(tab_lap, text="  GPS  ", padding=(10, 2, 10, 6))
     mac_box.grid(row=0, column=0, columnspan=2, sticky="ew")
     ttk.Label(mac_box, style="Muted.TLabel", wraplength=1150, justify="left",
-              text=f"Bluetooth MAC of your RaceBox GPS (on its label / in its app), kept on the device in {_lt.RACEBOX_MAC_FILE if _lt else ''}; "
+              text=f"Bluetooth MAC of your GPS (on its label / in its app), kept on the device in {_lt.GPS_MAC_FILE if _lt else ''}; "
                    "the dash re-reads it whenever a dash loads.").grid(row=0, column=0, columnspan=6, sticky="w")
     mac_var = tk.StringVar()
     mac_ent = ttk.Entry(mac_box, textvariable=mac_var, width=24)
@@ -7274,8 +7281,8 @@ def run_gui(initial_zip: Optional[str] = None):
 
     def mac_off_toggle():
         mac_ent.configure(state="disabled" if mac_off_var.get() else "normal")
-    ttk.Checkbutton(mac_box, text="No RaceBox (off)", variable=mac_off_var, command=mac_off_toggle).grid(row=1, column=1, padx=(10, 0), pady=(6, 0))
-    mac_scan_btn = ttk.Button(mac_box, text="Scan for RaceBox…")
+    ttk.Checkbutton(mac_box, text="No GPS (off)", variable=mac_off_var, command=mac_off_toggle).grid(row=1, column=1, padx=(10, 0), pady=(6, 0))
+    mac_scan_btn = ttk.Button(mac_box, text="Scan for GPS…")
     mac_scan_btn.grid(row=1, column=2, padx=(12, 0), pady=(6, 0))
     mac_read_btn = ttk.Button(mac_box, text="Read from device")
     mac_read_btn.grid(row=1, column=3, padx=(6, 0), pady=(6, 0))
@@ -7376,7 +7383,7 @@ def run_gui(initial_zip: Optional[str] = None):
     # not lap data: MAC/track/settings files, the dash's camera settings (Camera.txt), the dash's own index.* and
     # probe.* bookkeeping files, its best_<track>.txt best laps (what the live delta is timed against), dotfiles.
     # These are listed only on request, and "Remove from device" never deletes them.
-    LAPDATA_KEEP = re.compile(r"(^racebox_mac_address\.txt$|^usertracks\.txt$|^unit_logs\.txt$|^camera\.|^index\.|^probe\.|^best_|config|settings|\.cfg$|\.ini$|\.conf$|^\.)", re.I)
+    LAPDATA_KEEP = re.compile(r"(^gps_mac_address\.txt$|^racebox_mac_address\.txt$|^usertracks\.txt$|^unit_logs\.txt$|^camera\.|^index\.|^probe\.|^best_|config|settings|\.cfg$|\.ini$|\.conf$|^\.)", re.I)
 
     def do_lapdata_download(temp_usb: bool = False):
         """List the lap timer's data folder on the device, let the user pick, copy to a folder here."""
@@ -7560,18 +7567,18 @@ def run_gui(initial_zip: Optional[str] = None):
         lap["present"] = present
         txt = ((f"LapTimer dash on device: ✓ installed ({_lt.LAPTIMER_FILE}); data folder {_lt.LAPTIMER_DATA_DIR} "
                 + ("✓ present" if data_dir else "✗ missing — open the LapTimer screen on the GARW once to create it")) if present else
-               f"LapTimer dash on device: ✗ not installed — {_lt.LAPTIMER_FILE} is missing. The RaceBox and track buttons "
+               f"LapTimer dash on device: ✗ not installed — {_lt.LAPTIMER_FILE} is missing. The GPS and track buttons "
                "that touch the device will refuse until the LapTimer add-on is installed. Local track editing still works.")
         ui(lap_presence.configure, {"text": txt, "style": "Ok.TLabel" if (present and data_dir) else "Warn.TLabel"})
         if present and data_dir:
             lap_read_device(dev)
 
     def lap_read_device(dev: IC7Device):
-        """Read the RaceBox MAC and UserTracks.txt from the unit (read only — nothing is created here) and show
+        """Read the GPS MAC and UserTracks.txt from the unit (read only — nothing is created here) and show
         them: the MAC fills in, and the tracks table marks which custom tracks the unit has."""
-        mac = dev.read_text_file(_lt.RACEBOX_MAC_FILE)
+        mac_path, mac, _old = read_gps_mac(dev)
         trk = dev.read_text_file(_lt.USER_TRACKS_FILE)
-        value = _lt.racebox_parse(mac)[0] if mac is not None else None
+        value = _lt.gps_mac_parse(mac)[0] if mac is not None else None
         lap["device_tracks"] = "missing" if trk is None else _lt.UserTrackDB.parse(trk)
 
         def show():
@@ -7582,12 +7589,13 @@ def run_gui(initial_zip: Optional[str] = None):
                 mac_off_toggle()
                 mac_var.set("" if value in (None, "off") else value)
             lap["mac_device"] = value if mac is not None else None
-            mac_info.configure(text=("On device: " + ("RaceBox off" if value == "off" else value or "— no MAC (default used)"))
-                               if mac is not None else f"On device: no {os.path.basename(_lt.RACEBOX_MAC_FILE)} yet")
+            mac_info.configure(text=("On device: " + ("GPS off" if value == "off" else value or "— no MAC (default used)")
+                                     + ("" if mac_path == _lt.GPS_MAC_FILE else f"  (older {os.path.basename(mac_path)})"))
+                               if mac is not None else f"On device: no {os.path.basename(_lt.GPS_MAC_FILE)} yet")
             fill_trk_tree()
         ui(show)
         n = 0 if trk is None else len(lap["device_tracks"].tracks)
-        log(f"Lap timer on device: RaceBox {'not set' if mac is None else (value or 'default')}, "
+        log(f"Lap timer on device: GPS {'not set' if mac is None else (value or 'default')}, "
             + (f"no {os.path.basename(_lt.USER_TRACKS_FILE)}" if trk is None else f"{n} custom track(s) in {os.path.basename(_lt.USER_TRACKS_FILE)}"))
 
     def do_lap_refresh():
@@ -7599,6 +7607,21 @@ def run_gui(initial_zip: Optional[str] = None):
                 if not lap.get("present"):
                     log("LapTimer isn't installed on the device — nothing to read.")
         start(worker)
+
+    def read_gps_mac(dev: IC7Device) -> Tuple[Optional[str], Optional[bytes], Optional[bytes]]:
+        """-> (path, data, legacy_data): the MAC file the dash uses — GPS_MAC_Address.txt, or the older
+        Racebox_MAC_Address.txt when only that one is there — and the older file's contents (None if absent)."""
+        data = dev.read_text_file(_lt.GPS_MAC_FILE)
+        legacy = dev.read_text_file(_lt.LEGACY_MAC_FILE)
+        if data is not None:
+            if legacy is not None and _lt.gps_mac_parse(legacy)[0] != _lt.gps_mac_parse(data)[0]:
+                log(f"Note: {os.path.basename(_lt.LEGACY_MAC_FILE)} (read by older dashes) holds "
+                    f"{_lt.gps_mac_parse(legacy)[0] or 'no MAC'}; {os.path.basename(_lt.GPS_MAC_FILE)} is used. "
+                    "'Save to device' sets both.")
+            return _lt.GPS_MAC_FILE, data, legacy
+        if legacy is not None:
+            return _lt.LEGACY_MAC_FILE, legacy, legacy
+        return None, None, None
 
     def mac_normalise(v: str) -> Optional[str]:
         v = v.strip().upper().replace("-", ":")
@@ -7614,22 +7637,23 @@ def run_gui(initial_zip: Optional[str] = None):
                 raise RuntimeError(f"GARW device not reachable at {HOST}.")
             with IC7Device(log, confirm) as dev:
                 dev.require_laptimer()
-                data = dev.read_text_file(_lt.RACEBOX_MAC_FILE)
+                path, data, _old = read_gps_mac(dev)
                 if data is None:
                     # Not there yet: create it with the default ('off') so the device always has one.
-                    log(f"{_lt.RACEBOX_MAC_FILE} is not on the device — creating it with the default 'off'.")
-                    data = _lt.racebox_render("off", None)
-                    dev.write_text_file(_lt.RACEBOX_MAC_FILE, data, "RaceBox setting")
-            value, status = _lt.racebox_parse(data)
+                    log(f"{_lt.GPS_MAC_FILE} is not on the device — creating it with the default 'off'.")
+                    path, data = _lt.GPS_MAC_FILE, _lt.gps_mac_render("off", None)
+                    dev.write_text_file(_lt.GPS_MAC_FILE, data, "GPS setting")
+            value, status = _lt.gps_mac_parse(data)
 
             def show():
                 mac_off_var.set(value == "off")
                 mac_off_toggle()
                 mac_var.set("" if value in (None, "off") else value)
-                mac_info.configure(text="On device: " + ("RaceBox off" if value == "off" else value or "— no MAC (default used)"))
+                mac_info.configure(text="On device: " + ("GPS off" if value == "off" else value or "— no MAC (default used)")
+                                   + ("" if path == _lt.GPS_MAC_FILE else f"  (older {os.path.basename(path)})"))
                 lap["mac_device"] = value
             ui(show)
-            log(f"RaceBox file on device: {status}" + (f" — {value}" if value and value != "off" else ""))
+            log(f"GPS file on device ({os.path.basename(path)}): {status}" + (f" — {value}" if value and value != "off" else ""))
         start(worker)
 
     def do_mac_save():
@@ -7639,7 +7663,7 @@ def run_gui(initial_zip: Optional[str] = None):
             value = mac_normalise(mac_var.get())
             if not value:
                 messagebox.showerror(APP_NAME, "That isn't a Bluetooth MAC address.\nExpected six pairs of hex digits, e.g. D4:F7:FA:9E:08:97 "
-                                               "(dashes and lower case are fine) — or tick 'No RaceBox (off)'.", parent=root)
+                                               "(dashes and lower case are fine) — or tick 'No GPS (off)'.", parent=root)
                 return
             mac_var.set(value)
 
@@ -7648,17 +7672,22 @@ def run_gui(initial_zip: Optional[str] = None):
                 raise RuntimeError(f"GARW device not reachable at {HOST}.")
             with IC7Device(log, confirm) as dev:
                 dev.require_laptimer()
-                existing = dev.read_text_file(_lt.RACEBOX_MAC_FILE)   # keep the file's comment lines
-                dev.write_text_file(_lt.RACEBOX_MAC_FILE, _lt.racebox_render(value, existing), "RaceBox setting")
-                ui(mac_info.configure, {"text": "On device: " + ("RaceBox off" if value == "off" else value)})
+                existing = dev.read_text_file(_lt.GPS_MAC_FILE)       # keep the file's comment lines
+                legacy = dev.read_text_file(_lt.LEGACY_MAC_FILE)
+                dev.write_text_file(_lt.GPS_MAC_FILE, _lt.gps_mac_render(value, existing), "GPS setting")
+                if legacy is not None:
+                    # an older dash on this unit still reads the old name — keep it in step
+                    dev.write_text_file(_lt.LEGACY_MAC_FILE, _lt.gps_mac_render(value, legacy), "GPS setting (older dash file)")
+                    log(f"Also updated {os.path.basename(_lt.LEGACY_MAC_FILE)} for older LapTimer versions.")
+                ui(mac_info.configure, {"text": "On device: " + ("GPS off" if value == "off" else value)})
                 lap["mac_device"] = value
             # the dash re-reads the file whenever a dash loads — a screen flip is enough, no restart needed
             reload_dash_settings()
             log("Done." + ("" if value == "off" else " A different MAC connects right away; the same MAC reconnects on the next power cycle."))
         start(worker)
     def show_scan_results(devs: List[Tuple[str, str, Optional[int], bool]]):
-        """Pick a device from the scan. RaceBoxes first; everything else behind a checkbox."""
-        rb = [d for d in devs if "racebox" in d[1].lower()]
+        """Pick a device from the scan. GPS units first; everything else behind a checkbox."""
+        rb = [d for d in devs if _is_gps(d[1])]
         dlg = tk.Toplevel(root)
         dlg.title("Bluetooth devices near this computer")
         dlg.configure(bg=P["bg"])
@@ -7666,13 +7695,13 @@ def run_gui(initial_zip: Optional[str] = None):
         dlg.geometry(f"+{root.winfo_rootx() + 220}+{root.winfo_rooty() + 160}")
         frm = ttk.Frame(dlg, padding=14)
         frm.pack(fill="both", expand=True)
-        head = (f"{len(rb)} RaceBox device(s) found." if rb else
-                "No RaceBox found. A RaceBox stops advertising while anything is connected to it. The usual culprit is the GARW "
-                "itself: switched on with this RaceBox's MAC set, the lap timer grabs it within seconds. Switch the GARW off "
-                "(or save 'No RaceBox' to it), close the RaceBox phone app, then scan again.")
+        head = (f"{len(rb)} GPS device(s) found." if rb else
+                "No GPS found. A GPS stops advertising while anything is connected to it. The usual culprit is the GARW "
+                "itself: switched on with this GPS's MAC set, the lap timer grabs it within seconds. Switch the GARW off "
+                "(or save 'No GPS' to it), close the GPS's phone app, then scan again.")
         if rb and not all(d[3] for d in rb):
-            head += ("\n\nmacOS hides Bluetooth MAC addresses from apps and none of the workarounds got it for this RaceBox, "
-                     "so only a UUID is known — the log shows what was tried. Read the MAC off the RaceBox label / its app, "
+            head += ("\n\nmacOS hides Bluetooth MAC addresses from apps and none of the workarounds got it for this GPS, "
+                     "so only a UUID is known — the log shows what was tried. Read the MAC off the GPS's label / its app, "
                      "or scan from a Windows or Linux machine.")
         ttk.Label(frm, text=head, wraplength=560, justify="left").grid(row=0, column=0, columnspan=2, sticky="w")
         show_all = tk.BooleanVar(value=not rb)
@@ -7691,7 +7720,7 @@ def run_gui(initial_zip: Optional[str] = None):
             for addr, name, rssi, real in (devs if show_all.get() else rb):
                 tv.insert("", "end", iid=addr, values=(name or "(no name)", addr if real else f"{addr}  (UUID — MAC hidden by macOS)",
                                                        f"{rssi} dBm" if rssi is not None else "—"),
-                          tags=("rb",) if "racebox" in name.lower() and real else ("uuid",) if not real else ())
+                          tags=("rb",) if _is_gps(name) and real else ("uuid",) if not real else ())
             tv.tag_configure("rb", foreground=P["ok"])
             tv.tag_configure("uuid", foreground=P["muted"])
             kids = tv.get_children()
@@ -7709,12 +7738,12 @@ def run_gui(initial_zip: Optional[str] = None):
             name, real = by_addr.get(sel[0], ("", False))
             if not real:
                 messagebox.showinfo(APP_NAME, "That's a macOS UUID, not a MAC address — the dash needs the real MAC "
-                                              "(printed on the RaceBox label and shown in the RaceBox app).", parent=dlg)
+                                              "(printed on the GPS's label and shown in its phone app).", parent=dlg)
                 return
             mac_off_var.set(False)
             mac_off_toggle()
             mac_var.set(sel[0])
-            log(f"RaceBox selected from scan: {name} {sel[0]} — press 'Save to device' to store it.")
+            log(f"GPS selected from scan: {name} {sel[0]} — press 'Save to device' to store it.")
             dlg.destroy()
         ttk.Button(btns, text="Cancel", command=dlg.destroy).pack(side="right")
         ttk.Button(btns, text="Use selected MAC", style="Accent.TButton", command=use).pack(side="right", padx=(0, 6))
@@ -7727,8 +7756,8 @@ def run_gui(initial_zip: Optional[str] = None):
             log("BLUETOOTH SCAN from this computer (bleak)")
             devs = ble_scan(12, log)
             for addr, name, rssi, real in devs:
-                if "racebox" in name.lower():
-                    log(f"  RaceBox: {name}  {addr}" + ("" if real else " (UUID)") + (f"  ({rssi} dBm)" if rssi is not None else ""))
+                if _is_gps(name):
+                    log(f"  GPS: {name}  {addr}" + ("" if real else " (UUID)") + (f"  ({rssi} dBm)" if rssi is not None else ""))
             ui(show_scan_results, devs)
         start(worker)
     mac_scan_btn.configure(command=do_mac_scan)
