@@ -109,7 +109,7 @@ except Exception as _e:  # pragma: no cover — not just ImportError: a broken d
     PARAMIKO_ERROR = f"{type(_e).__name__}: {_e}"
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "6.1.5"
+APP_VERSION = "6.1.6"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -2699,6 +2699,36 @@ class IC7Device:
             self.usb_unmount_temp()
         out.sort(key=lambda t: (t[0][4:].lower(), t[0][:3]))
         return out
+
+    # The LapTimer can't delete files: when it moves a session from the unit to the USB stick it empties the
+    # old copy instead. Those 0-byte leftovers in /opt/IC7/laptimerdata are safe to remove.
+    LAPDATA_EMPTY_JUNK = re.compile(r"^(S[^/]*\.csv|[^/]*_summary\.csv|[^/]*\.bak)$")
+
+    def remove_empty_laptimer_files(self, files: List[Tuple[str, int, float]], live=()) -> List[str]:
+        """Delete the 0-byte S*.csv, *_summary.csv and *.bak files in the unit's own laptimerdata folder (not
+        its subfolders, never the USB stick). Skipped: anything that changed while the list was read (`live`)
+        and anything a process has open. Each file is checked again on the unit right before it goes, so one
+        the dash started writing in the meantime stays. Returns the names removed."""
+        base = _lt.LAPTIMER_DATA_DIR
+        names = [i[4:] for i, sz, _mt in files
+                 if i.startswith("dev:") and sz == 0 and i not in set(live) and self.LAPDATA_EMPTY_JUNK.match(i[4:])]
+        if not names:
+            return []
+        _, opened, _ = self._run(f"for p in /proc/[0-9]*/fd/*; do readlink \"$p\"; done 2>/dev/null | grep -F {_sq(base + '/')} || true")
+        busy = {ln.strip() for ln in opened.splitlines() if ln.strip()}
+        removed = []
+        for n in names:
+            path = f"{base}/{n}"
+            if path in busy:
+                continue
+            rc, out, _ = self._run(f"[ -f {_sq(path)} ] && [ ! -s {_sq(path)} ] && rm -f {_sq(path)} && echo gone")
+            if rc == 0 and out.strip() == "gone":
+                removed.append(n)
+        if removed:
+            self._run("sync")
+            self.log(f"Removed {len(removed)} empty file(s) the LapTimer left in {base} after moving sessions to the "
+                     "USB stick: " + ", ".join(removed[:8]) + (" …" if len(removed) > 8 else ""))
+        return removed
 
     def download_laptimer_data(self, rels: List[str], dest_dir: str, delete_after: bool = False,
                                temp_usb: bool = False, never_delete=lambda rel: False) -> int:
@@ -7426,6 +7456,12 @@ def run_gui(initial_zip: Optional[str] = None):
             with IC7Device(log, confirm) as dev:
                 files = dev.list_laptimer_data(temp_usb=temp_usb)
                 info = dict(dev.lapdata_info)
+                try:
+                    gone = set(dev.remove_empty_laptimer_files(files, info.get("live") or ()))
+                except Exception as e:          # tidying up is never worth failing the download over
+                    log(f"Couldn't remove the empty leftover files: {e}")
+                    gone = set()
+                files = [f for f in files if not (f[0].startswith("dev:") and f[0][4:] in gone)]
             if info["usb"] == "unmounted":
                 log(f"Lap data: a USB stick ({info['usb_device']}) is in the GARW but not mounted — the LapTimer "
                     "dash only mounts it while its screen is showing.")
@@ -7444,7 +7480,8 @@ def run_gui(initial_zip: Optional[str] = None):
         frm = ttk.Frame(dlg, padding=14)
         frm.pack(fill="both", expand=True)
         # 0-byte files are normal: when the dash moves a log or summary it empties the old copy (it can't
-        # delete files). They're not lap data — hidden with the dash's own files, and never deleted.
+        # delete files). Those in the unit's own folder were removed while listing (remove_empty_laptimer_files);
+        # any left (on the stick, still open, other names) are hidden with the dash's own files and never deleted here.
         empty = {f[0] for f in files if f[1] == 0}
         data_files = [f for f in files if not LAPDATA_KEEP.search(f[0][4:].rsplit("/", 1)[-1]) and f[0] not in empty]
         on_usb = any(f[0].startswith("usb:") for f in files)
