@@ -108,6 +108,9 @@ class VboFile:
     #: GARW LapTimer: the GPS type the dash was paired with ('racebox', 'generic', …), from 'gps=' in the
     #: summary header; "" when the summary doesn't say (written before the type existed)
     gps_type: str = ""
+    #: GARW LapTimer: the session best the dash saved next to the log (<log>_sbest.txt), csvlog.read_best_file;
+    #: {} when there is none
+    dash_session_best: Dict[str, object] = field(default_factory=dict)
     #: GARW LapTimer: [(level 'warn' | 'note', text)] from its diagnostic '#' lines (csvlog.dash_health)
     dash_health: List[Tuple[str, str]] = field(default_factory=list)
     sample_rate: float = 0.0
@@ -422,6 +425,12 @@ def open_log(path: str, **kwargs) -> VboFile:
     FIT carries, so they end up flattened into free-text comments.
     """
     ext = os.path.splitext(path)[1].lower()
+    if ext == ".txt":
+        from .csvlog import CsvFormatError, is_best_file
+        if is_best_file(path):
+            raise CsvFormatError(
+                "this is one of the LapTimer's best-lap files (best_<track>.txt or <session>_sbest.txt), not a "
+                "session log — open the session's .csv instead; its _sbest.txt is read along with it.")
     if ext == ".fit":
         from .fitfile import parse_fit
         return parse_fit(path)

@@ -52,6 +52,14 @@ def session_summary(session: Session) -> str:
                  f"{session.vbo.sample_rate:.0f} Hz")
     if getattr(session.vbo, "gps_type", ""):
         lines.append(f"GPS           : {session.vbo.gps_type}")
+    sb = getattr(session.vbo, "dash_session_best", None) or {}
+    if sb.get("time"):
+        t = float(sb["time"])
+        mine = best.lap_time if best is not None and comparable(best) else None
+        check = ("" if mine is None else
+                 "  (same as the best lap here)" if abs(mine - t) < 0.0015 else
+                 f"  (best lap here: {fmt_time(mine)})")
+        lines.append(f"Dash best     : {fmt_time(t)} session best (_sbest.txt){check}")
     lines.append(f"Channels      : {', '.join(sorted(session.vbo.channels))}")
     runs = getattr(session, "mode", "laps") == "runs"
     p2p = getattr(session, "mode", "laps") == "p2p"

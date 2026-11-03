@@ -109,7 +109,7 @@ except Exception as _e:  # pragma: no cover — not just ImportError: a broken d
     PARAMIKO_ERROR = f"{type(_e).__name__}: {_e}"
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "6.1.6"
+APP_VERSION = "6.1.7"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -2595,24 +2595,57 @@ class IC7Device:
         FILE_LOG.debug("wrote %s: %s", SCREEN_ENABLED_FILE, indices)
         self.log(f"Active screens written: {', '.join(map(str, indices))} → {SCREEN_ENABLED_FILE}")
 
-    LAPDATA_DIRS = {"dev": "LAPTIMER_DATA_DIR", "usb": "LAPTIMER_USB_DIR"}
     #: where GARW Genie mounts the LapTimer's USB stick itself (read-only) when the dash hasn't
     USB_TEMP_MOUNT = "/tmp/garw_genie_usb"
+    #: Lap data ids are '<src>:<rel>'. src 'dev' = the unit's /opt/IC7/laptimerdata; 'usb' = the stick's
+    #: laptimerdata folder; 'usbroot' = the top of a stick that has no laptimerdata folder, where the dash
+    #: writes laptimer_S0001_<track>_<stamp>.csv / _summary.csv / _sbest.txt instead (only those
+    #: 'laptimer_' files are listed from there — the rest of the stick isn't lap data).
+    USB_SRCS = ("usb", "usbroot")
+    USB_ROOT_PREFIX = "laptimer_"
+
+    @staticmethod
+    def lapdata_split(i: str) -> Tuple[str, str]:
+        src, _, rel = i.partition(":")
+        return src, rel
 
     def lapdata_base(self, src: str) -> str:
-        if src == "usb" and getattr(self, "_usb_temp_base", None):
-            return self._usb_temp_base
-        return getattr(_lt, IC7Device.LAPDATA_DIRS[src])
+        if src == "dev":
+            return _lt.LAPTIMER_DATA_DIR
+        mnt = getattr(self, "_usb_temp_root", None) or self.usb_locate()[0]
+        if src == "usbroot":
+            return mnt or ""
+        if mnt and self._remote_exists(f"{mnt}/{USB_FOLDER}"):
+            return f"{mnt}/{USB_FOLDER}"
+        return _lt.LAPTIMER_USB_DIR          # older firmware: the stick's folder at /media/laptimerdata
 
     # -- the LapTimer's USB stick ----------------------------------------------
-    def usb_stick_state(self) -> Tuple[str, str]:
-        """('mounted', '') when the dash has the stick mounted (its laptimerdata folder is there);
-        ('unmounted', '/dev/sdXN') when a USB disk is plugged in but nothing has mounted it — the dash only
-        mounts it while its LapTimer screen is showing; ('none', '') when there is no USB disk."""
-        if self._remote_exists(_lt.LAPTIMER_USB_DIR):
-            return "mounted", ""
+    def _usb_mounts(self) -> List[Tuple[str, str]]:
+        """[(device, mount point)] for every USB disk (sd*) that is mounted, from /proc/mounts."""
         _, mounts, _ = self._run("cat /proc/mounts")
-        mounted_devs = {ln.split()[0] for ln in mounts.splitlines() if ln.strip()}
+        out = []
+        for ln in mounts.splitlines():
+            f = ln.split()
+            if len(f) >= 2 and re.match(r"^/dev/sd[a-z]+\d*$", f[0]):
+                out.append((f[0], f[1].replace("\\040", " ")))
+        return out
+
+    def usb_locate(self) -> Tuple[Optional[str], str]:
+        """(mount point, device) of the stick the dash is using, or (None, ''). The dash mounts it (at
+        /media/usb0 on current firmware) only while its LapTimer screen shows. A mount of ours isn't it."""
+        for dev_, mnt in self._usb_mounts():
+            if mnt.startswith(self.USB_TEMP_MOUNT):
+                continue
+            return mnt, dev_
+        return None, ""
+
+    def usb_stick_state(self) -> Tuple[str, str]:
+        """('mounted', '') when the dash has the stick mounted; ('unmounted', '/dev/sdXN') when a USB disk is
+        plugged in but nothing has mounted it — the dash only mounts it while its LapTimer screen is showing;
+        ('none', '') when there is no USB disk."""
+        if self.usb_locate()[0] or self._remote_exists(_lt.LAPTIMER_USB_DIR):
+            return "mounted", ""
+        mounted_devs = {d for d, _m in self._usb_mounts()}
         # USB disks show up as sd*; the GARW's own storage is eMMC (mmcblk*), never listed here
         _, out, _ = self._run("for d in /sys/block/sd*; do [ -e \"$d\" ] || continue; n=${d##*/}; "
                               "echo \"$n $(ls -d $d/$n[0-9]* 2>/dev/null | sed 's#.*/##' | tr '\\n' ' ')\"; done")
@@ -2622,7 +2655,7 @@ class IC7Device:
                 continue
             disk, partitions = parts[0], parts[1:]
             if any(f"/dev/{x}" in mounted_devs for x in [disk] + partitions):
-                continue                    # mounted somewhere — but not as the LapTimer's stick
+                continue                    # ours from an earlier job that didn't clean up — not the dash's
             return "unmounted", f"/dev/{partitions[0] if partitions else disk}"
         return "none", ""
 
@@ -2635,24 +2668,26 @@ class IC7Device:
         if rc != 0:
             raise RuntimeError(f"Couldn't mount the USB stick ({device}) read-only: {err.strip() or 'mount failed'}")
         self._usb_temp_mounted = True
-        base = f"{m}/{USB_FOLDER}"
-        if not self._remote_exists(base):
+        _, ls, _ = self._run(f"ls -1 {m} 2>/dev/null")
+        top = [n.strip() for n in ls.splitlines()]
+        if USB_FOLDER not in top and not any(n.startswith(self.USB_ROOT_PREFIX) for n in top):
             self.usb_unmount_temp()
-            raise RuntimeError(f"The USB stick in the GARW has no '{USB_FOLDER}' folder — it isn't a LapTimer stick "
-                               "(use 'Prepare USB stick…' to set one up).")
-        self._usb_temp_base = base
+            raise RuntimeError(f"The USB stick in the GARW has no LapTimer data — no '{USB_FOLDER}' folder and no "
+                               f"{self.USB_ROOT_PREFIX}… files.")
+        self._usb_temp_root = m
         self.log(f"USB stick {device} mounted read-only for this job.")
 
     def usb_unmount_temp(self) -> None:
         if getattr(self, "_usb_temp_mounted", False):
             self._run(f"sync; umount {self.USB_TEMP_MOUNT} && rmdir {self.USB_TEMP_MOUNT}", timeout=30)
             self._usb_temp_mounted = False
-            self._usb_temp_base = None
+            self._usb_temp_root = None
             self.log("USB stick unmounted again.")
 
     def list_laptimer_data(self, temp_usb: bool = False) -> List[Tuple[str, int, float]]:
         """[(id, size, mtime)] for every lap-data file on the unit: id is 'dev:<rel>' for the internal
-        folder (/opt/IC7/laptimerdata) and 'usb:<rel>' for a USB stick in the GARW (/media/laptimerdata).
+        folder (/opt/IC7/laptimerdata), 'usb:<rel>' for the stick's laptimerdata folder and 'usbroot:<name>'
+        for laptimer_… files at the top of a stick without that folder (see USB_SRCS).
 
         Also sets self.lapdata_info: {'usb': 'mounted' | 'unmounted' | 'temp' | 'none', 'usb_device': …,
         'live': ids of files that grew or changed while we looked}. The GARW has no real-time clock, so its
@@ -2668,17 +2703,23 @@ class IC7Device:
             if usb == "unmounted" and temp_usb:
                 self.usb_mount_temp(usb_dev)
                 self.lapdata_info["usb"] = "temp"
-            present = [src for src in ("dev", "usb") if self._remote_exists(self.lapdata_base(src))]
+            srcs = ["dev"]
+            if self.lapdata_info["usb"] in ("mounted", "temp"):
+                srcs += list(self.USB_SRCS)
+            present = [src for src in srcs if self.lapdata_base(src) and self._remote_exists(self.lapdata_base(src))]
             if not present and self.lapdata_info["usb"] != "unmounted":
-                raise RuntimeError(f"No lap data on the device: neither {_lt.LAPTIMER_DATA_DIR} nor a USB stick "
-                                   f"({_lt.LAPTIMER_USB_DIR}) is there.")
+                raise RuntimeError(f"No lap data on the device: neither {_lt.LAPTIMER_DATA_DIR} nor a USB stick is there.")
             sftp = self.client.open_sftp()
 
             def walk(src: str, remote_dir: str, rel: str):
                 for a in sftp.listdir_attr(remote_dir):
                     p = f"{remote_dir}/{a.filename}"
                     r = f"{rel}/{a.filename}" if rel else a.filename
-                    if _stat.S_ISDIR(a.st_mode or 0):
+                    if src == "usbroot":
+                        # the top of the stick: only the dash's own laptimer_… files, no folders
+                        if _stat.S_ISREG(a.st_mode or 0) and a.filename.startswith(self.USB_ROOT_PREFIX):
+                            out.append((f"{src}:{r}", a.st_size or 0, float(a.st_mtime or 0)))
+                    elif _stat.S_ISDIR(a.st_mode or 0):
                         walk(src, p, r)
                     elif _stat.S_ISREG(a.st_mode or 0):
                         out.append((f"{src}:{r}", a.st_size or 0, float(a.st_mtime or 0)))
@@ -2697,15 +2738,15 @@ class IC7Device:
                 sftp.close()
         finally:
             self.usb_unmount_temp()
-        out.sort(key=lambda t: (t[0][4:].lower(), t[0][:3]))
+        out.sort(key=lambda t: (self.lapdata_split(t[0])[1].lower(), t[0]))
         return out
 
     # The LapTimer can't delete files: when it moves a session from the unit to the USB stick it empties the
     # old copy instead. Those 0-byte leftovers in /opt/IC7/laptimerdata are safe to remove.
-    LAPDATA_EMPTY_JUNK = re.compile(r"^(S[^/]*\.csv|[^/]*_summary\.csv|[^/]*\.bak)$")
+    LAPDATA_EMPTY_JUNK = re.compile(r"^S\d{4,}_[^/]*(\.csv|_sbest\.txt|\.bak)$")   # S0007_…csv / _summary.csv / _sbest.txt / .bak
 
     def remove_empty_laptimer_files(self, files: List[Tuple[str, int, float]], live=()) -> List[str]:
-        """Delete the 0-byte S*.csv, *_summary.csv and *.bak files in the unit's own laptimerdata folder (not
+        """Delete the 0-byte S####_….csv, …_summary.csv, …_sbest.txt and ….bak files in the unit's own laptimerdata folder (not
         its subfolders, never the USB stick). Skipped: anything that changed while the list was read (`live`)
         and anything a process has open. Each file is checked again on the unit right before it goes, so one
         the dash started writing in the meantime stays. Returns the names removed."""
@@ -2744,7 +2785,7 @@ class IC7Device:
             usb, dev_ = self.usb_stick_state()
             if usb == "unmounted":
                 self.usb_mount_temp(dev_)
-            elif usb == "none" and any(i.startswith("usb:") for i in rels):
+            elif usb == "none" and any(self.lapdata_split(i)[0] in self.USB_SRCS for i in rels):
                 raise RuntimeError("The USB stick is no longer in the GARW.")
         sftp = self.client.open_sftp()
         done = 0
@@ -2752,15 +2793,18 @@ class IC7Device:
             sizes = {}
             # Files from both places: keep them apart in Device/ and USB/ so it's always clear which is which.
             # From one place only: straight into dest_dir.
-            both = {i[:3] for i in rels} == {"dev", "usb"}
+            on_stick = lambda src: src in self.USB_SRCS
+            both = len({on_stick(self.lapdata_split(i)[0]) for i in rels}) == 2
+            bases = {src: self.lapdata_base(src) for src in {self.lapdata_split(i)[0] for i in rels}}
             for i in rels:
-                sizes[i] = sftp.stat(f"{self.lapdata_base(i[:3])}/{i[4:]}").st_size or 0
+                src, r = self.lapdata_split(i)
+                sizes[i] = sftp.stat(f"{bases[src]}/{r}").st_size or 0
             total = sum(sizes.values()) or 1
             got = 0
             for i in rels:
-                src, r = i[:3], i[4:]
-                remote = f"{self.lapdata_base(src)}/{r}"
-                local = Path(dest_dir) / ({"dev": "Device", "usb": "USB"}[src] if both else "") / Path(*r.split("/"))
+                src, r = self.lapdata_split(i)
+                remote = f"{bases[src]}/{r}"
+                local = Path(dest_dir) / (("USB" if on_stick(src) else "Device") if both else "") / Path(*r.split("/"))
                 local.parent.mkdir(parents=True, exist_ok=True)
                 tmp = local.with_name(local.name + ".part")
                 before = sftp.stat(remote)
@@ -2785,14 +2829,14 @@ class IC7Device:
                 os.replace(tmp, local)
                 FILE_LOG.debug("SFTP get %s (%d bytes%s) -> %s", remote, want, ", live" if changed else "", local)
                 done += 1
-                where = " [USB stick]" if src == "usb" else ""
+                where = " [USB stick]" if on_stick(src) else ""
                 if changed:
                     live.append(r)
                     self.log(f"  {r}{where}  ({want:,} bytes) — still being recorded: copied as it was when the "
                              "download started; download it again after the session for the rest")
                 elif delete_after and never_delete(r):
                     self.log(f"  {r}{where}  ({want:,} bytes) — kept on the device (the dash's own file, not a session)")
-                elif delete_after and not (src == "usb" and getattr(self, "_usb_temp_base", None)):
+                elif delete_after and not (on_stick(src) and getattr(self, "_usb_temp_root", None)):
                     sftp.remove(remote)
                     self.log(f"  {r}{where}  ({want:,} bytes) — downloaded and removed from the device")
                 else:
@@ -7483,8 +7527,10 @@ def run_gui(initial_zip: Optional[str] = None):
         # delete files). Those in the unit's own folder were removed while listing (remove_empty_laptimer_files);
         # any left (on the stick, still open, other names) are hidden with the dash's own files and never deleted here.
         empty = {f[0] for f in files if f[1] == 0}
-        data_files = [f for f in files if not LAPDATA_KEEP.search(f[0][4:].rsplit("/", 1)[-1]) and f[0] not in empty]
-        on_usb = any(f[0].startswith("usb:") for f in files)
+        split_id = IC7Device.lapdata_split
+        stick = lambda i: split_id(i)[0] in IC7Device.USB_SRCS
+        data_files = [f for f in files if not LAPDATA_KEEP.search(split_id(f[0])[1].rsplit("/", 1)[-1]) and f[0] not in empty]
+        on_usb = any(stick(f[0]) for f in files)
         other = [f for f in files if f not in data_files]
         show_other = tk.BooleanVar(value=False)
         top = ttk.Frame(frm)
@@ -7534,11 +7580,11 @@ def run_gui(initial_zip: Optional[str] = None):
                 for f in other:
                     checked.pop(f[0], None)
             shown = data_files + (other if show_other.get() else [])
-            shown.sort(key=lambda f: (f[0][4:].lower(), f[0][:3]))
+            shown.sort(key=lambda f: (split_id(f[0])[1].lower(), f[0]))
             for rel, size, mtime in shown:
                 is_data = rel in {f[0] for f in data_files}
                 checked.setdefault(rel, False)
-                tv.insert("", "end", iid=rel, values=("☑" if checked[rel] else "☐", "USB stick" if rel.startswith("usb:") else "Device", rel[4:],
+                tv.insert("", "end", iid=rel, values=("☑" if checked[rel] else "☐", "USB stick" if stick(rel) else "Device", split_id(rel)[1],
                                                        f"{size / 1024:.0f} KB" if size >= 1024 else f"{size} B",
                                                        "● recording now" if rel in recording else
                                                        # no RTC on the GARW: a file stamped before 2015 has a
@@ -7606,7 +7652,7 @@ def run_gui(initial_zip: Optional[str] = None):
                     dev.require_laptimer(need_data_dir=False)
                     n = dev.download_laptimer_data(rels, dest, delete_after, temp_usb=temp_usb,
                                                    never_delete=lambda r: bool(LAPDATA_KEEP.search(r.rsplit("/", 1)[-1]))
-                                                   or any(e[4:] == r for e in empty))
+                                                   or any(split_id(e)[1] == r for e in empty))
                     live = list(getattr(dev, "lapdata_live", []))
                 log(f"Done — {n} file(s) in {dest}")
                 cfg["lapdata_dir"] = dest

@@ -526,6 +526,13 @@ def parse_csv(path: str, delimiter: Optional[str] = None) -> VboFile:
         if not vbo.track_name:
             vbo.track_name = summary_track_name(summary) or ""
         vbo.gps_type = summary_header_fields(summary).get("gps", "").lower()
+    sbest = find_session_best(path)
+    if sbest:
+        try:
+            vbo.dash_session_best = read_best_file(sbest)
+            notes.append(f"session best read from {os.path.basename(sbest)}")
+        except (OSError, ValueError) as exc:
+            notes.append(f"session best {os.path.basename(sbest)} couldn't be read ({exc})")
     if dash_version:
         notes.append(f"written by LapTimer v{dash_version}"
                      + (f", track: {track_name}" if track_name else
@@ -757,6 +764,59 @@ def parse_dash_header(line: str) -> Tuple[str, Optional[str]]:
     j = rest.find(", ")
     name = (rest[:j] if j >= 0 else rest).strip()
     return version, (name or None)
+
+
+def is_best_file(path: str) -> bool:
+    """A LapTimer best-lap file ('BEST v1|…' on its first line): best_<track>.txt or <session>_sbest.txt."""
+    try:
+        with open(path, "rb") as fh:
+            return fh.read(6) == b"BEST v"
+    except OSError:
+        return False
+
+
+def find_session_best(path: str) -> Optional[str]:
+    """<log>_sbest.txt next to a session log — the dash's session-best lap — if it's there and not emptied.
+    Also tried with / without the 'laptimer_' prefix the dash puts on files at the top of a stick."""
+    folder, name = os.path.split(os.path.abspath(path))
+    stem = os.path.splitext(name)[0]
+    alt = stem[len("laptimer_"):] if stem.lower().startswith("laptimer_") else "laptimer_" + stem
+    for st in (stem, alt):
+        p = os.path.join(folder, st + "_sbest.txt")
+        try:
+            if os.path.getsize(p) > 0:
+                return p
+        except OSError:
+            pass
+    return None
+
+
+def read_best_file(path: str) -> Dict[str, object]:
+    """A LapTimer best-lap file: 'BEST v1|<track>|<lat>,<lon>|<lap ms>|<split ms;…>|…' then one 'x,y,t_ms' line
+    per point (metres from the origin) and '#END'. Returns {'version', 'track', 'origin': (lat, lon),
+    'time': s, 'splits': [s, …] (time at each split line from the start of the lap), 'points': n,
+    'complete': '#END' seen}."""
+    text, _enc = read_log_text(path)
+    lines = [ln.strip().rstrip("\x1e") for ln in text.replace("\r", "").split("\n")]
+    head = lines[0] if lines else ""
+    m = re.match(r"^BEST v(\d+)\|", head)
+    if not m:
+        raise ValueError("not a LapTimer best-lap file (no 'BEST v…' first line)")
+    f = head.split("|")
+    out: Dict[str, object] = {"version": int(m.group(1)), "track": f[1].strip() if len(f) > 1 else ""}
+    try:
+        lat, lon = (float(v) for v in f[2].split(","))
+        out["origin"] = (lat, lon)
+    except (IndexError, ValueError):
+        pass
+    try:
+        out["time"] = int(f[3]) / 1000.0
+    except (IndexError, ValueError):
+        raise ValueError("no lap time in the header")
+    out["splits"] = [int(v) / 1000.0 for v in (f[4].split(";") if len(f) > 4 else []) if v.strip().isdigit()]
+    out["points"] = sum(1 for ln in lines[1:] if ln and not ln.startswith("#") and ln.count(",") == 2)
+    out["complete"] = "#END" in lines
+    return out
 
 
 def summary_header_fields(path: str) -> Dict[str, str]:
