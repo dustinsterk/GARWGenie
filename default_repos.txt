@@ -11,6 +11,8 @@
 https://github.com/dustinsterk/GTDash
 https://github.com/dustinsterk/LFA-Gauge-for-GARW-IC7
 https://github.com/dustinsterk/DDUDash
+https://github.com/dustinsterk/HethelRace
+https://github.com/dustinsterk/MissionS
 https://github.com/tbeaulieu/Outrun
 https://github.com/tbeaulieu/Soldat-Meltfire/
 https://github.com/tbeaulieu/taikyu
