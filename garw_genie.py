@@ -3058,8 +3058,11 @@ class IC7Device:
                 r["dashes"], r["enc"] = [hit], True
         # Configs a dash expects but that don't exist yet are worth showing too.
         present = {r["name"] for r in rows}
+        present_stems = {os.path.splitext(n)[0].lower() for n in present}
         for ref, dashes in usage.items():
-            if ref not in present:
+            # A dash that names both <x>.txt and <x>.json (an older format it still mentions, or a fallback)
+            # has its settings when either one is there.
+            if ref not in present and os.path.splitext(ref)[0].lower() not in present_stems:
                 rows.append({"name": ref, "size": None, "mtime": None, "dashes": dashes, "enc": False})
         rows.sort(key=lambda r: r["name"].lower())
         return rows
@@ -6448,12 +6451,13 @@ def run_gui(initial_zip: Optional[str] = None):
         n = int(preview.index("end-1c").split(".")[0])
         gutter.configure(state="normal")
         gutter.delete("1.0", "end")
-        if edit_state.get("name") and is_json_config(edit_state["name"]):
-            paths = json_line_paths(preview.get("1.0", "end-1c"))
-            for i in range(n):
-                p = paths.get(i, "")
-                gutter.insert("end", f"{i + 1:>3}  ", "idx")
-                gutter.insert("end", (p if len(p) <= 24 else "…" + p[-23:]) + "\n", "name")
+        json_file = bool(edit_state.get("name")) and is_json_config(edit_state["name"])
+        # a JSON file names its own settings (the keys are in the text): no side panel repeating them
+        if json_file and gutter.winfo_manager():
+            gutter.pack_forget()
+        elif not json_file and not gutter.winfo_manager():
+            gutter.pack(side="left", fill="y", before=preview)
+        if json_file:
             gutter.configure(state="disabled")
             highlight_current_line()
             return
