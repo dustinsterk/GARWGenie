@@ -73,6 +73,12 @@ class _Track:
 
 
 def _gpmd_track(f, file_size: int) -> Optional[_Track]:
+    return _sample_track(f, file_size, b"gpmd")
+
+
+def _sample_track(f, file_size: int, fmt: bytes) -> Optional[_Track]:
+    """The first track whose sample description is `fmt` (b"gpmd" GoPro telemetry, b"djmd" / b"dbgi" DJI
+    metadata): each sample's start time (s from the video start), duration, file offset and size."""
     moov = _find(f, 0, file_size, [b"moov"])
     if not moov:
         return None
@@ -87,7 +93,7 @@ def _gpmd_track(f, file_size: int) -> Optional[_Track]:
         if not stsd:
             continue
         f.seek(stsd[0] + 8)                      # version/flags + entry count
-        if f.read(8)[4:8] != b"gpmd":            # first entry: size(4) + format(4)
+        if f.read(8)[4:8] != fmt:                # first entry: size(4) + format(4)
             continue
         mdhd = _find(f, *mdia, [b"mdhd"])
         f.seek(mdhd[0])

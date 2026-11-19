@@ -365,6 +365,7 @@ class VideoPanel(QtWidgets.QWidget):
         if at is None:
             return
         video_s = self.player.position() / 1000.0
+        self.sync_hint = ""
         self.sync = VideoSync.manual(float(at) - video_s)
         if self.player.duration() > 0:
             self.sync.duration_ms = float(self.player.duration())
@@ -410,6 +411,10 @@ class VideoPanel(QtWidgets.QWidget):
         self.sync_label.setText(
             f"{name} \u2014 "
             f"{self.sync.describe_relative(self._session_start)}")
+        hint = getattr(self, "sync_hint", "") if not self.sync.exact else ""
+        if hint:
+            self.sync_label.setText(self.sync_label.text() + " \u2014 auto-sync unsure, line it up with Sync")
+        self.sync_label.setToolTip(hint or self.sync_label.text())
 
     def _pick_file(self) -> None:
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
@@ -429,6 +434,7 @@ class VideoPanel(QtWidgets.QWidget):
         # time, where it reads as "the video does not reach this part".
         sync = VideoSync.manual(self._session_start or 0.0)
         vbo = getattr(self, "vbo", None)
+        self.sync_hint = ""
         if vbo is not None:
             try:
                 gps = VideoSync.from_gopro(path, vbo)   # GoPro clip / .LRV: exact sync from its GPS
@@ -436,6 +442,13 @@ class VideoPanel(QtWidgets.QWidget):
                 gps = None
             if gps is not None:
                 sync = gps
+            else:
+                try:                                     # DJI action camera: its orientation vs the log's turning
+                    dji, self.sync_hint = VideoSync.from_dji_motion(path, vbo)
+                except Exception:                        # noqa: BLE001
+                    dji = None
+                if dji is not None:
+                    sync, self.sync_hint = dji, ""
         self.load(path, sync, self._session_start)
 
     def _on_error(self, *args) -> None:                 # pragma: no cover
@@ -610,6 +623,7 @@ class VideoPanel(QtWidgets.QWidget):
         * Otherwise the video is tracking the cursor, so nudging re-seeks to the
           cursor at the new offset, as before.
         """
+        self.sync_hint = ""                     # adjusted by hand now
         if self.sync is None or not MULTIMEDIA or self.player is None:
             return
 

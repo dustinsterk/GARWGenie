@@ -1023,14 +1023,21 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             sync = VideoSync.from_vbo(self.session.vbo)
             found = find_video(path, self.session.vbo) if path else None
+            motion_hint = ""
             if found and not sync.exact:
                 # a GoPro clip carries GPS with UTC in its own metadata (or its .LRV does): exact sync
                 gps = VideoSync.from_gopro(found, self.session.vbo)
                 if gps is not None:
                     sync = gps
+                else:
+                    # a DJI action camera has no GPS, but records its orientation: match its turning to the log's
+                    dji, motion_hint = VideoSync.from_dji_motion(found, self.session.vbo)
+                    if dji is not None:
+                        sync, motion_hint = dji, ""
         except Exception:                                # noqa: BLE001
             traceback.print_exc()
             return
+        self.video_panel.sync_hint = motion_hint
         first = self.session.vbo.channels.get("t")
         self.video_panel.vbo = self.session.vbo
         self.video_panel.load(found, sync,
@@ -1050,6 +1057,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.statusBar().showMessage(
                 f"linked video: {os.path.basename(found)}"
                 + (f" — {sync.gps_note}" if sync.gps_note else ""), 8000)
+        elif has and motion_hint:
+            self.statusBar().showMessage(motion_hint, 12000)
 
     def _show_no_video_hint(self, show: bool, log_path: Optional[str]) -> None:
         """With no video the pane is folded away, so its own message is never seen. Say it in the status

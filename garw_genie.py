@@ -109,7 +109,7 @@ except Exception as _e:  # pragma: no cover — not just ImportError: a broken d
     PARAMIKO_ERROR = f"{type(_e).__name__}: {_e}"
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "6.1.8"
+APP_VERSION = "6.1.9"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -563,6 +563,97 @@ def _is_laptimer_config(name: str) -> bool:
     """laptimer_config.txt and the LapTimer's other settings files (not their .bak copies)."""
     n = name.lower()
     return n.startswith("laptimer") and not n.endswith(".bak")
+
+
+def is_json_config(name: str) -> bool:
+    """A dash that keeps its settings as JSON (<name>.json) instead of one value per line."""
+    return (name or "").lower().endswith(".json")
+
+
+def json_problem(text: str) -> Optional[str]:
+    """None when `text` is valid JSON, else 'line 4, column 12: Expecting ',' delimiter'."""
+    try:
+        json.loads(text)
+        return None
+    except ValueError as e:
+        if isinstance(e, json.JSONDecodeError):
+            return f"line {e.lineno}, column {e.colno}: {e.msg}"
+        return str(e)
+
+
+def json_line_paths(text: str) -> Dict[int, str]:
+    """{0-based line: key path} for each line where a key (or an array item) starts — 'display.units',
+    'gauges[2].max'. Works on text that doesn't parse (half-way through an edit) as far as it can."""
+    out: Dict[int, str] = {}
+    stack: List[list] = []            # frames: [kind 'o'|'a', key or index, expecting a key]
+    line = i = 0
+    n = len(text)
+
+    def cur() -> str:
+        s = ""
+        for kind, k, _ in stack:
+            if k is None:
+                continue
+            s += f"[{k}]" if kind == "a" else (("." if s else "") + str(k))
+        return s
+
+    while i < n:
+        c = text[i]
+        if c == "\n":
+            line += 1
+            i += 1
+        elif c in " \t\r:":
+            i += 1
+        elif c == '"':
+            j = i + 1
+            while j < n and text[j] != '"' and text[j] != "\n":
+                j += 2 if text[j] == "\\" else 1
+            raw = text[i + 1:j]
+            if stack and stack[-1][0] == "o" and stack[-1][2]:
+                try:
+                    stack[-1][1] = json.loads('"' + raw + '"')
+                except ValueError:
+                    stack[-1][1] = raw
+                stack[-1][2] = False
+                out.setdefault(line, cur())
+            elif stack and stack[-1][0] == "a":
+                out.setdefault(line, cur())
+            i = j + 1
+        elif c in "{[":
+            if stack and stack[-1][0] == "a":
+                out.setdefault(line, cur())
+            stack.append(["o", None, True] if c == "{" else ["a", 0, False])
+            i += 1
+        elif c in "}]":
+            if stack:
+                stack.pop()
+            i += 1
+        elif c == ",":
+            if stack:
+                if stack[-1][0] == "o":
+                    stack[-1][2] = True
+                else:
+                    stack[-1][1] += 1
+            i += 1
+        else:                         # a number, true / false / null
+            if stack and stack[-1][0] == "a":
+                out.setdefault(line, cur())
+            while i < n and text[i] not in ",]}\n":
+                i += 1
+    return out
+
+
+def json_lookup(obj, path: str):
+    """The value at 'a.b[2].c' in parsed JSON, or raise KeyError / IndexError."""
+    for part in re.findall(r"[^.\[\]]+|\[\d+\]", path):
+        obj = obj[int(part[1:-1])] if part.startswith("[") else obj[part]
+    return obj
+
+
+def qml_props(qml: str) -> Dict[str, dict]:
+    """{property name: {'type', 'default'}} declared in a dash's .qml."""
+    return {m.group(2): {"type": m.group(1), "default": re.sub(r"\s*//.*$", "", m.group(3) or "").strip().rstrip(";")}
+            for m in _PROP_DECL_RE.finditer(qml)}
 
 
 def parse_config_map(qml: str) -> Dict[int, dict]:
@@ -6263,8 +6354,10 @@ def run_gui(initial_zip: Optional[str] = None):
     preview.configure(yscrollcommand=_sync_scroll)
     gutter.configure(yscrollcommand=lambda *a: preview.yview_moveto(a[0]))
     cfg_map: Dict[str, Dict[int, dict]] = {}        # dash name -> parsed line map (session cache)
+    cfg_props: Dict[str, Dict[str, dict]] = {}      # dash name -> its declared QML properties (for JSON keys)
     detail_lbl = ttk.Label(tab_cfg, style="Muted.TLabel", wraplength=420, justify="left",
-                           text="Select a file: each line is shown with the dash property it feeds.")
+                           text="Select a file: each line is shown with the dash property it feeds "
+                                "(or, for a .json file, the setting's key).")
     detail_lbl.grid(row=3, column=4, columnspan=3, sticky="w", padx=(10, 0), pady=(4, 0))
     prow = ttk.Frame(tab_cfg)
     prow.grid(row=2, column=4, columnspan=3, sticky="ew", padx=(10, 0), pady=(4, 0))
@@ -6320,15 +6413,21 @@ def run_gui(initial_zip: Optional[str] = None):
         cfg_revert_btn.configure(state="normal" if dirty else "disabled")
         if edit_state["name"]:
             body = preview.get("1.0", "end-1c")
-            lines = len(body.split("\n")) - (1 if body.endswith("\n") else 0)
+            if is_json_config(edit_state["name"]):
+                bad = json_problem(body)
+                count = "not valid JSON" if bad else f"{len(json_line_paths(body))} setting(s), JSON"
+            else:
+                count = f"{len(body.split(chr(10))) - (1 if body.endswith(chr(10)) else 0)} value(s)"
             preview_title.configure(
-                text=f"{edit_state['name']}  ·  {lines} value(s)" + ("  ·  edited" if edit_state["dirty"] else ""),
+                text=f"{edit_state['name']}  ·  {count}" + ("  ·  edited" if edit_state["dirty"] else ""),
                 style="Warn.TLabel" if edit_state["dirty"] else "Muted.TLabel")
 
     def gutter_message() -> Optional[Tuple[str, List[str]]]:
         """(title, paragraphs) when the left panel can't name the lines, else None."""
         if not edit_state.get("name"):
             return None
+        if is_json_config(edit_state["name"]):
+            return None                                  # a JSON file names its own settings: the keys
         if edit_state.get("enc"):
             return ("Encrypted dash",
                     ["Setting labels are encrypted with the dash. Use the UP arrow on your controller to enter the "
@@ -6349,6 +6448,15 @@ def run_gui(initial_zip: Optional[str] = None):
         n = int(preview.index("end-1c").split(".")[0])
         gutter.configure(state="normal")
         gutter.delete("1.0", "end")
+        if edit_state.get("name") and is_json_config(edit_state["name"]):
+            paths = json_line_paths(preview.get("1.0", "end-1c"))
+            for i in range(n):
+                p = paths.get(i, "")
+                gutter.insert("end", f"{i + 1:>3}  ", "idx")
+                gutter.insert("end", (p if len(p) <= 24 else "…" + p[-23:]) + "\n", "name")
+            gutter.configure(state="disabled")
+            highlight_current_line()
+            return
         msg = gutter_message()
         if msg:
             # no line names to show: say why and what to do instead (the message stays put while values scroll)
@@ -6375,6 +6483,29 @@ def run_gui(initial_zip: Optional[str] = None):
         for w in ((preview,) if gutter_message() else (preview, gutter)):
             w.tag_remove("cur", "1.0", "end")
             w.tag_add("cur", f"{line}.0", f"{line}.0 lineend+1c")
+        if is_json_config(edit_state["name"]):
+            body = preview.get("1.0", "end-1c")
+            bad = json_problem(body)
+            if bad:
+                detail_lbl.configure(text=f"Not valid JSON — {bad}. Fix it before saving.")
+                return
+            path = json_line_paths(body).get(line - 1)
+            if not path:
+                detail_lbl.configure(text=f"line {line}")
+                return
+            try:
+                val = json_lookup(json.loads(body), path)
+            except (KeyError, IndexError, TypeError, ValueError):
+                val = None
+            kind = {dict: "object", list: "list", bool: "true/false", str: "text", int: "number",
+                    float: "number", type(None): "null"}.get(type(val), "")
+            shown = (f"{len(val)} item(s)" if isinstance(val, (dict, list)) else json.dumps(val, ensure_ascii=False))
+            leaf = re.sub(r"\[\d+\]$", "", path).rsplit(".", 1)[-1]
+            prop = cfg_props.get(edit_state.get("dash") or "", {}).get(leaf)
+            extra = (f"   ·   root.{leaf} ({prop['type']})" + (f", default {prop['default']}" if prop["default"] else "")
+                     if prop else "")
+            detail_lbl.configure(text=f"{path}  =  {shown}   ({kind}){extra}")
+            return
         cmap = current_map()
         info = cmap.get(line - 1)
         value = preview.get(f"{line}.0", f"{line}.0 lineend").strip()
@@ -6392,6 +6523,12 @@ def run_gui(initial_zip: Optional[str] = None):
             detail_lbl.configure(text=f"line {line - 1}   ·   value: {value or '(empty)'}   (setting labels unknown)")
 
     def show_preview(name: str, text: str, dash: Optional[str] = None, enc: bool = False):
+        if is_json_config(name) and text.strip().count("\n") == 0 and not json_problem(text):
+            # written on one line (as code often saves it): spread it out, one setting per line, to edit.
+            # It is only saved like this if you change something.
+            obj = json.loads(text)
+            if isinstance(obj, (dict, list)) and len(obj) > 1:
+                text = json.dumps(obj, indent=2, ensure_ascii=False) + "\n"
         preview.configure(state="normal")
         preview.delete("1.0", "end")
         preview.insert("end", text)
@@ -6434,6 +6571,12 @@ def run_gui(initial_zip: Optional[str] = None):
         text = preview.get("1.0", "end-1c")
         if edit_state["orig"].endswith("\n") and not text.endswith("\n"):
             text += "\n"  # keep the file's trailing newline; the IC7 reads one value per line
+        if is_json_config(name):
+            bad = json_problem(text)
+            if bad:
+                messagebox.showerror(APP_NAME, f"{name} isn't valid JSON, so it wasn't saved — the dash couldn't "
+                                               f"read it.\n\n{bad}", parent=root)
+                return
 
         def worker():
             if not gui_preflight():
@@ -6494,8 +6637,11 @@ def run_gui(initial_zip: Optional[str] = None):
                     return
                 if dash and dash not in cfg_map:
                     try:
-                        cfg_map[dash] = parse_config_map(dev.read_dash_qml(dash))
-                        log(f"  {dash}.qml: {len(cfg_map[dash])} settings lines mapped to properties")
+                        qml = dev.read_dash_qml(dash)
+                        cfg_map[dash] = parse_config_map(qml)
+                        cfg_props[dash] = qml_props(qml)
+                        if not is_json_config(name):
+                            log(f"  {dash}.qml: {len(cfg_map[dash])} settings lines mapped to properties")
                     except Exception as e:  # annotation is best-effort
                         cfg_map[dash] = {}
                         log(f"  could not read {dash}.qml for annotations: {e}")
@@ -6614,6 +6760,20 @@ def run_gui(initial_zip: Optional[str] = None):
         paths = filedialog.askopenfilenames(title="Settings file(s) to upload",
                                             filetypes=[("Settings files", "*.txt *.cfg *.json *.ini"), ("All files", "*.*")])
         if not paths:
+            return
+        bad = []
+        for p in paths:
+            if is_json_config(p):
+                try:
+                    with open(p, "r", encoding="utf-8") as fh:
+                        why = json_problem(fh.read())
+                except (OSError, UnicodeDecodeError) as e:
+                    why = str(e)
+                if why:
+                    bad.append(f"{os.path.basename(p)} — {why}")
+        if bad:
+            messagebox.showerror(APP_NAME, "Not uploaded — these aren't valid JSON, so the dash couldn't read them:\n\n"
+                                 + "\n".join(bad), parent=root)
             return
 
         def worker():

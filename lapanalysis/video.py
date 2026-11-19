@@ -91,9 +91,10 @@ def find_video(vbo_path: str, vbo: VboFile, index: int = 1) -> Optional[str]:
     # so it counts even when the header says nothing.
     stem = os.path.splitext(os.path.basename(vbo_path))[0]
     for e in VIDEO_EXTS:
-        path = os.path.join(folder, stem + e)
-        if os.path.isfile(path):
-            return path
+        for ext in (e, e.upper()):              # cameras write .MP4; a case-sensitive disk (Linux) tells them apart
+            path = os.path.join(folder, stem + ext)
+            if os.path.isfile(path):
+                return path
 
     if not declares_video(vbo):
         return None
@@ -200,6 +201,29 @@ class VideoSync:
             return None
         off = r.offset_s - shift
         return cls(kind="offset", offset_s=off, gps_note=r.describe(), gps_offset=off)
+
+    @classmethod
+    def from_dji_motion(cls, video_path: str, vbo: VboFile) -> Tuple[Optional["VideoSync"], str]:
+        """Sync a DJI action camera clip (no GPS) from its recorded orientation, matched to the log's turning
+        (djimotion.py). Returns (sync, note): sync only when the match is clear; otherwise None and a note
+        saying why ('' when it isn't a DJI clip with motion data)."""
+        t = vbo.channels.get("t")
+        if t is None:
+            return None, ""
+        from .djimotion import read_dji_motion, motion_sync
+        m = read_dji_motion(video_path)
+        if m is None:
+            return None, ""
+        r = motion_sync(m, np.asarray(t, dtype=float), vbo.channels.get("heading"), vbo.channels.get("speed"),
+                        vbo.channels.get("ay_g"))
+        if r is None:
+            return None, ("DJI motion sync: the clip or the log has too little turning to match — "
+                          "line it up with Sync")
+        if not r.confident:
+            return None, (f"DJI motion sync unsure (match {r.correlation:.2f}, next best {r.runner_up:.2f}) — "
+                          "line it up with Sync")
+        note = r.describe()
+        return cls(kind="offset", offset_s=r.offset_s, gps_note=note, gps_offset=r.offset_s), note
 
     # ---- queries ----------------------------------------------------------
     @property
