@@ -109,7 +109,7 @@ except Exception as _e:  # pragma: no cover — not just ImportError: a broken d
     PARAMIKO_ERROR = f"{type(_e).__name__}: {_e}"
 
 APP_NAME = "GARW Genie"
-APP_VERSION = "6.1.9"
+APP_VERSION = "6.2"
 
 TARGET_SSID = "GARW"
 WIFI_PASSWORD = "garwicxX"      # the unit's own hotspot; editable in the header
@@ -2560,6 +2560,7 @@ class IC7Device:
             raise RuntimeError(f"Upload of {fname} failed: {err.strip() or 'size mismatch'}")
         self._run(f"rm -f {_sq(enc_marker_path(name))}")   # a manual copy isn't tracked to any GitHub commit
         self.log(f"Installed {remote}")
+        self.clear_dash_cache()
         return name
 
     def upload_all(self, pkgs: List[DashPackage]):
@@ -2575,6 +2576,18 @@ class IC7Device:
             done += len(pkg.files)
             self.progress(done, grand_total)
         self.log(f"All {len(pkgs)} dash(es) uploaded: " + ", ".join(p.label for p in pkgs))
+        self.clear_dash_cache()
+
+    #: The IC7 binary's cached copies of the dashes (compiled QML and the like). Left in place, it can keep
+    #: running the old version of a dash that was just installed or updated — cleared after every install.
+    DASH_CACHE_DIRS = ("/root/.cache/IC7", "/.cache/IC7")
+
+    def clear_dash_cache(self) -> None:
+        rc, _, err = self._run("rm -rf " + " ".join(_sq(d) for d in self.DASH_CACHE_DIRS))
+        if rc == 0:
+            self.log("Cleared the dash cache (" + ", ".join(self.DASH_CACHE_DIRS) + ").")
+        else:
+            self.log(f"WARNING: couldn't clear the dash cache: {err.strip() or 'rm failed'}")
 
     def upload_enc_data(self, name: str, data: bytes, source: Optional[dict] = None) -> str:
         """Install Name.enc from bytes (staged upload, size check, rename) and record where it came from in a
@@ -3059,10 +3072,13 @@ class IC7Device:
         # Configs a dash expects but that don't exist yet are worth showing too.
         present = {r["name"] for r in rows}
         present_stems = {os.path.splitext(n)[0].lower() for n in present}
+        # A dash whose code names more than one settings file (an older name it still mentions, a .txt fallback
+        # next to its .json — AgeSolo_config.txt / .json, Outrun.txt / Outrun_config.json) has its settings when
+        # one of them is there. Only a dash with none of its files on the unit gets a "missing" row.
+        has_file = {d for r in rows if r["size"] is not None for d in r["dashes"]}
         for ref, dashes in usage.items():
-            # A dash that names both <x>.txt and <x>.json (an older format it still mentions, or a fallback)
-            # has its settings when either one is there.
-            if ref not in present and os.path.splitext(ref)[0].lower() not in present_stems:
+            if (ref not in present and os.path.splitext(ref)[0].lower() not in present_stems
+                    and not any(d in has_file for d in dashes)):
                 rows.append({"name": ref, "size": None, "mtime": None, "dashes": dashes, "enc": False})
         rows.sort(key=lambda r: r["name"].lower())
         return rows
